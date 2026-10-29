@@ -118,16 +118,20 @@ trait CallQueries {
             if ($call['finished_at']!==null) return;
             if ($amdStatus==='') { $amdStatus=$call['amd_status']; $amdCause=$call['amd_cause']; }
             $answered=$answered || $call['answered_at']!==null;
+            // Disposition: explicit value, else from the dialplan stage (marcador), else from the dial result.
+            $stage=(string)($causes['stage'] ?? '');
+            $disposition=(string)($causes['disposition'] ?? '');
+            if ($disposition==='' && $stage!=='') $disposition=['AMD_MACHINE'=>'AMD_MACHINE','XFER_NODEST'=>'XFER_FAIL','XFER'=>$dialStatus==='ANSWER' ? 'XFER_OK' : 'XFER_FAIL','ANSWER'=>'ANSWER_HUMAN'][$stage] ?? '';
+            if (!in_array($disposition,['ANSWER_HUMAN','AMD_MACHINE','NOANSWER','BUSY','CONGESTION','FAILED','XFER_OK','XFER_FAIL','CANCELLED'],true)) {
+                $disposition=$amdStatus==='MACHINE' ? 'AMD_MACHINE' : (($answered || $dialStatus==='ANSWER') ? 'ANSWER_HUMAN' : (['BUSY'=>'BUSY','NOANSWER'=>'NOANSWER','CONGESTION'=>'CONGESTION','CANCEL'=>'CANCELLED'][$dialStatus] ?? 'FAILED'));
+            }
             $status=$amdStatus==='MACHINE' ? 'AA' : (($answered || $dialStatus==='ANSWER') ? 'ANSWER' : (['BUSY'=>'B','NOANSWER'=>'NA','CHANUNAVAIL'=>'UNAV','CONGESTION'=>'CONG','CANCEL'=>'CANCEL'][ $dialStatus ] ?? 'FAIL'));
+            if (in_array($disposition,['XFER_OK','XFER_FAIL'],true) && $amdStatus!=='MACHINE') $status=$disposition;
             if (!in_array($call['status'],['CALL','LOST'],true)) $status=$call['status'];
             $this->db->prepare('UPDATE zynervox_bot_call_attempts SET status=?,dial_status=?,amd_status=?,amd_cause=?,hangup_cause=?,finished_at=UTC_TIMESTAMP() WHERE call_id=?')->execute([$status,substr($dialStatus,0,20),substr($amdStatus,0,20),substr($amdCause,0,160),$hangupCause,$callId]);
             // A late callback cannot overwrite a newer attempt for this lead.
             $this->db->prepare('UPDATE zynervox_bot_list l SET status=? WHERE lead_id=? AND NOT EXISTS (SELECT 1 FROM zynervox_bot_call_attempts a WHERE a.lead_id=l.lead_id AND a.attempt_id>?)')->execute([$status,$call['lead_id'],$call['attempt_id']]);
             // Migration 014 columns: failures are logged and must not break the closure of the call.
-            $disposition=(string)($causes['disposition'] ?? '');
-            if (!in_array($disposition,['ANSWER_HUMAN','AMD_MACHINE','NOANSWER','BUSY','CONGESTION','FAILED','XFER_OK','XFER_FAIL','CANCELLED'],true)) {
-                $disposition=$amdStatus==='MACHINE' ? 'AMD_MACHINE' : (($answered || $dialStatus==='ANSWER') ? 'ANSWER_HUMAN' : (['BUSY'=>'BUSY','NOANSWER'=>'NOANSWER','CONGESTION'=>'CONGESTION','CANCEL'=>'CANCELLED'][$dialStatus] ?? 'FAILED'));
-            }
             $source=(string)($causes['cause_source'] ?? '');
             if (!in_array($source,['dialplan','ami','agi'],true)) $source='dialplan';
             try {

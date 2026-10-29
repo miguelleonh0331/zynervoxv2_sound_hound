@@ -53,7 +53,7 @@ $r = bot_engine_tick($repo, $orig, null, $mon)[0];
 $mapped = $calls ? $calls[0][2] : [];
 check('lanza hasta max_channels con el lead 2 rechazado por header vacío y el 3 por "$"', $r['launched'] === 2 && count($calls) === 2 && $calls[0][0]['phone'] === '911111111' && $calls[1][0]['phone'] === '944444444');
 check('los leads con header inválido quedan HDR_ERR (no se pierden en silencio)', (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_list WHERE status='HDR_ERR'")->fetchColumn() === 2);
-check('variables __ZV2_*', in_array('__ZV2_AMD=1', $mapped, true) && in_array('__ZV2_TRANSFER_DEST=5551000', $mapped, true) && (bool)preg_grep('/^__ZV2_FORWARD_HEADERS=[A-Za-z0-9+\/=]+$/', $mapped));
+check('variables __ZV2_*', in_array('__ZV2_AMD=1', $mapped, true) && in_array('__ZV2_XFER_DEST=5551000', $mapped, true) && in_array('__ZV2_XFER_TRUNK=dest', $mapped, true) && in_array('__ZV2_CALL_ID='.$calls[0][0]['call_id'], $mapped, true) && (bool)preg_grep('/^__ZV2_FORWARD_HEADERS=[A-Za-z0-9+\/=]+$/', $mapped));
 $r = bot_engine_tick($repo, $orig, null, $mon)[0];
 check('con canales llenos no lanza', ($r['launched'] ?? 0) === 0 && $r['active'] === 2);
 $first = $calls[0][0]['call_id'];
@@ -71,6 +71,19 @@ $pdo->exec("UPDATE zynervox_bot_campaign_retry_rules SET retry_delay_min=60");
 $repo->finishCall($calls[2][0]['call_id'], 'BUSY', '', '', 17, false); // already finished: no-op
 check('finishCall repetido no cambia la causa', $pdo->query("SELECT sip_cause FROM zynervox_bot_call_attempts WHERE call_id='{$calls[2][0]['call_id']}'")->fetchColumn() === '');
 $repo->rejectCampaignClaim('zv2-inexistente');
+// Unanswered call closed from AMI events (Hangup then OriginateResponse), and transfer stages from the finish AGI
+$pdo->exec("INSERT INTO zynervox_bot_list (list_id,phone,customer_name,extra_json) VALUES ($list,'966666666','Fa','{\"monto\":\"1\"}')");
+$more = bot_engine_tick($repo, $orig, null, $mon); $hang = [];
+$open = $pdo->query("SELECT call_id FROM zynervox_bot_call_attempts WHERE finished_at IS NULL ORDER BY attempt_id")->fetchAll(PDO::FETCH_COLUMN);
+check('hay llamadas abiertas para cerrar', count($open) >= 2);
+bot_engine_handle_event($repo, ['Event'=>'Hangup', 'Uniqueid'=>$open[0], 'Cause'=>'17', 'Cause-txt'=>'User busy'], $hang);
+bot_engine_handle_event($repo, ['Event'=>'OriginateResponse', 'Uniqueid'=>$open[0], 'Response'=>'Failure', 'Reason'=>'5'], $hang);
+$row = $pdo->query("SELECT status,disposition,hangup_cause,sip_cause,cause_source,end_source FROM zynervox_bot_call_attempts WHERE call_id='{$open[0]}'")->fetch();
+check('no contestada: causa por AMI', $row['status'] === 'B' && $row['disposition'] === 'BUSY' && (int)$row['hangup_cause'] === 17 && str_contains($row['sip_cause'], 'User busy') && $row['cause_source'] === 'ami' && $row['end_source'] === 'AMI');
+bot_engine_handle_event($repo, ['Event'=>'OriginateResponse', 'Uniqueid'=>'otro-123', 'Response'=>'Failure', 'Reason'=>'5'], $hang);
+$repo->finishCall($open[1], 'ANSWER', '', '', 16, true, ['sip_cause'=>'200', 'stage'=>'XFER']);
+$row = $pdo->query("SELECT status,disposition FROM zynervox_bot_call_attempts WHERE call_id='{$open[1]}'")->fetch();
+check('transferencia contestada => XFER_OK', $row === ['status'=>'XFER_OK', 'disposition'=>'XFER_OK']);
 bot_cfg_stop($repo, $id, 'test');
 check('detener deja la campaña stopped', $repo->campaign($id)['dialer_state'] === 'stopped');
 echo $fail ? "$fail FALLOS\n" : "TODO OK\n";

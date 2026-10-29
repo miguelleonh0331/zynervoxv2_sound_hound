@@ -31,8 +31,8 @@ try {
     } elseif ($action==='finish') {
         $id=(string)($argv[2]??'');$type='FINISH';
         $data += ['dial_status'=>$argv[3]??'','amd_status'=>$argv[4]??'','amd_cause'=>$argv[5]??'','hangup_cause'=>(int)($argv[6]??0),'answered'=>($argv[7]??'')==='1',
-            // Optional (marcador v1): SIP cause text, normalized disposition, cause source dialplan|ami|agi.
-            'sip_cause'=>preg_replace('/[\x00-\x1f\x7f]/','',substr((string)($argv[8]??''),0,120)),'disposition'=>(string)($argv[9]??''),'cause_source'=>(string)($argv[10]??'')];
+            // Marcador v1 (optional): argv[8] SIP code/text of the transfer leg, argv[9] dialplan stage (ANSWER|XFER|XFER_NODEST|AMD_MACHINE), argv[10] cause source.
+            'sip_cause'=>preg_replace('/[\x00-\x1f\x7f]/','',substr((string)($argv[8]??''),0,120)),'stage'=>(string)($argv[9]??''),'cause_source'=>(string)($argv[10]??'')];
     } elseif ($action==='event' && in_array($argv[3]??'',['OUTBOUND','ANSWER','AMD'],true)) {
         $id=(string)($argv[2]??'');$type=$argv[3];
         $data += ['amd_status'=>$argv[4]??'','amd_cause'=>$argv[5]??''];

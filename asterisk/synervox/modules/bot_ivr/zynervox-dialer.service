@@ -8,7 +8,7 @@ Type=simple
 User=apache
 Group=apache
 RuntimeDirectory=zynervox-dialer
-ExecStart=/usr/bin/php /var/www/html/zynervoxv2/bot_ivr/campaign_engine.php --context=zynervoxv2-dialer
+ExecStart=/usr/bin/php /var/www/html/zynervoxv2/bot_ivr/campaign_engine.php
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

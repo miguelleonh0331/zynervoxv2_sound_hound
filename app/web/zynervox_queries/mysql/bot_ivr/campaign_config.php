@@ -122,4 +122,15 @@ trait CampaignConfigQueries {
             $this->recordCallEvent($callId, 'DIAL_REJECTED', hash('sha256', $callId.'|DIAL_REJECTED'), time(), ['reason'=>'AMI rejected originate']);
         });
     }
+    /** Closes an attempt that never ran dialplan (no answer, busy, congestion, failure) with the cause reported by AMI. */
+    public function finishUnansweredCall(string $callId, string $dialStatus, int $q850, string $sipText, string $disposition): void {
+        $this->callAtomic(function() use($callId,$dialStatus,$q850,$sipText,$disposition) {
+            $s = $this->db->prepare('SELECT finished_at FROM zynervox_bot_call_attempts WHERE call_id=? FOR UPDATE');
+            $s->execute([$callId]);
+            $call = $s->fetch();
+            if (!$call || $call['finished_at'] !== null) return;
+            $this->finishCall($callId, $dialStatus, '', '', $q850, false, ['sip_cause'=>$sipText, 'cause_source'=>'ami', 'disposition'=>$disposition]);
+            $this->db->prepare("UPDATE zynervox_bot_call_attempts SET end_source='AMI',duration_seconds=GREATEST(0,TIMESTAMPDIFF(SECOND,started_at,finished_at)),billsec=0 WHERE call_id=?")->execute([$callId]);
+        });
+    }
 }

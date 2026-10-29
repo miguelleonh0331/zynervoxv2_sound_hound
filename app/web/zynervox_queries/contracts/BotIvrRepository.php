@@ -25,6 +25,7 @@ interface BotIvrRepository {
     public function countEligibleLeads(int $id, string $order): int;
     public function claimCampaignLead(int $id, string $order, string $callId, callable $resolve, string $rejectStatus = 'HDR_ERR'): ?array;
     public function rejectCampaignClaim(string $callId): void;
+    public function finishUnansweredCall(string $callId, string $dialStatus, int $q850, string $sipText, string $disposition): void;
     public function campaignMonitor(): array;
     public function campaigns(): array;
     public function campaign(int $id): array;
