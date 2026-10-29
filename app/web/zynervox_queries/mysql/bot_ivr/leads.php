@@ -49,7 +49,12 @@ trait LeadQueries {
                     $saved += count($values);
                 }
             }
-            $this->db->prepare('UPDATE zynervox_bot_lists SET sip_header_map=? WHERE list_id=?')->execute([empty($parsed['header_map']) ? null : json_encode($parsed['header_map'], JSON_THROW_ON_ERROR), $listId]);
+            // Migration 013 is optional until applied: only touch its objects when the upload defines headers
+            // (error if missing) or when the column exists (to clear a stale map).
+            $schema = $this->db->query("SELECT SUM(table_name='zynervox_bot_lists' AND column_name='sip_header_map') c, (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='zynervox_bot_lead_headers') t FROM information_schema.columns WHERE table_schema=DATABASE()")->fetch(\PDO::FETCH_ASSOC);
+            $hasMap = (int)($schema['c'] ?? 0) > 0;
+            if (!empty($parsed['header_map']) && (!$hasMap || (int)($schema['t'] ?? 0) === 0)) throw new \RuntimeException('Migración 013 pendiente: no se pueden guardar headers SIP. Aplica src/features/bot_ivr/models/013-lead-sip-headers.sql o carga sin columnas de header.');
+            if ($hasMap) $this->db->prepare('UPDATE zynervox_bot_lists SET sip_header_map=? WHERE list_id=?')->execute([empty($parsed['header_map']) ? null : json_encode($parsed['header_map'], JSON_THROW_ON_ERROR), $listId]);
             if (!empty($parsed['header_map'])) {
                 $ids = $this->db->prepare('SELECT phone,lead_id FROM zynervox_bot_list WHERE list_id=?');
                 $ids->execute([$listId]);
