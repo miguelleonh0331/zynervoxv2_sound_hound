@@ -193,18 +193,20 @@ class Carriers {
         $db = self::database();
         $table = self::table();
         $protocolFilter = \Config\Config::deployment('isolated', false) ? "protocol IN ('SIP','PJSIP')" : "protocol = 'PJSIP'";
-        $stmt = $db->query("SELECT carrier_id, carrier_name, account_entry, dialplan_entry FROM $table WHERE active = 'Y' AND $protocolFilter ORDER BY carrier_id ASC");
+        $stmt = $db->query("SELECT carrier_id, carrier_name, protocol, account_entry, dialplan_entry FROM $table WHERE active = 'Y' AND $protocolFilter ORDER BY carrier_id ASC");
         $carriers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $confOut = "; Generado por Zynervox (carriers.php) - " . date('Y-m-d H:i:s') . "\n";
         $confOut .= "; NO EDITAR A MANO, se sobreescribe desde el panel de administracion.\n\n";
+        $sipOut=$confOut;
 
         $dialOut = "; Generado por Zynervox (carriers.php) - " . date('Y-m-d H:i:s') . "\n";
         $dialOut .= "; NO EDITAR A MANO, se sobreescribe desde el panel de administracion.\n\n";
 
         foreach ($carriers as $c) {
-            $confOut .= "; ---- Carrier: {$c['carrier_id']} ({$c['carrier_name']}) ----\n";
-            $confOut .= rtrim($c['account_entry']) . "\n\n";
+            $entry="; ---- Carrier: {$c['carrier_id']} ({$c['carrier_name']}) ----\n".rtrim($c['account_entry'])."\n\n";
+            if (\Config\Config::deployment('isolated',false) && self::protocol($c)==='SIP') $sipOut.=$entry;
+            else $confOut.=$entry;
 
             if (trim($c['dialplan_entry']) !== '') {
                 $dialOut .= "; ---- Carrier: {$c['carrier_id']} ({$c['carrier_name']}) ----\n";
@@ -230,7 +232,8 @@ class Carriers {
         $dialplanPath = $isolated ? $directory . '/extensions-zynervoxv2.conf' : self::DIALPLAN_PATH;
         $w1 = $isolated ? self::writeConfiguration($confPath, $confOut) : @file_put_contents($confPath, $confOut);
         $w2 = $isolated ? self::writeConfiguration($dialplanPath, $dialOut) : @file_put_contents($dialplanPath, $dialOut);
-        if ($w1 === false || $w2 === false) {
+        $w3 = $isolated ? self::writeConfiguration($directory.'/sip-zynervoxv2.conf',$sipOut) : true;
+        if ($w1 === false || $w2 === false || $w3 === false) {
             return ['ok' => false, 'error' => 'Datos guardados; no se pudo generar ' . $confPath . ' o ' . $dialplanPath . ' (revisar permisos).'];
         }
 

@@ -1,18 +1,27 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/Database.php';
+require_once __DIR__.'/forwarding.php';
 
-define('IVR_PUBLISHED_DIR', \Config\Config::deployment('runtime', '/etc/asterisk/synervox') . '/modules/flows/published');
+if (!defined('IVR_PUBLISHED_DIR')) define('IVR_PUBLISHED_DIR', \Config\Config::deployment('runtime', '/etc/asterisk/synervox') . '/modules/flows/published');
 
 function flow_store(PDO $db, array $flow): void {
     $code = (string)$flow['flow_code'];
     $db->beginTransaction();
     try {
         $meta = $db->prepare(
-            'INSERT INTO bot_ivr_flows (flow_code,name,data_json,start_node_id,list_id) VALUES (:c,:n,\'\',:s,:l)
-             ON DUPLICATE KEY UPDATE name=VALUES(name), start_node_id=VALUES(start_node_id), list_id=VALUES(list_id)'
+            'INSERT INTO bot_ivr_flows (flow_code,name,data_json,start_node_id,list_id) VALUES (:c,:n,:j,:s,:l)
+             ON DUPLICATE KEY UPDATE name=VALUES(name), data_json=VALUES(data_json), start_node_id=VALUES(start_node_id), list_id=VALUES(list_id)'
         );
-        $meta->execute([':c'=>$code, ':n'=>$flow['name'], ':s'=>$flow['start'], ':l'=>$flow['list_id'] ?? null]);
+        $existing=$db->prepare('SELECT data_json FROM bot_ivr_flows WHERE flow_code=? FOR UPDATE');
+        $existing->execute([$code]);
+        $old=$existing->fetchColumn();
+        $metadata=$old!==false && $old!==''?json_decode($old,true,512,JSON_THROW_ON_ERROR):[];
+        if (!is_array($metadata)) throw new RuntimeException('Invalid flow metadata');
+        $forwarding=[];
+        foreach ($flow['nodes'] as $id=>$node) if (($node['type'] ?? '')==='reenviar') $forwarding[$id]=ivr_forwarding_config($node);
+        $metadata['forwarding']=$forwarding;
+        $meta->execute([':j'=>json_encode($metadata,JSON_THROW_ON_ERROR),':c'=>$code, ':n'=>$flow['name'], ':s'=>$flow['start'], ':l'=>$flow['list_id'] ?? null]);
         $db->prepare('DELETE FROM bot_ivr_flow_nodes WHERE flow_code=:c')->execute([':c'=>$code]);
 
         $nodeSql = 'INSERT INTO bot_ivr_flow_nodes
@@ -62,7 +71,7 @@ function flow_store(PDO $db, array $flow): void {
 }
 
 function flow_load(PDO $db, string $code): ?array {
-    $meta = $db->prepare('SELECT flow_code,name,start_node_id,list_id,updated_at FROM bot_ivr_flows WHERE flow_code=:c');
+    $meta = $db->prepare('SELECT flow_code,name,data_json,start_node_id,list_id,updated_at FROM bot_ivr_flows WHERE flow_code=:c');
     $meta->execute([':c'=>$code]);
     $row = $meta->fetch(PDO::FETCH_ASSOC);
     if (!$row) return null;
@@ -84,6 +93,8 @@ function flow_load(PDO $db, string $code): ?array {
             'segments'=>[],'composite_hash'=>$n['composite_hash'],'composite_status'=>$n['composite_status'],
         ];
     }
+    $metadata=$row['data_json']!==''?json_decode($row['data_json'],true,512,JSON_THROW_ON_ERROR):[];
+    foreach ($metadata['forwarding'] ?? [] as $id=>$config) if (isset($nodes[$id]) && $nodes[$id]['type']==='reenviar') $nodes[$id]['forwarding']=ivr_forwarding_config(['forwarding'=>$config]);
     flow_load_children($db, $code, $nodes);
     return ['flow_code'=>$row['flow_code'],'name'=>$row['name'],'start'=>$row['start_node_id'],'list_id'=>$row['list_id']!==null?(int)$row['list_id']:null,'nodes'=>$nodes,'updated_at'=>gmdate('c', strtotime((string)$row['updated_at']))];
 }

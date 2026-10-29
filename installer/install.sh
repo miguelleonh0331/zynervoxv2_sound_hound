@@ -70,6 +70,10 @@ printf '[%s] Aplicando permisos web\n' "$(date +%T)"
 chown -R root:"$WEB_GROUP" "$WEB_ROOT"
 find "$WEB_ROOT" -type d -exec chmod 0750 {} +
 find "$WEB_ROOT" -type f -exec chmod 0640 {} +
+# Los programas AGI se ejecutan desde Asterisk.
+for agi in call_tracking_agi.php ivr_engine_agi.php forward_headers_agi.php; do
+  [[ ! -f "$WEB_ROOT/bot_ivr/$agi" ]] || chmod 0750 "$WEB_ROOT/bot_ivr/$agi"
+done
 echo "WEB_INSTALLED root=$WEB_ROOT"
 if [[ "${ZYNERVOX_ISOLATED:-0}" == 1 ]]; then
   bash "$ROOT/installer/deployment-marker.sh"

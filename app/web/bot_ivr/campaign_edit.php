@@ -109,7 +109,6 @@ if ($campaign): ?>
 <tr><th scope="row"><label for="campaign_name">Nombre:</label></th><td><input type="text" id="campaign_name" name="name" maxlength="120" value="<?php echo h($campaign['name']); ?>" required></td></tr>
 <?php bot_campaign_field_row('campaign_description', $campaign); ?>
 <tr><th scope="row"><label for="campaign_active">Activo:</label></th><td><select id="campaign_active" name="active"><option value="1" <?php echo $campaign['active'] ? 'selected' : ''; ?>>Sí</option><option value="0" <?php echo !$campaign['active'] ? 'selected' : ''; ?>>No</option></select></td></tr>
-<?php bot_campaign_field_row('user_group', $campaign); ?>
 <tr><th scope="row">Fecha de creación:</th><td><?php echo h($campaign['created_at']); ?></td></tr>
 <tr><th scope="row">Última modificación:</th><td><?php echo h($campaign['updated_at']); ?></td></tr>
 </tbody></table></div>
@@ -120,10 +119,10 @@ if ($campaign): ?>
 </tbody></table></div></div>
 <div class="campaign-column"><div class="campaign-group"><h3>Marcación</h3>
 <table class="campaign-fields"><tbody>
-<?php foreach (['dial_method','auto_dial_level','max_channels','dial_timeout','dial_prefix','campaign_cid'] as $key) bot_campaign_field_row($key, $campaign); ?>
+<?php bot_campaign_field_row('campaign_cid', $campaign); ?>
 </tbody></table></div>
-<div class="campaign-group"><h3>Leads y grabación</h3><table class="campaign-fields"><tbody>
-<?php foreach (['lead_order','dial_statuses','hopper_level','campaign_recording'] as $key) bot_campaign_field_row($key, $campaign); ?>
+<div class="campaign-group"><h3>Leads</h3><table class="campaign-fields"><tbody>
+<?php bot_campaign_field_row('dial_statuses', $campaign); ?>
 </tbody></table></div></div>
 </div>
 <div class="campaign-save"><button class="carsa-btn compact-submit">Guardar campaña</button></div>

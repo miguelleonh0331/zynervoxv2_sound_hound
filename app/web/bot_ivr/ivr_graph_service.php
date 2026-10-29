@@ -1,8 +1,9 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/ivr_engine_service.php';
+require_once __DIR__.'/../ivr_builder/forwarding.php';
 
-const BOT_IVR_GRAPH_TYPES=['noop','goto','create_audio','create_audio_dynamic','playback','hangup','amd','menu','capture_stt','bridge','inject_sql','execute'];
+const BOT_IVR_GRAPH_TYPES=['noop','goto','create_audio','create_audio_dynamic','playback','hangup','amd','menu','capture_stt','bridge','inject_sql','execute','reenviar'];
 const BOT_IVR_SQL_FIELDS=['ID','FECHA','TELEFONO_BOT','ESTADO','RESULTADO','CLIENTE','NUMERO_CLIENTE','DIRECCION','TIENDA','MONTO','FECHA_AGENDADA','RESPUESTA_REGISTRADA','FECHA_INDICADA','HORA_VISITA','MINUTO_VISITA','ID_CONTACTO','CAMPAÑA','COLA','CALL_ID','DURACION_LLAMADA','PROVEEDOR','ID_CLASE','ID_USUARIO','FECHA_DE_GESTION','HORA_GESTION','HORA_INICIA_GESTION','HORA_FIN_GESTION','NUM_DOC','PRI_NOMBRE','SEG_NOMBRE','APE_PATERNO','APE_MATERNO','ID_TIPIFICACION_01','ID_TIPIFICACION_02','ID_TIPIFICACION_03','ID_AGENCIA'];
 
 function bot_ivr_graph(array $flow): bool {
@@ -27,7 +28,8 @@ function bot_ivr_validate_graph(array $flow): void {
             if (!is_array($node['inject_sql_fields'] ?? null) || !$node['inject_sql_fields']) throw new RuntimeException('Empty IVR SQL mapping');
             foreach ($node['inject_sql_fields'] as $field=>$template) if (!in_array($field,BOT_IVR_SQL_FIELDS,true) || !is_string($template) || strlen($template)>4000) throw new RuntimeException('Invalid IVR SQL field');
         }
-        $targets=$type==='hangup'?[]:[$node['next'] ?? '',$node['fallback'] ?? ''];
+        if ($type==='reenviar') ivr_forwarding_config($node);
+        $targets=in_array($type,['hangup','reenviar'],true)?[]:[$node['next'] ?? '',$node['fallback'] ?? ''];
         foreach ($node['edges'] ?? [] as $digit=>$target) { if (!preg_match('/^[0-9*#]$/D',(string)$digit)) throw new RuntimeException('Invalid IVR DTMF'); $targets[]=$target; }
         foreach ($node['stt_intents'] ?? [] as $intent) {
             if (($intent['match'] ?? 'contains_any')!=='contains_any' || !is_array($intent['phrases'] ?? null) || !$intent['phrases']) throw new RuntimeException('Invalid IVR intent');
@@ -35,7 +37,7 @@ function bot_ivr_validate_graph(array $flow): void {
             $targets[]=$intent['target'] ?? '';
         }
         $targets=array_values(array_filter($targets,fn($target)=>$target!==''));
-        if ($type!=='hangup' && !$targets) throw new RuntimeException('IVR flow has no terminal hangup');
+        if (!in_array($type,['hangup','reenviar'],true) && !$targets) throw new RuntimeException('IVR flow has no terminal hangup');
         $visiting[$id]=true;
         foreach ($targets as $target) { if (!is_string($target) || !isset($nodes[$target])) throw new RuntimeException('IVR node missing'); $walk($target); }
         unset($visiting[$id]);$visited[$id]=true;
@@ -181,7 +183,7 @@ final class BotIvrGraphRunner {
     public function run(): string {
         // Preflight contact-dependent audio before running any phone or URL action.
         $responses=bot_list_audio_response_variables($this->flow);
-        foreach (bot_list_audio_templates($this->flow) as $template) {
+        foreach (bot_list_audio_templates($this->flow,false,false) as $template) {
             preg_match_all('/\{([A-Za-z_][A-Za-z0-9_]*)\}/',$template,$matches);
             $vars=$this->vars;
             foreach ($responses as $key) $vars[$key]='captured';
@@ -230,6 +232,63 @@ final class BotIvrGraphRunner {
                 $ok=($this->result)($id,$fields,$node);
                 ($this->event)('IVR_NODE',['node'=>$id,'action'=>'inject_sql','ok'=>$ok,'result'=>$fields['RESULTADO'] ?? null]);
                 $next=$node[$ok?'next':'fallback'] ?? '';
+            } elseif ($type==='reenviar') {
+                $forward=ivr_forwarding_render($node,$this->vars);
+                if ($forward['mode']==='dialplan') {
+                    $context=(string)($node['contexto'] ?? '');
+                    if ($context==='') {
+                        $reply=$this->send('GET VARIABLE CONTEXT');
+                        if (!preg_match('/^200 result=1 \(([A-Za-z0-9_-]{1,80})\)$/D',(string)$reply,$match)) throw new RuntimeException('Forward context unavailable');
+                        $context=$match[1];
+                    }
+                    if (!preg_match('/^[A-Za-z0-9_-]{1,80}$/D',$context)) throw new RuntimeException('Invalid forward context');
+                    $priority=(int)($node['prioridad'] ?? 1);
+                    if ($priority<1 || $priority>99) throw new RuntimeException('Invalid forward priority');
+                    $this->exec('Goto',$context.','.$forward['number'].','.$priority);
+                    if ($this->hungup) return 'INTERRUPTED';
+                    ($this->event)('IVR_NODE',['node'=>$id,'action'=>'forward','mode'=>'dialplan']);
+                    return 'TRANSFERRED';
+                }
+                $endpoint=$forward['endpoint'];
+                $protocol=$forward['protocol'];
+                $lookup=$protocol==='SIP'?'SIPPEER('.$endpoint.',ip)':'PJSIP_ENDPOINT('.$endpoint.',aors)';
+                $reply=$this->send('GET FULL VARIABLE "${'.$lookup.'}"');
+                if (!preg_match('/^200 result=1 \(([^)]+)\)$/D',(string)$reply)) throw new RuntimeException('Forward endpoint unavailable');
+                if ($protocol==='SIP') {
+                    if (preg_match('/\((?:0\.0\.0\.0|\(null\))\)$/',(string)$reply)) throw new RuntimeException('Forward SIP peer unavailable');
+                    $slots=[];$slot=1;
+                    try {
+                        foreach ($forward['headers'] as $header) {
+                            while ($slot<=50) {
+                                $reply=$this->send('GET VARIABLE SIPADDHEADER'.sprintf('%02d',$slot));
+                                if ($reply==='200 result=0') break;
+                                if ($reply===null || !preg_match('/^200 result=1 \(.*\)$/D',$reply)) throw new RuntimeException('Forward SIP header slot unavailable');
+                                $slot++;
+                            }
+                            if ($slot>50) throw new RuntimeException('Forward SIP headers full');
+                            $created=$slot++;$slots[]=$created;
+                            $this->exec('SIPAddHeader',ivr_forwarding_agi_quote($header['name'].':'.$header['value']));
+                            $reply=$this->send('GET VARIABLE SIPADDHEADER'.sprintf('%02d',$created));
+                            if ($reply!=='200 result=1 ('.$header['name'].':'.$header['value'].')') throw new RuntimeException('Forward SIP header was not applied');
+                        }
+                        $target='SIP/'.$endpoint.($forward['mode']==='trunk'?'/'.$forward['number']:'');
+                        $this->exec('Dial',$target.',30');
+                    } finally {
+                        // Clear only slots created here; existing channel headers survive.
+                        foreach ($slots as $created) $this->send('SET VARIABLE __SIPADDHEADER'.sprintf('%02d',$created).' ""');
+                    }
+                } else {
+                    $encoded=base64_encode(json_encode($forward['headers'],JSON_THROW_ON_ERROR));
+                    $reply=$this->send('SET VARIABLE __ZV2_FORWARD_HEADERS "'.$encoded.'"');
+                    if (!preg_match('/^200 result=1(?:\s|$)/',(string)$reply)) throw new RuntimeException('Forward headers unavailable');
+                    $target='PJSIP/'.($forward['mode']==='trunk'?$forward['number'].'@':'').$endpoint;
+                    $this->exec('Dial',$target.',30,b(zynervoxv2-forward-headers^s^1)');
+                }
+                if ($this->hungup) return 'INTERRUPTED';
+                $reply=$this->send('GET VARIABLE DIALSTATUS');
+                $ok=preg_match('/^200 result=1 \(ANSWER\)$/D',(string)$reply)===1;
+                ($this->event)('IVR_NODE',['node'=>$id,'action'=>'forward','mode'=>$forward['mode'],'ok'=>$ok]);
+                return $ok?'TRANSFERRED':'FORWARD_FAILED';
             } elseif ($type==='execute') {
                 try {
                     $url=bot_ivr_url((string)($node['execute_url'] ?? ''),$this->vars,$this->options['execute_allowlist'] ?? []);

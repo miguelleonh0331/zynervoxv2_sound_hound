@@ -33,7 +33,7 @@ function bot_list_audio_response_variables(array $flow): array {
     return array_unique($variables);
 }
 
-function bot_list_audio_templates(array $flow, bool $prebuildOnly=false): array {
+function bot_list_audio_templates(array $flow, bool $prebuildOnly=false, bool $requireTexts=true): array {
     $nodes = $flow['nodes'] ?? [];
     $pending = [$flow['start'] ?? ''];
     $seen = [];
@@ -70,7 +70,7 @@ function bot_list_audio_templates(array $flow, bool $prebuildOnly=false): array 
             if ((string)$target !== '') $pending[] = (string)$target;
         }
     }
-    if (!$templates) throw new RuntimeException('El flujo publicado no contiene textos para generar.');
+    if (!$templates && $requireTexts) throw new RuntimeException('El flujo publicado no contiene textos para generar.');
     return $templates;
 }
 

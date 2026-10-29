@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../lib/db.php';
 require_once __DIR__ . '/flow_store.php';
+require_once __DIR__ . '/forwarding.php';
 ivr_builder_require_login(true);
 
 // Legacy catalog optional: isolated v2 can embed its own bridge phrase.
@@ -35,8 +36,7 @@ if (!is_array($nodes) || !$nodes) fail('Debe existir al menos un nodo');
 if (!isset($nodes[$start])) fail('Nodo inicial inexistente');
 
 $types = ['noop', 'playback', 'create_audio', 'create_audio_dynamic', 'capture_stt', 'bridge', 'execute', 'inject_sql', 'menu', 'goto', 'hangup', 'decision_range', 'create_audio_composite', 'amd', 'menu_ari', 'capture_stt_ari', 'amd_ari', 'reenviar'];
-// reenviar: transfiere el canal en vivo (AMI Redirect) a un anexo creado
-// manualmente en Asterisk. Nodo terminal, no usa next/fallback.
+// reenviar: destino SIP o contexto anterior. Nodo terminal.
 // menu_ari/capture_stt_ari/amd_ari: experimento "doble canal" 4006.
 $allowedComposeProviders = ['macelioai', 'macelioai_remote', 'deepgram', 'deepgram_pool', 'voicescloning', 'deepgram_pod'];
 $injectSqlColumns = [
@@ -180,7 +180,10 @@ foreach ($nodes as $id => $node) {
         $item['execute_method'] = 'GET';
     }
     if ($type === 'reenviar') {
-        if ($item['anexo'] === '') fail("Anexo vacío en $id");
+        try { $item['forwarding']=ivr_forwarding_config($node); }
+        catch (InvalidArgumentException $e) { fail($e->getMessage()); }
+        if ($item['forwarding']['mode']!=='dialplan' && !\Config\Config::deployment('isolated',false)) fail('Reenviar SIP requiere despliegue v2 aislado.');
+        $item['next']=''; $item['fallback']='';
     } else {
         $item['anexo'] = '';
         $item['contexto'] = '';

@@ -4,7 +4,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 test_directory="$(mktemp -d)"
 source_directory="$test_directory/source"
 destination_directory="$test_directory/destination"
-mkdir -p "$source_directory/config" "$source_directory/runtime" "$destination_directory/config" "$destination_directory/runtime"
+mkdir -p "$source_directory/config" "$source_directory/runtime" "$destination_directory/config" "$destination_directory/runtime" "$source_directory/venvs" "$destination_directory/venvs" "$source_directory/bot_ivr"
+for agi in call_tracking_agi.php ivr_engine_agi.php forward_headers_agi.php; do
+  printf '<?php\n' > "$source_directory/bot_ivr/$agi"
+done
+printf 'source-venv' > "$source_directory/venvs/local.txt"
+printf 'local-venv' > "$destination_directory/venvs/local.txt"
+printf 'private-backup' > "$source_directory/file.php.bak.20261029"
 printf 'initial' > "$source_directory/file with spaces.php"
 printf 'unchanged' > "$source_directory/other.php"
 printf 'source' > "$source_directory/config/reporting_mirror.json"
@@ -15,6 +21,11 @@ printf 'local-only' > "$destination_directory/local.txt"
 deploy() { bash "$ROOT/installer/deploy-web.sh" "$source_directory" "$destination_directory"; }
 deploy > "$test_directory/first.log"
 cmp "$source_directory/file with spaces.php" "$destination_directory/file with spaces.php"
+for agi in call_tracking_agi.php ivr_engine_agi.php forward_headers_agi.php; do
+  [[ -x "$destination_directory/bot_ivr/$agi" ]]
+done
+[[ "$(cat "$destination_directory/venvs/local.txt")" == local-venv ]]
+[[ ! -e "$destination_directory/file.php.bak.20261029" ]]
 [[ "$(stat -c %Y "$source_directory/other.php")" == "$(stat -c %Y "$destination_directory/other.php")" ]]
 deploy > "$test_directory/second.log"
 if grep -q '^>f' "$test_directory/second.log"; then echo 'Se retransfirieron archivos intactos' >&2; exit 1; fi
@@ -32,6 +43,13 @@ printf 'different' > "$source_directory/other.php"
 touch -m -d '2030-01-01' "$source_directory/other.php"
 deploy > "$test_directory/same-size.log"
 [[ "$(grep -c '^>f' "$test_directory/same-size.log")" == 1 ]]
+cmp "$source_directory/other.php" "$destination_directory/other.php"
+touch -r "$destination_directory/other.php" "$source_directory/other.php"
+printf 'same-size' > "$source_directory/other.php"
+# Mismo tamano y fecha: solo el checksum detecta este cambio de contenido.
+touch -r "$destination_directory/other.php" "$source_directory/other.php"
+deploy > "$test_directory/checksum.log"
+[[ "$(grep -c '^>f' "$test_directory/checksum.log")" == 1 ]]
 cmp "$source_directory/other.php" "$destination_directory/other.php"
 rm "$source_directory/new.php"
 deploy > "$test_directory/removed.log"
