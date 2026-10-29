@@ -21,11 +21,11 @@ function bot_engine_variables(array $c, array $call, array $headers): array {
     return $vars;
 }
 
-/** Origin dial_prefix -> ['peer'=>chan_sip peer, 'prefix'=>digits to put before the number]. Owned by Telefonia (DialplanOrigins::route). */
+/** Origin dial_prefix -> ['peer'=>chan_sip peer, 'prefix'=>digits before the number], from the active dialplan (Telefonia: Dialplans::route). */
 function bot_engine_route(string $origin): array {
-    require_once __DIR__.'/../includes/DialplanOrigins.php';
-    if (!method_exists(\Includes\DialplanOrigins::class, 'route')) throw new RuntimeException('Falta DialplanOrigins::route() para resolver el origen '.$origin.'.');
-    $route = \Includes\DialplanOrigins::route($origin);
+    require_once __DIR__.'/../includes/Dialplans.php';
+    try { $route = \Includes\Dialplans::route($origin); }
+    catch (InvalidArgumentException $e) { throw new RuntimeException('Origen '.$origin.' sin ruta: '.$e->getMessage()); }
     if (!preg_match('/^[A-Za-z0-9_.-]{1,80}$/D', (string)($route['peer'] ?? '')) || !preg_match('/^[0-9*#+]{0,20}$/D', (string)($route['prefix'] ?? ''))) throw new RuntimeException('Ruta de origen inválida para '.$origin.'.');
     return $route;
 }
