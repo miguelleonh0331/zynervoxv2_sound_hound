@@ -106,6 +106,19 @@ ASTERISK;
         return array_values(array_unique($matches[1]));
     }
 
+    /** Peer chan_sip y prefijo de marcado de la ruta de un origen, leídos de su Dial(SIP/<peer>/<prefijo>${ZV2_PHONE}). */
+    public static function route(string $dialPrefix, string $dialplan): array {
+        if (!preg_match('/^[0-9]{1,20}$/D',$dialPrefix)) throw new \InvalidArgumentException('Prefijo de origen inválido.');
+        $body=self::body($dialplan);
+        $block=preg_split('/^\s*\[.*$/m',$body,2)[0];
+        $start=preg_match('/^\s*exten\s*=>\s*_'.$dialPrefix.'X\.\s*,\s*1\s*,/mi',$block,$m,PREG_OFFSET_CAPTURE);
+        if (!$start) throw new \InvalidArgumentException('El origen '.$dialPrefix.' no tiene ruta.');
+        $rest=substr($block,$m[0][1]+strlen($m[0][0]));
+        $rest=preg_split('/^\s*exten\s*=>/mi',$rest,2)[0];
+        if (!preg_match('/Dial\(SIP\/([A-Za-z0-9_.-]+)\/([0-9*#+]*)\$\{ZV2_PHONE\}/',$rest,$d)) throw new \InvalidArgumentException('La ruta '.$dialPrefix.' no marca por SIP/<peer>/<prefijo>${ZV2_PHONE}.');
+        return ['peer'=>$d[1],'prefix'=>$d[2]];
+    }
+
     public static function render(array $carriers): string {
         $routes = '';
         $contexts = [];

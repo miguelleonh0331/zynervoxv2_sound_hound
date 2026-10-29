@@ -25,6 +25,14 @@ class Dialplans {
         return self::database()->query("SELECT dialplan_id,dial_prefix,name FROM v2_dialplans WHERE active='Y' ORDER BY name,dial_prefix")->fetchAll(\PDO::FETCH_ASSOC);
     }
 
+    public static function route(string $dialPrefix): array {
+        $stmt=self::database()->prepare("SELECT dialplan_entry FROM v2_dialplans WHERE dial_prefix=? AND active='Y'");
+        $stmt->execute([$dialPrefix]);
+        $entry=$stmt->fetchColumn();
+        if ($entry===false) throw new \InvalidArgumentException('No hay dialplan activo para el prefijo '.$dialPrefix.'.');
+        return DialplanOrigins::route($dialPrefix,(string)$entry);
+    }
+
     public static function save(?int $id, string $name, string $body, string $active): array {
         $name=trim($name);
         if ($name==='' || mb_strlen($name,'UTF-8')>100 || preg_match('/[\x00-\x1f]/',$name)) throw new \InvalidArgumentException('Ingresa un nombre de hasta 100 caracteres.');

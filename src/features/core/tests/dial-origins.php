@@ -34,4 +34,8 @@ try {
 } catch (InvalidArgumentException $expected) {}
 checkOrigin(strpos(DialplanOrigins::COMMON,'finish,${ZV2_CALL_ID},${DIALSTATUS},${ZV2_AMD_STATUS},${ZV2_AMD_CAUSE},${HANGUPCAUSE},${ZV2_ANSWERED},${ZV2_SIP},${ZV2_STAGE})')!==false,'marcador finish keeps the 5 legacy args and appends SIP cause and stage');
 checkOrigin(strpos(DialplanOrigins::COMMON,'PJSIP_HEADER')===false,'no PJSIP_HEADER in chan_sip dialplan');
+$real=implode("\n",['exten => _7307X.,1,NoOp(x)',' same => n,Set(__ZV2_PHONE=${EXTEN:4})',' same => n,Dial(SIP/carrier1/883651${ZV2_PHONE},60,U(zynervoxv2-bot-ivr-sin-amd))',' same => n,Hangup()'])."\n";
+checkOrigin(DialplanOrigins::route('7307',DialplanOrigins::HEADER.$real)===['peer'=>'carrier1','prefix'=>'883651'],'route peer and dial prefix as data');
+checkOrigin(DialplanOrigins::route('7307','exten => _7307X.,1,Dial(SIP/c-2/${ZV2_PHONE})')===['peer'=>'c-2','prefix'=>''],'route with empty dial prefix');
+foreach (['7306','73'] as $bad) { try { DialplanOrigins::route($bad,$real); throw new RuntimeException('route without origin accepted'); } catch (InvalidArgumentException $expected) {} }
 echo "PASS: origin parsing, leading zeros, helper isolation and multi-carrier header\n";
