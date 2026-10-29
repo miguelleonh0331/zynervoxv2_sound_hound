@@ -1,0 +1,110 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap');
+
+:root {
+    --primary: #F5821F;
+    --primary-dark: #E0731A;
+    --primary-glow: rgba(245, 130, 31, 0.35);
+    --bg-deep: #F5F1EA;
+    --glass-bg: rgba(255, 255, 255, 0.8);
+    --glass-border: rgba(45, 47, 59, 0.12);
+    --text-main: #2D2F3B;
+    --text-dim: #6B7280;
+    --accent: #10b981;
+}
+
+/* RESET & FONTS */
+body {
+    background: radial-gradient(circle at top left, #FBF6EE, #F0E7D8) !important;
+    font-family: 'Outfit', sans-serif !important;
+    color: var(--text-main) !important;
+    margin: 0;
+    overflow-x: hidden;
+}
+
+/* OVERRIDE VICIDIAL TABLES */
+table, tr, td {
+    background: transparent !important;
+    border: none !important;
+}
+
+/* CUSTOM CONTAINERS (GLASS) */
+#vicidial_form, #MainStatuSSpan, #LeadIDSpan, #CampaignSpan {
+    background: var(--glass-bg) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border) !important;
+    border-radius: 12px;
+    padding: 10px;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    color: var(--text-main) !important;
+}
+
+/* BUTTONS MODERNIZATION */
+input[type="button"], input[type="submit"], button {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark)) !important;
+    border: none !important;
+    color: white !important;
+    padding: 8px 20px !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: all 0.3s ease !important;
+    text-transform: uppercase;
+    font-size: 11px !important;
+    letter-spacing: 0.5px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+input[type="button"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px var(--primary-glow);
+}
+
+input[type="button"]:active {
+    transform: translateY(0);
+}
+
+/* STATUS BAR */
+#MainStatuSSpan {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    right: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 9999;
+}
+
+/* INPUTS */
+input[type="text"], select, textarea {
+    background: rgba(255, 255, 255, 0.9) !important;
+    border: 1px solid var(--glass-border) !important;
+    color: var(--text-main) !important;
+    border-radius: 6px !important;
+    padding: 5px 10px !important;
+    font-family: 'Outfit', sans-serif !important;
+}
+
+/* HIDEOUTS (Eliminar elementos feos) */
+img[src*="vicidial_logo.gif"], img[src*="agent_loading_animation.gif"] {
+    display: none !important;
+}
+
+/* TABS */
+.tab_back {
+    background: var(--glass-bg) !important;
+    border-bottom: 2px solid var(--primary) !important;
+}
+
+/* SCROLLBAR */
+::-webkit-scrollbar {
+    width: 8px;
+}
+::-webkit-scrollbar-track {
+    background: var(--bg-deep);
+}
+::-webkit-scrollbar-thumb {
+    background: var(--primary);
+    border-radius: 10px;
+}

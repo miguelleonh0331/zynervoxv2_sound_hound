@@ -1,0 +1,1 @@
+ALTER TABLE zynervox_bot_lists ADD COLUMN IF NOT EXISTS dial_prefix VARCHAR(20) NOT NULL DEFAULT '';

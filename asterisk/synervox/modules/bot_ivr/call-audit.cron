@@ -1,0 +1,1 @@
+* * * * * root /usr/bin/php /srv/www/htdocs/zynervoxv2/bot_ivr/call_tracking_agi.php --replay >> /var/log/zynervoxv2-call-audit.log 2>&1

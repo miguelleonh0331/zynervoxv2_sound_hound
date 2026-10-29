@@ -1,0 +1,4 @@
+ProxyPreserveHost On
+ProxyPass __BASE_PATH__/ws ws://127.0.0.1:__PORT__/ws
+ProxyPass __BASE_PATH__/ http://127.0.0.1:__PORT__/ nocanon retry=0 timeout=60 upgrade=websocket
+ProxyPassReverse __BASE_PATH__/ http://127.0.0.1:__PORT__/

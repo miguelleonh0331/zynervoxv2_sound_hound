@@ -1,0 +1,9 @@
+{
+  "timezone": "America/Lima",
+  "result_destination": "core",
+  "amd": {"endpoint": "http://172.16.10.27:8767/v1/transcribe", "key": "CONFIGURE_PRIVATELY"},
+  "menu": {"backend": "gateway", "endpoint": "http://127.0.0.1:8787/v1/transcriptions", "keys": [], "min_confidence": 0.35},
+  "date_keys": [],
+  "execute_allowlist": [],
+  "variables": {}
+}

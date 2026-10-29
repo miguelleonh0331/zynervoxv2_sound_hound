@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS v2_dial_origins (
+  dial_prefix VARCHAR(20) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  carrier_id VARCHAR(60) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_dial_origin_carrier FOREIGN KEY (carrier_id) REFERENCES v2_carriers(carrier_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

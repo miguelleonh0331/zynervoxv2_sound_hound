@@ -1,0 +1,8 @@
+{
+  "is_active": false,
+  "remote_host": "127.0.0.1",
+  "remote_port": 3306,
+  "remote_db": "asterisk",
+  "remote_user": "CHANGE_ME",
+  "remote_pass": "CHANGE_ME"
+}

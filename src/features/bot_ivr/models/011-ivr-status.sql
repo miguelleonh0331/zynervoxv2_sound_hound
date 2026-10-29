@@ -1,0 +1,2 @@
+ALTER TABLE zynervox_bot_list MODIFY COLUMN status VARCHAR(80) NOT NULL DEFAULT 'NEW';
+ALTER TABLE zynervox_bot_call_attempts MODIFY COLUMN status VARCHAR(80) NOT NULL DEFAULT 'CALL';

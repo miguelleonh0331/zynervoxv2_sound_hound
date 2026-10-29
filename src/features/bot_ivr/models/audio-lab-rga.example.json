@@ -1,0 +1,4 @@
+{
+  "endpoint": "http://172.16.10.26:8820/v1/audio/speech",
+  "token": "REEMPLAZAR_CON_TOKEN_DEL_GATEWAY"
+}

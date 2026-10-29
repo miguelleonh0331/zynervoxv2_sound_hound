@@ -1,0 +1,14 @@
+<Directory "__WEB_ROOT__">
+    AllowOverride None
+    Options -Indexes -ExecCGI
+    Require all granted
+    <FilesMatch "\.php$">
+        SetHandler "proxy:unix:/run/php-fpm/zynervoxv2.sock|fcgi://localhost"
+    </FilesMatch>
+    <FilesMatch "^\.">
+        Require all denied
+    </FilesMatch>
+</Directory>
+<DirectoryMatch "^__WEB_ROOT__/(config|includes|venvs|runtime|secrets)(/|$)">
+    Require all denied
+</DirectoryMatch>

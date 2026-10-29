@@ -1,0 +1,7 @@
+Alias __URL_PATH__ __WEB_ROOT__
+
+<Directory __WEB_ROOT__>
+    Options FollowSymLinks
+    AllowOverride All
+    Require all granted
+</Directory>

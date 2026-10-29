@@ -1,0 +1,3 @@
+ProxyPreserveHost On
+ProxyPass __BASE_PATH__/ http://127.0.0.1:__PORT____BASE_PATH__/ nocanon retry=0 timeout=60
+ProxyPassReverse __BASE_PATH__/ http://127.0.0.1:__PORT____BASE_PATH__/
