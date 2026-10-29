@@ -14,7 +14,7 @@ checkOrigin(strpos($rendered,DialplanOrigins::template()) === 0 && substr_count(
 checkOrigin(strpos($rendered,'_888X.') < strpos($rendered,'[helper]'), 'all carrier routes precede helper contexts');
 checkOrigin(DialplanOrigins::body(DialplanOrigins::HEADER.$body) === $body, 'editable body without header');
 checkOrigin(trim(DialplanOrigins::body($body."\n".DialplanOrigins::COMMON)) === trim($body), 'old common contexts removed from editable route');
-foreach (['zynervoxv2-amd','zynervoxv2-call-finish','zynervoxv2-outbound'] as $context) checkOrigin(substr_count($rendered,'['.$context.']')===1,'common context present exactly once');
+foreach (['zynervoxv2-amd','zynervoxv2-call-finish','zynervoxv2-outbound','zynervoxv2-marcador','zynervoxv2-marcador-fin'] as $context) checkOrigin(substr_count($rendered,'['.$context.']')===1,'common context present exactly once');
 checkOrigin(strpos($rendered,'[zynervoxv2-outbound]')<strpos($rendered,'[zynervoxv2]'),'system contexts precede routes');
 try {
     DialplanOrigins::body($body."\n".str_replace(' same => n,AMD()',' same => n,Hangup()',DialplanOrigins::COMMON));
@@ -32,4 +32,6 @@ try {
     ]);
     throw new RuntimeException('conflicting helper accepted');
 } catch (InvalidArgumentException $expected) {}
+checkOrigin(strpos(DialplanOrigins::COMMON,'finish,${ZV2_CALL_ID},${DIALSTATUS},${ZV2_AMD_STATUS},${ZV2_AMD_CAUSE},${HANGUPCAUSE},${ZV2_ANSWERED},${ZV2_SIP},${ZV2_STAGE})')!==false,'marcador finish keeps the 5 legacy args and appends SIP cause and stage');
+checkOrigin(strpos(DialplanOrigins::COMMON,'PJSIP_HEADER')===false,'no PJSIP_HEADER in chan_sip dialplan');
 echo "PASS: origin parsing, leading zeros, helper isolation and multi-carrier header\n";

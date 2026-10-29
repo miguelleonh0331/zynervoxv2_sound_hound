@@ -45,6 +45,35 @@ exten => s,1,AGI(/srv/www/htdocs/zynervoxv2/bot_ivr/call_tracking_agi.php,finish
 [zynervoxv2-outbound]
 exten => s,1,AGI(/srv/www/htdocs/zynervoxv2/bot_ivr/call_tracking_agi.php,event,${ZV2_CALL_ID},OUTBOUND)
  same => n,Return()
+[zynervoxv2-marcador]
+exten => s,1,Set(AGISIGHUP=no)
+ same => n,Set(CHANNEL(hangup_handler_push)=zynervoxv2-marcador-fin,s,1)
+ same => n,Set(ZV2_ANSWERED=1)
+ same => n,Set(ZV2_STAGE=ANSWER)
+ same => n,AGI(/srv/www/htdocs/zynervoxv2/bot_ivr/call_tracking_agi.php,event,${ZV2_CALL_ID},ANSWER)
+ same => n,GotoIf($["${ZV2_AMD}" != "1"]?xfer)
+ same => n,AMD()
+ same => n,Set(ZV2_AMD_STATUS=${AMDSTATUS})
+ same => n,Set(ZV2_AMD_CAUSE=${AMDCAUSE})
+ same => n,AGI(/srv/www/htdocs/zynervoxv2/bot_ivr/call_tracking_agi.php,event,${ZV2_CALL_ID},AMD,${AMDSTATUS},${AMDCAUSE})
+ same => n,GotoIf($["${AMDSTATUS}" = "MACHINE"]?machine)
+ same => n(xfer),Set(ZV2_STAGE=XFER)
+ same => n,GotoIf($["${ZV2_XFER_TRUNK}" = "" | "${ZV2_XFER_DEST}" = ""]?sindestino)
+ same => n,ExecIf($["${ZV2_XFER_TIMEOUT}" = ""]?Set(ZV2_XFER_TIMEOUT=45))
+ same => n,Dial(SIP/${ZV2_XFER_TRUNK}/${ZV2_XFER_DEST},${ZV2_XFER_TIMEOUT},b(zynervoxv2-forward-headers^s^1))
+ same => n,Hangup()
+ same => n(sindestino),Set(ZV2_STAGE=XFER_NODEST)
+ same => n,Hangup()
+ same => n(machine),Set(ZV2_STAGE=AMD_MACHINE)
+ same => n,Hangup()
+
+[zynervoxv2-marcador-fin]
+exten => s,1,Set(ZV2_SIP=)
+ same => n,Set(ZV2_SIPKEY=${HANGUPCAUSE_KEYS()})
+ same => n,GotoIf($["${ZV2_SIPKEY}" = ""]?fin)
+ same => n,Set(ZV2_SIP=${HANGUPCAUSE(${ZV2_SIPKEY},tech)})
+ same => n(fin),AGI(/srv/www/htdocs/zynervoxv2/bot_ivr/call_tracking_agi.php,finish,${ZV2_CALL_ID},${DIALSTATUS},${ZV2_AMD_STATUS},${ZV2_AMD_CAUSE},${HANGUPCAUSE},${ZV2_ANSWERED},${ZV2_SIP},${ZV2_STAGE})
+ same => n,Return()
 ASTERISK;
 
     public static function template(): string {
@@ -62,7 +91,7 @@ ASTERISK;
         $dialplan = str_replace(["\r\n", "\r"], "\n", $dialplan);
         $dialplan = preg_replace('/^\s*; Manual calls: list 1\. Future worker must set ZV2_LIST_ID explicitly\.\s*\n/', '', $dialplan);
         $common=self::commonContexts();
-        $dialplan=preg_replace_callback('/^\s*\[(zynervoxv2-bot-ivr-sin-amd|zynervoxv2-bot-ivr|zynervoxv2-amd|zynervoxv2-call-finish|zynervoxv2-outbound)\][^\n]*\n?(.*?)(?=^\s*\[|\z)/ms', function ($match) use ($common) {
+        $dialplan=preg_replace_callback('/^\s*\[(zynervoxv2-bot-ivr-sin-amd|zynervoxv2-bot-ivr|zynervoxv2-amd|zynervoxv2-call-finish|zynervoxv2-outbound|zynervoxv2-marcador|zynervoxv2-marcador-fin)\][^\n]*\n?(.*?)(?=^\s*\[|\z)/ms', function ($match) use ($common) {
             if (trim($match[2])!==$common[$match[1]]) throw new \InvalidArgumentException('El contexto '.$match[1].' pertenece a la plantilla común; no lo redefinas.');
             return '';
         },$dialplan);
