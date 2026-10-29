@@ -26,6 +26,8 @@ interface BotIvrRepository {
     public function updateListDialPrefix(int $listId, int $campaignId, string $prefix): void;
     public function listStatistics(int $listId,int $campaignId): array;
     public function leadCount(int $listId): int;
+    /** @return array<int,array{name:string,value:string}> SIP headers of a lead, ready for forwarding.headers. */
+    public function leadSipHeaders(int $leadId): array;
     public function audioLeads(int $listId, int $campaignId): array;
     public function importLeads(int $listId, int $campaignId, array $parsed): array;
 }

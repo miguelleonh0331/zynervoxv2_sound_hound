@@ -8,6 +8,11 @@ trait LeadQueries {
         $stmt->execute([':list'=>$listId, ':campaign'=>$campaignId]);
         return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
+    public function leadSipHeaders(int $leadId): array {
+        $stmt = $this->db->prepare('SELECT header_name `name`, header_value `value` FROM zynervox_bot_lead_headers WHERE lead_id=? ORDER BY position LIMIT 16');
+        $stmt->execute([$leadId]);
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
     public function leadCount(int $listId): int {
         $stmt = $this->db->prepare('SELECT COUNT(*) FROM zynervox_bot_list WHERE list_id=:id');
         $stmt->execute([':id'=>$listId]);
@@ -42,6 +47,20 @@ trait LeadQueries {
                 if ($values) {
                     $this->db->prepare('INSERT INTO zynervox_bot_list (list_id,phone,customer_name,extra_json,status) VALUES '.implode(',', $values))->execute($bindings);
                     $saved += count($values);
+                }
+            }
+            $this->db->prepare('UPDATE zynervox_bot_lists SET sip_header_map=? WHERE list_id=?')->execute([empty($parsed['header_map']) ? null : json_encode($parsed['header_map'], JSON_THROW_ON_ERROR), $listId]);
+            if (!empty($parsed['header_map'])) {
+                $ids = $this->db->prepare('SELECT phone,lead_id FROM zynervox_bot_list WHERE list_id=?');
+                $ids->execute([$listId]);
+                $leadByPhone = $ids->fetchAll(\PDO::FETCH_KEY_PAIR);
+                $rows = [];
+                foreach ($parsed['rows'] as $row) {
+                    if (!isset($leadByPhone[$row['phone']])) continue;
+                    foreach (($row['headers'] ?? []) as $position=>$header) array_push($rows, (int)$leadByPhone[$row['phone']], $position, $header['name'], $header['value']);
+                }
+                foreach (array_chunk($rows, 4 * 500) as $chunk) {
+                    $this->db->prepare('INSERT INTO zynervox_bot_lead_headers (lead_id,position,header_name,header_value) VALUES '.implode(',', array_fill(0, intdiv(count($chunk), 4), '(?,?,?,?)')))->execute($chunk);
                 }
             }
             if ($ownsTransaction) $this->db->commit();
