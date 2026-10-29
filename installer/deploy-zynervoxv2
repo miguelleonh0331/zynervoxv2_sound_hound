@@ -57,6 +57,9 @@ if [[ "$mode" = apply ]]; then
   for agi in call_tracking_agi.php ivr_engine_agi.php forward_headers_agi.php; do
     [[ ! -f "$destination/bot_ivr/$agi" || -L "$destination/bot_ivr/$agi" ]] || chmod 0750 "$destination/bot_ivr/$agi"
   done
+  # rsync recrea los inodos sin -A y el arbol no tiene ACL por defecto: se restauran las ACL de asterisk y codex-web.
+  find "$destination" \( -path "$destination/venvs" -o -path "$destination/runtime" \) -prune -o \
+    -exec setfacl -m u:asterisk:rX,u:codex-web:rX {} +
   restorecon -R "$destination"
   printf 'BACKUP=%s\n' "$backup"
 fi

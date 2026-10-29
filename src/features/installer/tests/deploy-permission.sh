@@ -4,6 +4,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 helper="$ROOT/installer/deploy-zynervoxv2"
 bash -n "$helper"
 visudo -cf - < "$ROOT/installer/codex-web-zynervoxv2-deploy.sudoers"
+grep -q 'setfacl -m u:asterisk:rX,u:codex-web:rX' "$helper" || { echo 'Falta restaurar las ACL de asterisk y codex-web tras el rsync.' >&2; exit 1; }
 [[ $EUID -eq 0 ]] || { echo 'Las pruebas de argumentos requieren root; no publican archivos.' >&2; exit 1; }
 reject() {
   local status=0
