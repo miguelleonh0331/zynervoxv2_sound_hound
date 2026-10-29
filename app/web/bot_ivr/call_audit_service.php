@@ -45,7 +45,7 @@ function call_audit_apply(array $entry): ?int {
         $data=$entry['data']; $id=$entry['call_id'];
         if ($entry['type']==='FINISH' && !array_key_exists('recording_status',$data)) $data=array_merge($data,call_recording_metadata($id));
         if ($entry['type']==='START') $lead=$repo->startCall((int)$data['list_id'],$data['phone'],$id);
-        elseif ($entry['type']==='FINISH') $repo->finishCall($id,$data['dial_status'],$data['amd_status'],$data['amd_cause'],(int)$data['hangup_cause'],(bool)$data['answered']);
+        elseif ($entry['type']==='FINISH') $repo->finishCall($id,$data['dial_status'],$data['amd_status'],$data['amd_cause'],(int)$data['hangup_cause'],(bool)$data['answered'],array_intersect_key($data,array_flip(['sip_cause','disposition','cause_source'])));
         $repo->recordCallEvent($id,$entry['type'],$entry['event_id'],(int)$entry['epoch'],$data);
         $db->commit();
         return $lead;

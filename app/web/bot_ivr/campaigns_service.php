@@ -13,7 +13,7 @@ const BOT_CAMPAIGN_FIELDS = [
     'dial_prefix'=>['label'=>'Prefijo de marcación', 'type'=>'text', 'length'=>20, 'digits'=>true],
     'campaign_cid'=>['label'=>'Caller ID de campaña', 'type'=>'text', 'length'=>20, 'digits'=>true],
     'campaign_recording'=>['label'=>'Grabación de llamadas', 'type'=>'select', 'options'=>['NEVER','ONDEMAND','ALLCALLS','ALLFORCE']],
-    'max_channels'=>['label'=>'Canales máximos', 'type'=>'number', 'min'=>1, 'max'=>1000],
+    'max_channels'=>['label'=>'Canales máximos', 'type'=>'number', 'min'=>1, 'max'=>500],
 ];
 
 function bot_campaign_field_value(string $key, $value) {

@@ -1,0 +1,17 @@
+# Dialer v1 engine. Installed by Instalador; enabling it does not start any campaign (campaigns default to dialer_state=stopped).
+[Unit]
+Description=Zynervox v2 dialer engine
+After=network.target mariadb.service asterisk.service
+
+[Service]
+Type=simple
+User=apache
+Group=apache
+RuntimeDirectory=zynervox-dialer
+ExecStart=/usr/bin/php /var/www/html/zynervoxv2/bot_ivr/campaign_engine.php --context=zynervoxv2-dialer
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

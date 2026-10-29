@@ -13,7 +13,18 @@ interface BotIvrRepository {
     public function openCallsForRecovery(): array;
     public function observeCallPresence(string $callId, bool $active, int $epoch): bool;
     public function startCall(int $listId, string $phone, string $callId): int;
-    public function finishCall(string $callId, string $dialStatus, string $amdStatus, string $amdCause, int $hangupCause, bool $answered): void;
+    /** @param array $causes optional keys sip_cause, disposition, cause_source (migration 014) */
+    public function finishCall(string $callId, string $dialStatus, string $amdStatus, string $amdCause, int $hangupCause, bool $answered, array $causes = []): void;
+    public function campaignConfig(int $id): array;
+    public function saveCampaignConfig(?int $id, array $campaign, array $headers, array $rules, array $schedules): int;
+    public function setDialerState(int $id, string $state, string $actor): void;
+    public function campaignLeadFields(int $id): array;
+    public function dialerCampaignIds(?int $only = null): array;
+    public function campaignActiveCalls(int $id): int;
+    public function previewCampaignLeads(int $id, string $order, int $limit): array;
+    public function countEligibleLeads(int $id, string $order): int;
+    public function claimCampaignLead(int $id, string $order, string $callId, callable $resolve, string $rejectStatus = 'HDR_ERR'): ?array;
+    public function rejectCampaignClaim(string $callId): void;
     public function campaignMonitor(): array;
     public function campaigns(): array;
     public function campaign(int $id): array;

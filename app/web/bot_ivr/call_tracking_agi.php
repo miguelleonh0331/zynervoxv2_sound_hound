@@ -30,7 +30,9 @@ try {
         $data += ['list_id'=>$list,'phone'=>$phone,'prefix'=>$argv[5]??'','carrier'=>$argv[6]??'','linked_id'=>$argv[7]??$id];
     } elseif ($action==='finish') {
         $id=(string)($argv[2]??'');$type='FINISH';
-        $data += ['dial_status'=>$argv[3]??'','amd_status'=>$argv[4]??'','amd_cause'=>$argv[5]??'','hangup_cause'=>(int)($argv[6]??0),'answered'=>($argv[7]??'')==='1'];
+        $data += ['dial_status'=>$argv[3]??'','amd_status'=>$argv[4]??'','amd_cause'=>$argv[5]??'','hangup_cause'=>(int)($argv[6]??0),'answered'=>($argv[7]??'')==='1',
+            // Optional (marcador v1): SIP cause text, normalized disposition, cause source dialplan|ami|agi.
+            'sip_cause'=>preg_replace('/[\x00-\x1f\x7f]/','',substr((string)($argv[8]??''),0,120)),'disposition'=>(string)($argv[9]??''),'cause_source'=>(string)($argv[10]??'')];
     } elseif ($action==='event' && in_array($argv[3]??'',['OUTBOUND','ANSWER','AMD'],true)) {
         $id=(string)($argv[2]??'');$type=$argv[3];
         $data += ['amd_status'=>$argv[4]??'','amd_cause'=>$argv[5]??''];

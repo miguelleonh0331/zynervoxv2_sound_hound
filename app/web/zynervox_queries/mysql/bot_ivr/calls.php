@@ -111,8 +111,8 @@ trait CallQueries {
             return (int)$lead;
         });
     }
-    public function finishCall(string $callId, string $dialStatus, string $amdStatus, string $amdCause, int $hangupCause, bool $answered): void {
-        $this->callAtomic(function() use($callId,$dialStatus,$amdStatus,$amdCause,$hangupCause,$answered) {
+    public function finishCall(string $callId, string $dialStatus, string $amdStatus, string $amdCause, int $hangupCause, bool $answered, array $causes = []): void {
+        $this->callAtomic(function() use($callId,$dialStatus,$amdStatus,$amdCause,$hangupCause,$answered,$causes) {
             $s=$this->db->prepare('SELECT * FROM zynervox_bot_call_attempts WHERE call_id=? FOR UPDATE'); $s->execute([$callId]); $call=$s->fetch();
             if (!$call) throw new \RuntimeException('Attempt not found');
             if ($call['finished_at']!==null) return;
@@ -123,6 +123,17 @@ trait CallQueries {
             $this->db->prepare('UPDATE zynervox_bot_call_attempts SET status=?,dial_status=?,amd_status=?,amd_cause=?,hangup_cause=?,finished_at=UTC_TIMESTAMP() WHERE call_id=?')->execute([$status,substr($dialStatus,0,20),substr($amdStatus,0,20),substr($amdCause,0,160),$hangupCause,$callId]);
             // A late callback cannot overwrite a newer attempt for this lead.
             $this->db->prepare('UPDATE zynervox_bot_list l SET status=? WHERE lead_id=? AND NOT EXISTS (SELECT 1 FROM zynervox_bot_call_attempts a WHERE a.lead_id=l.lead_id AND a.attempt_id>?)')->execute([$status,$call['lead_id'],$call['attempt_id']]);
+            // Migration 014 columns: failures are logged and must not break the closure of the call.
+            $disposition=(string)($causes['disposition'] ?? '');
+            if (!in_array($disposition,['ANSWER_HUMAN','AMD_MACHINE','NOANSWER','BUSY','CONGESTION','FAILED','XFER_OK','XFER_FAIL','CANCELLED'],true)) {
+                $disposition=$amdStatus==='MACHINE' ? 'AMD_MACHINE' : (($answered || $dialStatus==='ANSWER') ? 'ANSWER_HUMAN' : (['BUSY'=>'BUSY','NOANSWER'=>'NOANSWER','CONGESTION'=>'CONGESTION','CANCEL'=>'CANCELLED'][$dialStatus] ?? 'FAILED'));
+            }
+            $source=(string)($causes['cause_source'] ?? '');
+            if (!in_array($source,['dialplan','ami','agi'],true)) $source='dialplan';
+            try {
+                $this->db->prepare('UPDATE zynervox_bot_call_attempts SET sip_cause=?,cause_source=?,disposition=? WHERE call_id=?')->execute([substr((string)($causes['sip_cause'] ?? ''),0,120),$source,$disposition,$callId]);
+                $this->db->prepare('UPDATE zynervox_bot_list l SET next_call_at=(SELECT DATE_ADD(UTC_TIMESTAMP(),INTERVAL r.retry_delay_min MINUTE) FROM zynervox_bot_campaign_retry_rules r WHERE r.campaign_id=? AND r.status=? AND r.active=1) WHERE lead_id=? AND NOT EXISTS (SELECT 1 FROM zynervox_bot_call_attempts a WHERE a.lead_id=l.lead_id AND a.attempt_id>?)')->execute([$call['campaign_id'],$status,$call['lead_id'],$call['attempt_id']]);
+            } catch (\PDOException $e) { error_log('ZV2 finishCall: migracion 014 pendiente o fallida: '.$e->getMessage()); }
         });
     }
 }
