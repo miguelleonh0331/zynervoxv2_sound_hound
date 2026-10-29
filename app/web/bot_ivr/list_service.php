@@ -88,7 +88,7 @@ function bot_list_parse_txt(string $contents, array $headerMap = []): array {
             foreach ($headerMap as $column=>$headerName) {
                 $value = $extra[$column] ?? '';
                 if ($value === '') $reason = 'header '.$headerName.' vacío (columna '.$column.')';
-                elseif (strlen($value) > 1024 || preg_match('/[\x00-\x1f\x7f$\{\}]/', $value)) $reason = 'header '.$headerName.' con caracteres no permitidos ($, {, } o control) o mayor de 1024 bytes';
+                elseif (strlen($value) > 1024 || preg_match('/[\x00-\x1f\x7f$\{\}\\\\]/', $value)) $reason = 'header '.$headerName.' con caracteres no permitidos ($, {, }, \\ o control) o mayor de 1024 bytes';
                 $sipHeaders[] = ['name'=>$headerName, 'value'=>$value];
             }
             if ($reason !== '') {
