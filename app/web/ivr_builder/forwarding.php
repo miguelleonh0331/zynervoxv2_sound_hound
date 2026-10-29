@@ -8,7 +8,7 @@ function ivr_forwarding_config(array $node): array {
     $endpoint=$config['endpoint'] ?? '';
     $number=$config['number'] ?? '';
     $headers=$config['headers'] ?? [];
-    $protocol=$config['protocol'] ?? 'PJSIP';
+    $protocol=$config['protocol'] ?? 'SIP';
     if (!in_array($protocol,['SIP','PJSIP'],true)) throw new InvalidArgumentException('Reenviar: protocolo inválido.');
     if (!in_array($mode,['dialplan','anexo','trunk'],true) || !is_string($endpoint) || !is_string($number) || !is_array($headers) || count($headers)>16) throw new InvalidArgumentException('Reenviar: destino inválido.');
     if ($mode!=='dialplan' && !preg_match('/^[A-Za-z0-9_.-]{1,80}$/D',$endpoint)) throw new InvalidArgumentException('Reenviar: indica el endpoint del anexo o troncal.');
@@ -49,4 +49,9 @@ function ivr_forwarding_render(array $node,array $variables): array {
 
 function ivr_forwarding_agi_quote(string $value): string {
     return '"'.str_replace(['\\','"'],['\\\\','\\"'],$value).'"';
+}
+
+// Línea para el comando AGI `EXEC SIPAddHeader` de chan_sip (único canal SIP cargado en Asterisk).
+function ivr_forwarding_sip_add_header_command(array $header): string {
+    return 'EXEC SIPAddHeader '.ivr_forwarding_agi_quote($header['name'].':'.$header['value']);
 }
