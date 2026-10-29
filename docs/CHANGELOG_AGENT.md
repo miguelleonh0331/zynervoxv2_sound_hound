@@ -14,3 +14,11 @@
 1013 archivos web iguales por SHA-256. Sintaxis de 13 PHP, 3 JS y 4 shell;
 pruebas de despliegue temporal y deteccion SIP/PJSIP aprobadas. La web publicada
 se comparo con su respaldo y permanece sin cambios.
+
+## 2026-10-29 - Despliegue web delegado a codex-web
+
+Por autorizacion del usuario, se habilita un comando root protegido y limitado a
+publicar `HEAD:app/web` de esta fuente en `/var/www/html/zynervoxv2`. Se permite
+simulacion y aplicacion sin contrasena; no se concede sudo general ni se ejecuta
+el instalador editable como root. Se versionan las plantillas y el procedimiento
+en `docs/DEPLOYMENT.md`. El despliegue real queda a cargo del agente del usuario.

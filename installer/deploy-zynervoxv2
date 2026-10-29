@@ -1,0 +1,62 @@
+#!/bin/bash
+set -euo pipefail
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+[[ $EUID -eq 0 ]] || { echo 'Usar sudo -n /usr/local/sbin/deploy-zynervoxv2' >&2; exit 1; }
+mode=apply
+case "$#:${1-}" in
+  0:) ;;
+  1:--dry-run) mode=preview ;;
+  *) echo 'Solo se admite ejecutar sin argumentos o con --dry-run.' >&2; exit 2 ;;
+esac
+source_root=/opt/zynervoxv2-source-soundhound
+destination=/var/www/html/zynervoxv2
+[[ "$(hostname)" = SrvPredic ]]
+[[ "$(readlink -f "$source_root")" = "$source_root" ]]
+[[ "$(readlink -f "$destination")" = "$destination" ]]
+exec 9>/run/lock/zynervoxv2-deploy.lock
+flock -n 9 || { echo 'Ya existe un despliegue en curso.' >&2; exit 1; }
+as_agent=(runuser -u codex-web -- env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/var/lib/codex-web-v4 GIT_CONFIG_GLOBAL=/var/lib/codex-web-v4/.gitconfig)
+source_status="$("${as_agent[@]}" git -C "$source_root" status --porcelain)"
+[[ -z "$source_status" ]] || { echo 'La fuente tiene cambios sin commit; no se despliega.' >&2; exit 1; }
+commit="$("${as_agent[@]}" git -C "$source_root" rev-parse --verify HEAD)"
+[[ "$commit" =~ ^[a-f0-9]{40,64}$ ]]
+# Tanto Git como la extraccion corren sin root; nunca se ejecuta el instalador editable.
+stage_parent=/run/zynervoxv2-deploy
+[[ ! -L "$stage_parent" ]]
+install -d -o root -g root -m 0711 "$stage_parent"
+stage="$(mktemp -d "$stage_parent/stage.XXXXXXXX")"
+cleanup() { [[ "$stage" = "$stage_parent"/stage.* ]] && rm -rf -- "$stage"; }
+trap cleanup EXIT
+chown codex-web:codex-web "$stage"
+"${as_agent[@]}" git -C "$source_root" archive --format=tar "$commit:app/web" |
+  "${as_agent[@]}" tar -xf - -C "$stage" --no-same-owner --no-same-permissions
+chown root:root "$stage"
+chmod 0700 "$stage"
+chown -hR root:root "$stage"
+find "$stage" -type f -exec chmod 0640 {} +
+for agi in call_tracking_agi.php ivr_engine_agi.php forward_headers_agi.php; do
+  [[ ! -f "$stage/bot_ivr/$agi" || -L "$stage/bot_ivr/$agi" ]] || chmod 0750 "$stage/bot_ivr/$agi"
+done
+options=(-rcpgo --no-links --no-specials --no-devices --chown=root:apache --chmod=D750 --itemize-changes
+  --exclude=runtime/ --exclude=venvs/ --exclude=secrets/ --exclude=__pycache__/ '--exclude=*.pyc'
+  '--exclude=*.bak*' --exclude=.env '--exclude=.env.*' '--exclude=*.pem' '--exclude=*.key'
+  --exclude=/config/deployment.php --exclude=/config/reporting_mirror.json
+  '--exclude=/agc/attachments/*')
+if [[ "$mode" = preview ]]; then
+  options+=(--dry-run)
+else
+  backup_parent=/var/backups/zynervoxv2-web
+  [[ ! -L "$backup_parent" ]]
+  install -d -o root -g root -m 0700 "$backup_parent"
+  backup="$(mktemp -d "$backup_parent/$(date +%Y%m%d-%H%M%S).XXXXXXXX")"
+  options+=(--backup "--backup-dir=$backup")
+fi
+printf 'COMMIT=%s MODE=%s\n' "$commit" "$mode"
+rsync "${options[@]}" -- "$stage/" "$destination/"
+if [[ "$mode" = apply ]]; then
+  for agi in call_tracking_agi.php ivr_engine_agi.php forward_headers_agi.php; do
+    [[ ! -f "$destination/bot_ivr/$agi" || -L "$destination/bot_ivr/$agi" ]] || chmod 0750 "$destination/bot_ivr/$agi"
+  done
+  restorecon -R "$destination"
+  printf 'BACKUP=%s\n' "$backup"
+fi

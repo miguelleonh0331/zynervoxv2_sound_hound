@@ -13,3 +13,13 @@ porque podria sobrescribir cambios o importar datos del servidor en Git.
 
 La configuracion del servidor, secretos, bases de datos y servicios externos no
 son codigo web. Se excluyen de esta importacion y se documentan sus dependencias.
+
+## 2026-10-29 - Publicacion privilegiada con alcance fijo
+
+El usuario autoriza a sus agentes a resolver los despliegues web sin pedir una
+contrasena. Se instala una copia root de un helper con rutas y argumentos fijos,
+en lugar de autorizar sudo sobre el instalador que `codex-web` puede editar.
+Git y la extraccion del commit se ejecutan sin root; rsync solo publica la
+fotografia en el webroot fijado. Se preservan configuraciones y datos operativos,
+se respaldan archivos reemplazados y se serializan los despliegues con flock.
+El acceso privilegiado no incluye shells, servicios ni archivos de otros sistemas.

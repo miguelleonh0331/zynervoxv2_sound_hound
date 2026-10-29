@@ -1,0 +1,2 @@
+# Comandos exactos, sin sudo general ni scripts editables por los agentes.
+codex-web ALL=(root) NOPASSWD: /usr/local/sbin/deploy-zynervoxv2 "", /usr/local/sbin/deploy-zynervoxv2 --dry-run
