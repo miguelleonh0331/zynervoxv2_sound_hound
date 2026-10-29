@@ -14,32 +14,7 @@ function bot_list_header(string $value): string {
     return trim(preg_replace('/[^a-z0-9_]+/', '_', $value) ?? '', '_');
 }
 
-const BOT_LIST_MAX_SIP_HEADERS = 16;
-
-// Parses "columna=X-Nombre" lines (or just "columna", which becomes X-Columna) into [csvColumn => headerName].
-function bot_list_parse_header_map(string $text): array {
-    $map = [];
-    $names = [];
-    foreach (preg_split('/\R/', $text) ?: [] as $line) {
-        $line = trim($line);
-        if ($line === '') continue;
-        $parts = explode('=', $line, 2);
-        $column = bot_list_header($parts[0]);
-        if ($column === '') throw new RuntimeException('Headers SIP: columna inválida en "'.$line.'".');
-        $name = count($parts) === 2 ? trim($parts[1]) : 'X-'.implode('-', array_map('ucfirst', explode('_', $column)));
-        if (isset($map[$column])) throw new RuntimeException('Headers SIP: la columna '.$column.' está repetida.');
-        // RFC 3261 token, but the transfer (ivr_builder/forwarding.php) only emits X-* and User-to-User.
-        if (!preg_match('/^[!#$%&\'*+.^_`|~0-9A-Za-z-]{1,64}$/D', $name)) throw new RuntimeException('Headers SIP: "'.$name.'" no es un nombre de header válido (RFC 3261: letras, dígitos y !#$%&\'*+-.^_`|~).');
-        if (!preg_match('/^(?:X-[A-Za-z0-9-]{1,60}|User-to-User)$/Di', $name)) throw new RuntimeException('Headers SIP: "'.$name.'" no se puede enviar en la transferencia. Usa el prefijo X- (p. ej. X-Cliente) o User-to-User.');
-        if (isset($names[strtolower($name)])) throw new RuntimeException('Headers SIP: el header '.$name.' está repetido.');
-        $names[strtolower($name)] = true;
-        $map[$column] = $name;
-    }
-    if (count($map) > BOT_LIST_MAX_SIP_HEADERS) throw new RuntimeException('Headers SIP: máximo '.BOT_LIST_MAX_SIP_HEADERS.' columnas por lista.');
-    return $map;
-}
-
-function bot_list_parse_txt(string $contents, array $headerMap = []): array {
+function bot_list_parse_txt(string $contents): array {
     if (strlen($contents) > BOT_LIST_UPLOAD_BYTES) throw new RuntimeException('El archivo supera 10 MB.');
     if (!mb_check_encoding($contents, 'UTF-8')) throw new RuntimeException('Guarda el archivo en UTF-8 antes de cargarlo.');
     $stream = fopen('php://memory', 'r+');
@@ -59,11 +34,7 @@ function bot_list_parse_txt(string $contents, array $headerMap = []): array {
             $index = array_search($alias, $header, true);
             if ($index !== false) { $nameIndex = $index; break; }
         }
-        foreach ($headerMap as $column=>$headerName) {
-            if (!in_array($column, $header, true)) throw new RuntimeException('Headers SIP: la columna "'.$column.'" no existe en el TXT. Columnas: '.implode(', ', $header).'.');
-            if ($column === 'numero') throw new RuntimeException('Headers SIP: la columna numero no puede ser un header.');
-        }
-        $result = ['rows'=>[], 'duplicates'=>0, 'rejected'=>0, 'errors'=>[], 'header_map'=>$headerMap];
+        $result = ['rows'=>[], 'duplicates'=>0, 'rejected'=>0, 'errors'=>[]];
         $seen = [];
         $record = 1;
         while (($cells = fgetcsv($stream, 0, ',', '"', '')) !== false) {
@@ -84,13 +55,6 @@ function bot_list_parse_txt(string $contents, array $headerMap = []): array {
                 if (mb_strlen($value, 'UTF-8') > 1000 || preg_match('/[\x00-\x08\x0b\x0c\x0e-\x1f]/u', $value)) $reason = 'valor inválido o mayor de 1000 caracteres';
                 $extra[$key] = $value;
             }
-            $sipHeaders = [];
-            foreach ($headerMap as $column=>$headerName) {
-                $value = $extra[$column] ?? '';
-                if ($value === '') $reason = 'header '.$headerName.' vacío (columna '.$column.')';
-                elseif (strlen($value) > 1024 || preg_match('/[\x00-\x1f\x7f$\{\}\\\\]/', $value)) $reason = 'header '.$headerName.' con caracteres no permitidos ($, {, }, \\ o control) o mayor de 1024 bytes';
-                $sipHeaders[] = ['name'=>$headerName, 'value'=>$value];
-            }
             if ($reason !== '') {
                 $result['rejected']++;
                 if (count($result['errors']) < 5) $result['errors'][] = 'Registro '.$record.': '.$reason;
@@ -98,7 +62,7 @@ function bot_list_parse_txt(string $contents, array $headerMap = []): array {
             }
             if (isset($seen[$phone])) { $result['duplicates']++; continue; }
             $seen[$phone] = true;
-            $result['rows'][] = ['phone'=>$phone, 'customer_name'=>$name, 'extra'=>$extra, 'headers'=>$sipHeaders];
+            $result['rows'][] = ['phone'=>$phone, 'customer_name'=>$name, 'extra'=>$extra];
         }
         return $result;
     } finally { fclose($stream); }

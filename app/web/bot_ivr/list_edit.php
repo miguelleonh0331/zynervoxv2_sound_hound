@@ -58,7 +58,7 @@ try {
             if ((int)$upload['size'] > BOT_LIST_UPLOAD_BYTES) throw new RuntimeException('El archivo supera 10 MB.');
             $contents = file_get_contents((string)$upload['tmp_name']);
             if ($contents === false) throw new RuntimeException('No se pudo leer el archivo.');
-            $parsed = bot_list_parse_txt($contents, bot_list_parse_header_map((string)($_POST['sip_headers'] ?? '')));
+            $parsed = bot_list_parse_txt($contents);
             $result = bot_list_import($db, $listId, $campaignId, $parsed);
             $summary = 'Base reemplazada. Cargados: '.$result['saved'].'. Duplicados: '.$result['duplicates'].'. Rechazados: '.$result['rejected'].'.';
             if ($result['errors']) $summary .= ' '.implode(' · ', $result['errors']);
@@ -133,8 +133,6 @@ if ($list): ?>
 <form method="post" enctype="multipart/form-data" class="carsa-form">
 <input type="hidden" name="action" value="upload_list"><?php bot_campaign_token(); ?>
 <div class="carsa-field"><label for="clients_txt">Base de clientes (TXT)</label><input id="clients_txt" type="file" name="clients_txt" accept=".txt,text/plain" required></div>
-<div class="carsa-field"><label for="sip_headers">Columnas que viajan como headers SIP (opcional)</label><textarea id="sip_headers" name="sip_headers" rows="3" placeholder="monto=X-Monto&#10;tienda=X-Tienda"><?php echo h((string)($_POST['sip_headers'] ?? implode("\n", array_map(fn($c,$n)=>$c.'='.$n, array_keys($sipMap = (array)json_decode((string)($list['sip_header_map'] ?? '[]'), true)), $sipMap)))); ?></textarea>
-<small>Una por línea: <code>columna=X-Nombre</code>. Usa el prefijo <code>X-</code> (o <code>User-to-User</code>); máximo 16. Un valor vacío o con <code>$ { }</code> o saltos de línea rechaza ese registro, y se informa.</small></div>
 <div class="list-guide"><strong>Cabecera del TXT — formato libre</strong>
 <p>De 2 a 10 columnas separadas por comas. La columna obligatoria es <code>numero</code>; las demás se conservan como variables del contacto.</p>
 <p>Ejemplo: <code>numero,nombre,monto,direccion</code></p>
