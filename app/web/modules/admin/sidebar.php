@@ -81,7 +81,7 @@ function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
 ?>
 <aside class="sidebar">
     <div class="sidebar-logo">
-        <span><a href="<?php echo $rootPrefix; ?>modules/admin/index.php" class="sidebar-logo-link">ZYNERVOX</a></span>
+        <span><a href="<?php echo $rootPrefix; ?>modules/admin/index.php" class="sidebar-logo-link">SERVEX</a></span>
     </div>
 
     <div class="nav-section">

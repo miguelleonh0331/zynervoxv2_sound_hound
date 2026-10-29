@@ -19,7 +19,7 @@ function renderSupSidebar($activePage = 'campaigns') {
 ?>
 <aside class="sidebar">
     <div class="sidebar-logo">
-        <span>ZYNERVOX</span>
+        <span>SERVEX</span>
     </div>
     <div class="nav-section">
         <h3 class="nav-title"><?php echo $roleLabel; ?></h3>
