@@ -32,6 +32,7 @@ try {
             $action = (string)($_POST['action'] ?? '');
             $postId = filter_var($_POST['campaign_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]) ?: null;
             $actor = (string)($_SESSION['user'] ?? 'admin');
+            $fromList = ($_POST['from'] ?? '') === 'list';
             if ($action === 'save') {
                 $savedId = bot_cfg_save($db, $postId, $_POST);
                 $_SESSION['campaigns_message'] = $postId === null ? 'Campaña creada.' : 'Cambios guardados.';
@@ -46,13 +47,14 @@ try {
             } else {
                 throw new RuntimeException('Acción inválida.');
             }
-            header('Location: campaigns.php?id=' . $savedId);
+            header('Location: campaigns.php' . ($fromList ? '' : '?id=' . $savedId));
             exit;
         } catch (Throwable $e) {
             $error = $e->getMessage();
             $id = $postId ?? null;
             $isNew = $id === null;
-            $form = [ // se vuelve a pintar lo que el usuario escribió
+            if (($_POST['from'] ?? '') === 'list') { $id = null; $isNew = false; } // vuelve al listado con el error
+            else $form = [ // se vuelve a pintar lo que el usuario escribió
                 'campaign' => array_merge(['campaign_id'=>$id, 'dialer_state'=>'stopped'], $_POST),
                 'headers' => array_map(fn($r) => ['header_name'=>$r['name'] ?? '', 'lead_field'=>$r['field'] ?? ''], (array)($_POST['headers'] ?? [])),
                 'retry_rules' => (array)($_POST['retry_rules'] ?? []),
@@ -149,7 +151,19 @@ function campaigns_schedule_row(array $r, array $days): string {
                         <td><?php echo (int)$row['max_channels']; ?></td>
                         <td><?php echo (int)($row['amd_enabled'] ?? 0) ? 'Sí' : 'No'; ?></td>
                         <td><?php echo (int)$row['lists_count']; ?></td>
-                        <td><a class="btn-action" href="campaigns.php?id=<?php echo (int)$row['campaign_id']; ?>">Editar</a></td>
+                        <td style="white-space: nowrap;">
+                            <a class="btn-action" href="campaigns.php?id=<?php echo (int)$row['campaign_id']; ?>">Editar</a>
+                            <form method="POST" action="campaigns.php" class="inline-form" style="display: inline;">
+                                <input type="hidden" name="csrf" value="<?php echo h($_SESSION['campaigns_csrf']); ?>">
+                                <input type="hidden" name="campaign_id" value="<?php echo (int)$row['campaign_id']; ?>">
+                                <input type="hidden" name="from" value="list">
+                                <?php if (($row['dialer_state'] ?? '') === 'running'): ?>
+                                    <button type="submit" name="action" value="stop" class="btn-action">Detener</button>
+                                <?php else: ?>
+                                    <button type="submit" name="action" value="start" class="btn-action">Iniciar</button>
+                                <?php endif; ?>
+                            </form>
+                        </td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if (!$campaigns): ?><tr><td colspan="8" style="color: var(--text-muted);">Sin campañas.</td></tr><?php endif; ?>
