@@ -106,11 +106,8 @@ function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
         // separadas de los módulos propios de arriba. Hoy solo trae Zypad;
         // el array deja espacio para futuras sin tocar el <details>.
         $servicios = [
-            ['key' => 'zypad', 'href' => 'modules/admin/services/zypad.php', 'icon' => 'stt', 'label' => 'Zypad', 'in_scope' => false],
-            ['key' => 'zynerdesk_control', 'href' => 'modules/admin/services/zynerdesk_control.php', 'icon' => 'remote', 'label' => 'Zynerdesk', 'in_scope' => false],
-            ['key' => 'database', 'href' => 'modules/admin/services/database.php', 'icon' => 'services', 'label' => 'Base de datos', 'in_scope' => false],
-            ['key' => 'pbx', 'href' => 'modules/admin/services/pbx.php', 'icon' => 'services', 'label' => 'PBX', 'in_scope' => false],
-            ['key' => 'test', 'href' => 'modules/admin/services/test.php', 'icon' => 'checklist', 'label' => 'Test', 'in_scope' => false],
+            ['key' => 'database', 'href' => 'modules/admin/services/database.php', 'icon' => 'services', 'label' => 'Base de datos'],
+            ['key' => 'pbx', 'href' => 'modules/admin/services/pbx.php', 'icon' => 'services', 'label' => 'PBX'],
         ];
         $serviciosOpen = in_array($activePage, array_column($servicios, 'key'), true);
         ?>
