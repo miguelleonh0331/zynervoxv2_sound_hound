@@ -114,6 +114,16 @@ check('subir los canales de la lista en caliente lanza la segunda', ($r['launche
 $lim = bot_cfg_server_limits($repo);
 check('límites del servidor y listado de listas', $lim['max_channels_server'] === 10 && $lim['open_calls'] >= 2 && array_filter(bot_cfg_lists_channels($repo), fn($l) => (int)$l['list_id'] === $detList && (int)$l['open_calls'] === 2 && (int)$l['max_channels'] === 2));
 check('campaña sin max_channels en la entrada es válida', bot_cfg_save($repo, null, ['name'=>'Sin canales', 'active'=>'1', 'call_origin'=>'7307']) > 0);
+$cid = $calls[0][0]['call_id']; $pend = []; $hg = [];
+bot_engine_handle_event($repo, ['Event'=>'Hangup', 'Uniqueid'=>$cid, 'Cause'=>'17', 'Cause-txt'=>'User busy'], $hg, $pend);
+bot_engine_handle_event($repo, ['Event'=>'OriginateResponse', 'Uniqueid'=>$cid, 'Response'=>'Failure', 'Reason'=>'5'], $hg, $pend);
+check('AMI diferido: la llamada sigue abierta durante la gracia', isset($pend[$cid]) && $pdo->query("SELECT finished_at FROM zynervox_bot_call_attempts WHERE call_id='$cid'")->fetchColumn() === null);
+$repo->finishCall($cid, 'BUSY', '', '', 17, false, ['sip_cause'=>'SIP 486 Busy Here', 'cause_source'=>'dialplan', 'disposition'=>'BUSY']);
+$pend[$cid][0] = time() - 1;
+bot_engine_flush_pending($repo, $pend);
+check('el AGI (código SIP) gana al respaldo AMI', !$pend && $pdo->query("SELECT CONCAT(sip_cause,'|',cause_source) FROM zynervox_bot_call_attempts WHERE call_id='$cid'")->fetchColumn() === 'SIP 486 Busy Here|dialplan');
+$rv = bot_engine_variables($repo->campaign($det), $calls[0][0], [], ['peer'=>'carrier1', 'prefix'=>'883651']);
+check('variables de ruta para el dialplan de salida', in_array('__ZV2_TRUNK=carrier1', $rv, true) && in_array('__ZV2_DIAL_PREFIX=883651', $rv, true) && in_array('__ZV2_DIAL_TIMEOUT=60', $rv, true));
 $repo->setDialerState($det, 'stopped', 'test');
 $repo->saveCampaignConfig($det, ['name'=>'Solo detectar','active'=>1,'call_origin'=>'7307','max_channels'=>1,'amd_enabled'=>1,'transfer_carrier_id'=>'T','transfer_destination'=>'','timezone'=>'America/Lima','lead_order'=>'DOWN','dial_timeout'=>60,'campaign_cid'=>''], [], [], []);
 check('troncal sin destino no inicia', str_contains(throws(fn() => bot_cfg_start($repo, $det, 'test', ['7307'])), 'ambos vacíos'));

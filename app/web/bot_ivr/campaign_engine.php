@@ -7,10 +7,12 @@ require_once __DIR__.'/campaign_config_service.php';
 require_once __DIR__.'/../includes/AmiClient.php';
 
 const BOT_ENGINE_BURST = 50;
+const BOT_ENGINE_AMI_GRACE = 10;
 
 /** Variables the zynervoxv2-marcador context reads (contract with Telefonia; the __ prefix makes them inherit). */
-function bot_engine_variables(array $c, array $call, array $headers): array {
+function bot_engine_variables(array $c, array $call, array $headers, ?array $route = null): array {
     $vars = ['__ZV2_CALL_ID='.$call['call_id'], '__ZV2_LIST_ID='.$call['list_id'], '__ZV2_LEAD_ID='.$call['lead_id'], '__ZV2_CAMPAIGN_ID='.(int)$c['campaign_id']];
+    if ($route) array_push($vars, '__ZV2_TRUNK='.$route['peer'], '__ZV2_DIAL_PREFIX='.$route['prefix'], '__ZV2_DIAL_TIMEOUT='.(int)$c['dial_timeout']);
     // Without trunk and destination the campaign only detects (AMD) and hangs up: the dialplan sees no ZV2_XFER_TRUNK.
     if ($c['transfer_carrier_id'] !== '') array_push($vars, '__ZV2_XFER_TRUNK='.$c['transfer_carrier_id'], '__ZV2_XFER_DEST='.$c['transfer_destination']);
     if ((int)$c['amd_enabled']) $vars[] = '__ZV2_AMD=1';
@@ -31,17 +33,24 @@ function bot_engine_route(string $origin): array {
     return $route;
 }
 
-/** Direct Originate to the carrier (one channel per call): the answered leg runs zynervoxv2-marcador,s,1. */
+/**
+ * Originate on a Local channel that runs zynervoxv2-marcador-salida (Telefonia): the dialplan dials the carrier, so even unanswered calls
+ * report SIP and Q.850 through the finish AGI. The Originate timeout must exceed the dialplan's Dial timeout, or the Local hangs up first and the SIP code is lost.
+ */
 function bot_engine_originate(\Includes\AmiClient $ami, array $c, array $call, array $headers): bool {
     $route = bot_engine_route((string)$c['call_origin']);
-    $request = ['Action'=>'Originate', 'Channel'=>'SIP/'.$route['peer'].'/'.$route['prefix'].$call['phone'], 'Context'=>'zynervoxv2-marcador', 'Exten'=>'s', 'Priority'=>'1',
-        'Async'=>'true', 'Timeout'=>(string)((int)$c['dial_timeout'] * 1000), 'ChannelId'=>$call['call_id']];
+    if (!preg_match('/^[0-9]{1,20}$/D', (string)$call['phone'])) throw new RuntimeException('Teléfono inválido para marcar.');
+    $request = ['Action'=>'Originate', 'Channel'=>'Local/'.$call['phone'].'@zynervoxv2-marcador-salida/n', 'Application'=>'Wait', 'Data'=>'600',
+        'Async'=>'true', 'Timeout'=>(string)(((int)$c['dial_timeout'] + 5) * 1000), 'ChannelId'=>$call['call_id']];
     if ($c['campaign_cid'] !== '') $request['CallerID'] = $c['campaign_cid'];
-    return ($ami->request($request, bot_engine_variables($c, $call, $headers))['Response'] ?? '') === 'Success';
+    return ($ami->request($request, bot_engine_variables($c, $call, $headers, $route))['Response'] ?? '') === 'Success';
 }
 
-/** Unanswered calls never run dialplan: their cause comes from AMI. $hangups caches Hangup causes by Uniqueid until the OriginateResponse arrives. */
-function bot_engine_handle_event(\ZynervoxQueries\BotIvrRepository $repo, array $frame, array &$hangups): void {
+/**
+ * The finish AGI (hangup handler of the Local leg) is the primary source of causes. AMI is only the fallback: with $pending the failure is
+ * deferred BOT_ENGINE_AMI_GRACE seconds so the AGI's SIP code wins; without it (tests) it closes at once. $hangups caches Hangup causes by Uniqueid.
+ */
+function bot_engine_handle_event(\ZynervoxQueries\BotIvrRepository $repo, array $frame, array &$hangups, ?array &$pending = null): void {
     $id = (string)($frame['Uniqueid'] ?? '');
     if (!str_starts_with($id, 'zv2-')) return;
     $event = $frame['Event'] ?? '';
@@ -52,7 +61,18 @@ function bot_engine_handle_event(\ZynervoxQueries\BotIvrRepository $repo, array 
         $h = $hangups[$id] ?? ['cause'=>0, 'text'=>''];
         unset($hangups[$id]);
         [$dial, $disposition] = [4=>['NOANSWER','NOANSWER'], 5=>['BUSY','BUSY'], 8=>['CONGESTION','CONGESTION']][(int)($frame['Reason'] ?? 0)] ?? ['CHANUNAVAIL','FAILED'];
-        $repo->finishUnansweredCall($id, $dial, $h['cause'], trim('AMI Reason '.(int)($frame['Reason'] ?? 0).' '.$h['text']), $disposition);
+        $args = [$id, $dial, $h['cause'], trim('AMI Reason '.(int)($frame['Reason'] ?? 0).' '.$h['text']), $disposition];
+        if ($pending === null) $repo->finishUnansweredCall(...$args);
+        else $pending[$id] = [time() + BOT_ENGINE_AMI_GRACE, $args];
+    }
+}
+
+/** Closes the deferred AMI failures whose grace expired; finishUnansweredCall ignores attempts the AGI already finished. */
+function bot_engine_flush_pending(\ZynervoxQueries\BotIvrRepository $repo, array &$pending): void {
+    foreach ($pending as $id=>[$due, $args]) {
+        if ($due > time()) continue;
+        unset($pending[$id]);
+        $repo->finishUnansweredCall(...$args);
     }
 }
 
@@ -152,7 +172,7 @@ $only = isset($options['campaign']) ? filter_var($options['campaign'], FILTER_VA
 if (isset($options['campaign']) && !$only) { fwrite(STDERR, "--campaign inválido\n"); exit(2); }
 if ($only !== null && !$dry && !isset($options['report'])) { fwrite(STDERR, "--campaign solo se admite con --dry-run\n"); exit(2); }
 $interval = max(1, (int)($options['interval'] ?? 1));
-$ami = null; $lease = null; $events = null; $buffer = ''; $hangups = [];
+$ami = null; $lease = null; $events = null; $buffer = ''; $hangups = []; $pending = [];
 try {
     $repo = bot_ivr_repository();
     if (isset($options['report'])) { // read-only: AMD result and hangup causes per attempt
@@ -176,7 +196,8 @@ try {
         elseif (array_filter($report, fn($r) => !empty($r['launched']) || !empty($r['error']))) echo json_encode($report, JSON_UNESCAPED_UNICODE)."\n";
         if (!$dry && array_filter($report, fn($r) => !empty($r['error']))) { $ami?->close(); $ami = null; }
         if ($dry || isset($options['once'])) break;
-        $events ? bot_engine_events_pump($events, $buffer, (float)$interval, fn(array $frame) => bot_engine_handle_event($repo, $frame, $hangups)) : sleep($interval);
+        $events ? bot_engine_events_pump($events, $buffer, (float)$interval, function(array $frame) use($repo, &$hangups, &$pending) { bot_engine_handle_event($repo, $frame, $hangups, $pending); }) : sleep($interval);
+        bot_engine_flush_pending($repo, $pending);
     } while (true);
 } catch (Throwable $e) {
     fwrite(STDERR, 'ZV2 dialer engine failed: '.get_class($e).': '.$e->getMessage()."\n"); exit(1);
