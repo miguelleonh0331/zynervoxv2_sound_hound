@@ -17,6 +17,7 @@ checkOrigin(trim(DialplanOrigins::body($body."\n".DialplanOrigins::COMMON)) === 
 foreach (['zynervoxv2-amd','zynervoxv2-call-finish','zynervoxv2-outbound','zynervoxv2-marcador','zynervoxv2-marcador-fin','zynervoxv2-marcador-salida','zynervoxv2-marcador-contestada','zynervoxv2-marcador-cierre'] as $context) checkOrigin(substr_count($rendered,'['.$context.']')===1,'common context present exactly once');
 checkOrigin(strpos(DialplanOrigins::COMMON,'Dial(SIP/${ZV2_TRUNK}/${ZV2_DIAL_PREFIX}${ZV2_PHONE}')!==false && strpos(DialplanOrigins::COMMON,'U(zynervoxv2-marcador-contestada)')!==false,'marcador-salida dials from channel variables and runs AMD on the answered leg');
 checkOrigin(strpos(DialplanOrigins::COMMON,'finish,${ZV2_CALL_ID},${DIALSTATUS},${ZV2_AMD_STATUS},${ZV2_AMD_CAUSE},${ZV2_Q850},${ZV2_ANSWERED},${ZV2_SIP},${ZV2_STAGE},${ZV2_CAUSE_SRC})')!==false,'marcador-cierre reports Q.850 and SIP code for every attempt');
+checkOrigin(strpos(DialplanOrigins::COMMON,'Set(ZV2_AMDCAUSA=${CUT(AMDCAUSE,-,1)})')!==false && strpos(DialplanOrigins::COMMON,'Set(MASTER_CHANNEL(ZV2_AMD_CAUSE)=${ZV2_AMDCAUSA})')!==false,'marcador-contestada reports AMDCAUSE without numeric suffix and AMDSTATUS as is');
 checkOrigin(!preg_match('/^\[[^\]]*ivr[^\]]*\]/mi',substr(DialplanOrigins::COMMON,strpos(DialplanOrigins::COMMON,'[zynervoxv2-marcador]'))),'marcador contexts carry no ivr in their name');
 checkOrigin(strpos($rendered,'[zynervoxv2-outbound]')<strpos($rendered,'[zynervoxv2]'),'system contexts precede routes');
 try {

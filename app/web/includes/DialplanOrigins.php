@@ -77,7 +77,7 @@ exten => s,1,Set(ZV2_SIP=)
 
 [zynervoxv2-marcador-salida]
 ; Marcador de pruebas (multicampaña por variables de canal). El motor origina Local/<teléfono>@zynervoxv2-marcador-salida/n con
-; __ZV2_CALL_ID, __ZV2_TRUNK, __ZV2_DIAL_PREFIX y opcionales __ZV2_DIAL_TIMEOUT, __ZV2_TRANSFERIR=1, __ZV2_XFER_TRUNK, __ZV2_XFER_DEST, __ZV2_FORWARD_HEADERS.
+; __ZV2_CALL_ID, __ZV2_TRUNK, __ZV2_DIAL_PREFIX y opcionales __ZV2_DIAL_TIMEOUT, __ZV2_AMD=1, __ZV2_XFER_TRUNK, __ZV2_XFER_DEST, __ZV2_FORWARD_HEADERS.
 ; Quien marca es esta pata, no el Originate: así el cierre lee siempre el código SIP y la causa Q.850, también sin contestar.
 exten => _X.,1,Set(AGISIGHUP=no)
  same => n,Set(CHANNEL(hangup_handler_push)=zynervoxv2-marcador-cierre,s,1)
@@ -91,21 +91,22 @@ exten => _X.,1,Set(AGISIGHUP=no)
  same => n,Hangup()
 
 [zynervoxv2-marcador-contestada]
+; Sin __ZV2_XFER_TRUNK y __ZV2_XFER_DEST la campaña solo detecta: AMD siempre, espera 3 s y cuelga. Con ambos, el AMD solo corre si __ZV2_AMD=1 y transfiere salvo MACHINE.
 exten => s,1,Set(AGISIGHUP=no)
  same => n,Set(MASTER_CHANNEL(ZV2_ANSWERED)=1)
  same => n,Set(MASTER_CHANNEL(ZV2_STAGE)=AMD)
  same => n,AGI(/srv/www/htdocs/zynervoxv2/bot_ivr/call_tracking_agi.php,event,${ZV2_CALL_ID},ANSWER)
- same => n,AMD()
+ same => n,GotoIf($["${ZV2_XFER_TRUNK}" = "" | "${ZV2_XFER_DEST}" = ""]?amd)
+ same => n,GotoIf($["${ZV2_AMD}" != "1"]?xfer)
+ same => n(amd),AMD()
+ same => n,Set(ZV2_AMDCAUSA=${CUT(AMDCAUSE,-,1)})
  same => n,Set(MASTER_CHANNEL(ZV2_AMD_STATUS)=${AMDSTATUS})
- same => n,Set(MASTER_CHANNEL(ZV2_AMD_CAUSE)=${AMDCAUSE})
- same => n,AGI(/srv/www/htdocs/zynervoxv2/bot_ivr/call_tracking_agi.php,event,${ZV2_CALL_ID},AMD,${AMDSTATUS},${AMDCAUSE})
- same => n,GotoIf($["${ZV2_TRANSFERIR}" = "1" & "${AMDSTATUS}" = "HUMAN"]?xfer)
- same => n,Set(MASTER_CHANNEL(ZV2_STAGE)=ESPERA)
- same => n,Wait(3)
- same => n,Set(MASTER_CHANNEL(ZV2_STAGE)=FIN_PRUEBA)
- same => n,Hangup()
+ same => n,Set(MASTER_CHANNEL(ZV2_AMD_CAUSE)=${ZV2_AMDCAUSA})
+ same => n,Set(MASTER_CHANNEL(ZV2_AMD_RAW)=${AMDCAUSE})
+ same => n,AGI(/srv/www/htdocs/zynervoxv2/bot_ivr/call_tracking_agi.php,event,${ZV2_CALL_ID},AMD,${AMDSTATUS},${ZV2_AMDCAUSA})
+ same => n,GotoIf($["${ZV2_XFER_TRUNK}" = "" | "${ZV2_XFER_DEST}" = ""]?espera)
+ same => n,GotoIf($["${AMDSTATUS}" = "MACHINE"]?machine)
  same => n(xfer),Set(MASTER_CHANNEL(ZV2_STAGE)=XFER)
- same => n,GotoIf($["${ZV2_XFER_TRUNK}" = "" | "${ZV2_XFER_DEST}" = ""]?sindestino)
  same => n,ExecIf($["${ZV2_XFER_TIMEOUT}" = ""]?Set(ZV2_XFER_TIMEOUT=45))
  same => n,Dial(SIP/${ZV2_XFER_TRUNK}/${ZV2_XFER_DEST},${ZV2_XFER_TIMEOUT},b(zynervoxv2-forward-headers^s^1))
  same => n,Set(ZV2_XFER_KEY=${HANGUPCAUSE_KEYS()})
@@ -113,7 +114,11 @@ exten => s,1,Set(AGISIGHUP=no)
  same => n,Set(MASTER_CHANNEL(ZV2_XFER_SIP)=${HANGUPCAUSE(${ZV2_XFER_KEY},tech)})
  same => n,Set(MASTER_CHANNEL(ZV2_XFER_Q850)=${HANGUPCAUSE(${ZV2_XFER_KEY},ast)})
  same => n(finxfer),Hangup()
- same => n(sindestino),Set(MASTER_CHANNEL(ZV2_STAGE)=XFER_NODEST)
+ same => n(machine),Set(MASTER_CHANNEL(ZV2_STAGE)=AMD_MACHINE)
+ same => n,Hangup()
+ same => n(espera),Set(MASTER_CHANNEL(ZV2_STAGE)=ESPERA)
+ same => n,Wait(3)
+ same => n,Set(MASTER_CHANNEL(ZV2_STAGE)=FIN_PRUEBA)
  same => n,Hangup()
 
 [zynervoxv2-marcador-cierre]
