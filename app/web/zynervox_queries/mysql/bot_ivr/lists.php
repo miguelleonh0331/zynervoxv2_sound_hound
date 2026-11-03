@@ -11,6 +11,33 @@ trait ListQueries {
         $s=$this->db->prepare("SELECT call_id,phone,status,dial_status,hangup_cause,ivr_result,end_source FROM zynervox_bot_call_attempts WHERE list_id=? AND (status IN ('FAIL','UNAV','CONG','LOST') OR dial_status IN ('CHANUNAVAIL','CONGESTION') OR ivr_result='ERROR' OR end_source IN ('RECOVERY','AMI_REJECTED')) ORDER BY started_at DESC,attempt_id DESC LIMIT 30");
         $s->execute([$listId]);$stats['errors']=$s->fetchAll(\PDO::FETCH_ASSOC);return $stats;
     }
+    /** Deletes the list and its leads; call attempts and events are kept as history. Returns the number of leads deleted. */
+    public function deleteList(int $listId, int $campaignId): int {
+        $ownsTransaction = !$this->db->inTransaction();
+        $savepoint = 'bot_list_delete_'.bin2hex(random_bytes(8));
+        if ($ownsTransaction) $this->db->beginTransaction();
+        else $this->db->exec('SAVEPOINT '.$savepoint);
+        try {
+            $lock = $this->db->prepare('SELECT list_id FROM zynervox_bot_lists WHERE list_id=? AND campaign_id=? FOR UPDATE');
+            $lock->execute([$listId, $campaignId]);
+            if (!$lock->fetch()) throw new \RuntimeException('La lista no pertenece a esta campaña.');
+            $this->dialMutationGuard($listId);
+            $open = $this->db->prepare("SELECT call_id FROM zynervox_bot_call_attempts WHERE list_id=? AND finished_at IS NULL AND end_source<>'RECOVERY' AND status<>'LOST' LIMIT 1");
+            $open->execute([$listId]);
+            if ($open->fetchColumn()) throw new \RuntimeException('Espera a que terminen las llamadas antes de eliminar la lista.');
+            $leads = $this->db->prepare('DELETE FROM zynervox_bot_list WHERE list_id=?');
+            $leads->execute([$listId]);
+            $deleted = $leads->rowCount();
+            $this->db->prepare('DELETE FROM zynervox_bot_lists WHERE list_id=? AND campaign_id=?')->execute([$listId, $campaignId]);
+            if ($ownsTransaction) $this->db->commit();
+            else $this->db->exec('RELEASE SAVEPOINT '.$savepoint);
+            return $deleted;
+        } catch (\Throwable $e) {
+            if ($ownsTransaction) { if ($this->db->inTransaction()) $this->db->rollBack(); }
+            else $this->db->exec('ROLLBACK TO SAVEPOINT '.$savepoint);
+            throw $e;
+        }
+    }
     public function updateListDialPrefix(int $listId, int $campaignId, string $prefix): void {
         if (!preg_match('/^[0-9]{0,20}$/D', $prefix)) throw new \RuntimeException('Prefijo invalido.');
         $this->list($listId, $campaignId);

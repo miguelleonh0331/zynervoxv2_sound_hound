@@ -71,3 +71,13 @@ function bot_list_parse_txt(string $contents): array {
 function bot_list_import(\ZynervoxQueries\BotIvrRepository $db, int $listId, int $campaignId, array $parsed): array {
     return $db->importLeads($listId, $campaignId, $parsed);
 }
+
+/** Deletes a list and its leads, keeping call attempts as history. Returns the number of leads deleted. */
+function bot_list_delete(\ZynervoxQueries\BotIvrRepository $db, int $listId, int $campaignId, string $actor): int {
+    $db->list($listId, $campaignId);
+    // Reconciles a dial run whose worker died, so it does not block the deletion forever.
+    if (function_exists('bot_list_call_status')) bot_list_call_status($listId, $campaignId);
+    $deleted = $db->deleteList($listId, $campaignId);
+    error_log('ZV2 list_deleted '.json_encode(['list_id'=>$listId, 'campaign_id'=>$campaignId, 'leads'=>$deleted, 'actor'=>$actor, 'at'=>gmdate('c')], JSON_UNESCAPED_UNICODE));
+    return $deleted;
+}
