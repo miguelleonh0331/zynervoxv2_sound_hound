@@ -137,7 +137,10 @@ trait CallQueries {
             try {
                 $this->db->prepare('UPDATE zynervox_bot_call_attempts SET sip_cause=?,cause_source=?,disposition=? WHERE call_id=?')->execute([substr((string)($causes['sip_cause'] ?? ''),0,120),$source,$disposition,$callId]);
                 $this->db->prepare('UPDATE zynervox_bot_list l SET next_call_at=(SELECT DATE_ADD(UTC_TIMESTAMP(),INTERVAL r.retry_delay_min MINUTE) FROM zynervox_bot_campaign_retry_rules r WHERE r.campaign_id=? AND r.status=? AND r.active=1) WHERE lead_id=? AND NOT EXISTS (SELECT 1 FROM zynervox_bot_call_attempts a WHERE a.lead_id=l.lead_id AND a.attempt_id>?)')->execute([$call['campaign_id'],$status,$call['lead_id'],$call['attempt_id']]);
-            } catch (\PDOException $e) { error_log('ZV2 finishCall: migracion 014 pendiente o fallida: '.$e->getMessage()); }
+                // Migration 015: numeric SIP code (100-699) taken from the cause text; 0 = no data.
+                $sipCode=preg_match('/(?<!\d)([1-6]\d\d)(?!\d)/',(string)($causes['sip_cause'] ?? ''),$m) ? (int)$m[1] : 0;
+                $this->db->prepare('UPDATE zynervox_bot_list l SET last_sip_code=? WHERE lead_id=? AND NOT EXISTS (SELECT 1 FROM zynervox_bot_call_attempts a WHERE a.lead_id=l.lead_id AND a.attempt_id>?)')->execute([$sipCode,$call['lead_id'],$call['attempt_id']]);
+            } catch (\PDOException $e) { error_log('ZV2 finishCall: migracion 014/015 pendiente o fallida: '.$e->getMessage()); }
         });
     }
 }
