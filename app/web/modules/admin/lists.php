@@ -6,6 +6,7 @@ require_once __DIR__ . '/../../includes/Auth.php';
 require_once __DIR__ . '/../../includes/Carriers.php';
 require_once __DIR__ . '/../../bot_ivr/db.php';
 require_once __DIR__ . '/../../bot_ivr/campaigns_service.php';
+require_once __DIR__ . '/../../bot_ivr/campaign_config_service.php';
 require_once __DIR__ . '/../../bot_ivr/list_service.php';
 require_once __DIR__ . '/../../bot_ivr/list_call_service.php';
 use Includes\Auth;
@@ -20,6 +21,7 @@ unset($_SESSION['lists_message']);
 $campaigns = [];
 $lists = [];
 $origins = [];
+$maxTotal = null;
 try {
     $db = bot_ivr_repository();
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
@@ -27,11 +29,22 @@ try {
             if (empty($_POST) && empty($_FILES)) throw new RuntimeException('La carga supera el límite de esta instalación. Usa un archivo más pequeño.');
             if (!hash_equals($_SESSION['lists_csrf'], (string)($_POST['csrf'] ?? ''))) throw new RuntimeException('Sesión inválida. Recarga la página.');
             $action = (string)($_POST['action'] ?? '');
+            if ($action === 'set_server_max') {
+                bot_cfg_set_max_total_channels($db, $_POST['max_total'] ?? null);
+                $_SESSION['lists_message'] = 'Máximo de canales del servidor actualizado.';
+                header('Location: lists.php');
+                exit;
+            }
             $campaignId = filter_var($_POST['campaign_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
             if ($campaignId === false) throw new RuntimeException('Elige una campaña.');
             if ($action === 'create_list') {
                 $listId = bot_campaign_list_create($db, $campaignId, (string)($_POST['list_name'] ?? ''), isset($_POST['active']));
                 $_SESSION['lists_message'] = 'Lista #' . $listId . ' creada en la campaña #' . $campaignId . '.';
+            } elseif ($action === 'set_channels') {
+                $listId = filter_var($_POST['list_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
+                if ($listId === false) throw new RuntimeException('Elige una lista.');
+                bot_cfg_set_list_channels($db, $campaignId, $listId, $_POST['channels'] ?? null);
+                $_SESSION['lists_message'] = 'Lista #' . $listId . ': canales actualizados (surten efecto en el siguiente ciclo, sin parar la campaña).';
             } elseif ($action === 'upload_list') {
                 $listId = filter_var($_POST['list_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
                 if ($listId === false) throw new RuntimeException('Elige una lista.');
@@ -60,6 +73,7 @@ try {
         $campaigns[(int)$campaign['campaign_id']] = $campaign;
         foreach ($db->lists((int)$campaign['campaign_id']) as $list) $lists[] = $list;
     }
+    try { $maxTotal = bot_cfg_get_max_total_channels($db); } catch (Throwable $e) { $error = $error ?: 'No se pudo leer el máximo de canales del servidor: ' . $e->getMessage(); }
     try { $origins = array_column(\Includes\Carriers::dialOrigins(), 'name', 'dial_prefix'); } catch (Throwable $e) { $origins = []; }
 } catch (Throwable $e) {
     $error = $error ?: $e->getMessage();
@@ -94,10 +108,21 @@ try {
         <?php if ($message !== ''): ?><p class="msg-ok"><?php echo h($message); ?></p><?php endif; ?>
         <?php if ($error !== ''): ?><p class="msg-err"><?php echo h($error); ?></p><?php endif; ?>
 
-        <div class="card">
+        <form method="POST" action="lists.php" class="card">
+            <h2>Límite del servidor</h2>
+            <input type="hidden" name="csrf" value="<?php echo h($_SESSION['lists_csrf']); ?>">
+            <input type="hidden" name="action" value="set_server_max">
+            <div class="cfg-grid">
+                <label>Máximo de canales (todo el servidor, 1 a 500) <input type="number" name="max_total" value="<?php echo h($maxTotal ?? ''); ?>" min="1" max="500" required></label>
+                <button type="submit" class="btn-primary">Guardar máximo</button>
+            </div>
+            <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 0.5rem;">Los canales de cada lista no pueden superar este valor.</p>
+        </form>
+
+        <div class="card" style="margin-top: 1rem;">
             <h2>Listado de listas</h2>
             <table class="table-compact">
-                <thead><tr><th>ID</th><th>Campaña</th><th>Nombre</th><th>Activa</th><th>Leads</th><th>Origen</th><th></th></tr></thead>
+                <thead><tr><th>ID</th><th>Campaña</th><th>Nombre</th><th>Activa</th><th>Leads</th><th>Origen</th><th>Canales</th><th></th></tr></thead>
                 <tbody>
                 <?php foreach ($lists as $l): $cid = (int)$l['campaign_id']; ?>
                     <tr>
@@ -107,10 +132,20 @@ try {
                         <td><?php echo (int)$l['active'] ? 'Sí' : 'No'; ?></td>
                         <td><?php echo (int)$l['leads_count']; ?></td>
                         <td><?php echo ($l['dial_prefix'] ?? '') === '' ? '—' : h(($origins[$l['dial_prefix']] ?? '') . ' (' . $l['dial_prefix'] . ')'); ?></td>
+                        <td>
+                            <form method="POST" action="lists.php" class="inline-form" style="display: inline;">
+                                <input type="hidden" name="csrf" value="<?php echo h($_SESSION['lists_csrf']); ?>">
+                                <input type="hidden" name="action" value="set_channels">
+                                <input type="hidden" name="campaign_id" value="<?php echo $cid; ?>">
+                                <input type="hidden" name="list_id" value="<?php echo (int)$l['list_id']; ?>">
+                                <input type="number" name="channels" value="<?php echo (int)($l['max_channels'] ?? 1); ?>" min="1"<?php echo $maxTotal !== null ? ' max="' . (int)$maxTotal . '"' : ''; ?> style="width: 5rem;" required>
+                                <button type="submit" class="btn-action">Aplicar</button>
+                            </form>
+                        </td>
                         <td><a class="btn-action" href="../../bot_ivr/list_edit.php?id=<?php echo (int)$l['list_id']; ?>&amp;campaign_id=<?php echo $cid; ?>">Ficha</a></td>
                     </tr>
                 <?php endforeach; ?>
-                <?php if (!$lists): ?><tr><td colspan="7" style="color: var(--text-muted);">Sin listas.</td></tr><?php endif; ?>
+                <?php if (!$lists): ?><tr><td colspan="8" style="color: var(--text-muted);">Sin listas.</td></tr><?php endif; ?>
                 </tbody>
             </table>
         </div>
