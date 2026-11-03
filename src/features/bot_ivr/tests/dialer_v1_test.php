@@ -13,19 +13,25 @@ $repo = new ZynervoxQueries\Mysql\BotIvr\Repository($pdo);
 $fail = 0;
 function check(string $what, bool $ok): void { global $fail; echo ($ok ? 'ok   ' : 'FAIL ').$what."\n"; if (!$ok) $fail++; }
 function throws(callable $f): string { try { $f(); } catch (Throwable $e) { return $e->getMessage(); } return ''; }
-foreach (['call_events','ivr_results','call_attempts','list','lists','campaign_headers','campaign_retry_rules','campaign_schedules','campaigns'] as $t) $pdo->exec("DELETE FROM zynervox_bot_$t");
+foreach (['call_events','ivr_results','call_attempts','list','lists','campaign_headers','campaign_retry_rules','campaign_sip_rules','campaign_amd_actions','campaign_schedules','campaigns'] as $t) $pdo->exec("DELETE FROM zynervox_bot_$t");
 
 $base = ['name'=>'T', 'active'=>'1', 'call_origin'=>'7307', 'max_channels'=>'2', 'lead_order'=>'UP', 'amd_enabled'=>'1', 'transfer_carrier_id'=>'dest', 'transfer_destination'=>'5551000',
     'headers'=>[['name'=>'X-Monto', 'field'=>'monto'], ['name'=>'X-Cliente', 'field'=>'customer_name']],
-    'retry_rules'=>[['status'=>'B', 'max_attempts'=>'2', 'retry_delay_min'=>'0']], 'schedules'=>[['weekday'=>'1', 'start_time'=>'08:00', 'end_time'=>'18:00']]];
+    'rules'=>[['sip_code'=>'486', 'max_attempts'=>'2', 'retry_delay_min'=>'0'], ['sip_code'=>'600', 'max_attempts'=>'2', 'retry_delay_min'=>'0']],
+    'amd_actions'=>[['result'=>'MACHINE', 'action'=>'retry', 'max_attempts'=>'2', 'retry_delay_min'=>'0'], ['result'=>'HUMAN', 'action'=>'hangup', 'max_attempts'=>'9']], 'schedules'=>[['weekday'=>'1', 'start_time'=>'08:00', 'end_time'=>'18:00']]];
 $id = bot_cfg_save($repo, null, $base);
 $cfg = bot_cfg_get($repo, $id);
-check('guarda headers, reintentos y franjas', count($cfg['headers']) === 2 && count($cfg['retry_rules']) === 1 && $cfg['schedules'][0]['start_time'] === '08:00');
+check('guarda headers, reintentos y franjas', count($cfg['headers']) === 2 && count($cfg['rules']) === 2 && $cfg['rules'][0]['sip_code'] === 486 && $cfg['rules'][1]['sip_code'] === 600 && $cfg['schedules'][0]['start_time'] === '08:00');
 check('canales libres 1..500', bot_cfg_save($repo, $id, ['max_channels'=>'137'] + $base) === $id && (int)$repo->campaign($id)['max_channels'] === 137);
 check('rechaza 501 canales', throws(fn() => bot_cfg_save($repo, $id, ['max_channels'=>'501'] + $base)) !== '');
 check('rechaza header sin X-', str_contains(throws(fn() => bot_cfg_save($repo, $id, ['headers'=>[['name'=>'Via', 'field'=>'a']]] + $base)), 'Headers'));
 check('rechaza header repetido', throws(fn() => bot_cfg_save($repo, $id, ['headers'=>[['name'=>'X-A', 'field'=>'a'], ['name'=>'x-a', 'field'=>'b']]] + $base)) !== '');
-check('rechaza reintento NEW', throws(fn() => bot_cfg_save($repo, $id, ['retry_rules'=>[['status'=>'NEW', 'max_attempts'=>1, 'retry_delay_min'=>0]]] + $base)) !== '');
+check('rechaza regla del 200 y códigos repetidos', throws(fn() => bot_cfg_save($repo, $id, ['rules'=>[['sip_code'=>200, 'max_attempts'=>1, 'retry_delay_min'=>0]]] + $base)) !== '' && throws(fn() => bot_cfg_save($repo, $id, ['rules'=>[['sip_code'=>486, 'max_attempts'=>1, 'retry_delay_min'=>0], ['sip_code'=>486, 'max_attempts'=>1, 'retry_delay_min'=>0]]] + $base)) !== '');
+$am = array_column($cfg['amd_actions'], null, 'result');
+check('acciones AMD: retry guarda intentos, hangup los pone a 0 y NOTSURE toma su default', $am['MACHINE']['action'] === 'retry' && $am['MACHINE']['max_attempts'] === 2 && $am['HUMAN']['action'] === 'hangup' && $am['HUMAN']['max_attempts'] === 0 && $am['NOTSURE']['action'] === 'transfer');
+check('rechaza acción AMD inválida y resultado no configurable', throws(fn() => bot_cfg_save($repo, $id, ['amd_actions'=>[['result'=>'HUMAN', 'action'=>'play']]] + $base)) !== '' && throws(fn() => bot_cfg_save($repo, $id, ['amd_actions'=>[['result'=>'TOOLONG', 'action'=>'hangup']]] + $base)) !== '');
+check('catálogos para la página', array_column(bot_cfg_amd_results(), 'result') === array_keys(bot_cfg_amd_defaults()) || count(bot_cfg_amd_results()) === 3);
+check('486 y 600 comparten grupo pero son filas distintas', array_column(array_filter(bot_cfg_sip_codes(), fn($c) => in_array($c['sip_code'], [486, 600], true)), 'group') === ['busy', 'busy']);
 check('rechaza franjas solapadas', throws(fn() => bot_cfg_save($repo, $id, ['schedules'=>[['weekday'=>1, 'start_time'=>'08:00', 'end_time'=>'12:00'], ['weekday'=>1, 'start_time'=>'11:00', 'end_time'=>'13:00']]] + $base)) !== '');
 check('mantiene la config tras un guardado fallido', count($repo->campaignConfig($id)['headers']) === 2);
 bot_cfg_save($repo, $id, ['max_channels'=>'2'] + $base);
@@ -68,11 +74,11 @@ check('rellena el canal liberado con el siguiente elegible', $r['launched'] === 
 $repo->finishCall($calls[1][0]['call_id'], 'ANSWER', 'MACHINE', 'LONGGREETING', 16, true);
 check('MACHINE => AMD_MACHINE y estado AA sin reintento', $pdo->query("SELECT disposition FROM zynervox_bot_call_attempts WHERE call_id='{$calls[1][0]['call_id']}'")->fetchColumn() === 'AMD_MACHINE');
 check('el reintento es el mismo lead (regla B)', $calls[2][0]['phone'] === '911111111');
-$repo->finishCall($calls[2][0]['call_id'], 'BUSY', '', '', 17, false);
+$repo->finishCall($calls[2][0]['call_id'], 'BUSY', '', '', 17, false, ['sip_cause'=>'SIP 486 Busy Here']);
 check('tope de intentos: B con 2 intentos ya no es elegible', $repo->countEligibleLeads($id, 'UP') === 1 /* solo Ed, nunca marcado */);
-$pdo->exec("UPDATE zynervox_bot_campaign_retry_rules SET retry_delay_min=60");
+$pdo->exec("UPDATE zynervox_bot_campaign_sip_rules SET retry_delay_min=60");
 $repo->finishCall($calls[2][0]['call_id'], 'BUSY', '', '', 17, false); // already finished: no-op
-check('finishCall repetido no cambia la causa', $pdo->query("SELECT sip_cause FROM zynervox_bot_call_attempts WHERE call_id='{$calls[2][0]['call_id']}'")->fetchColumn() === '');
+check('finishCall repetido no cambia la causa', $pdo->query("SELECT sip_cause FROM zynervox_bot_call_attempts WHERE call_id='{$calls[2][0]['call_id']}'")->fetchColumn() === 'SIP 486 Busy Here');
 $repo->rejectCampaignClaim('zv2-inexistente');
 // Unanswered call closed from AMI events (Hangup then OriginateResponse), and transfer stages from the finish AGI
 $pdo->exec("INSERT INTO zynervox_bot_list (list_id,phone,customer_name,extra_json) VALUES ($list,'966666666','Fa','{\"monto\":\"1\"}')");
@@ -95,6 +101,13 @@ check('máximo del servidor 1 con llamadas abiertas: no lanza', ($r['launched'] 
 bot_cfg_set_max_total_channels($repo, 10);
 bot_cfg_stop($repo, $id, 'test');
 check('detener deja la campaña stopped', $repo->campaign($id)['dialer_state'] === 'stopped');
+// Retry by exact SIP code; 1xx with NOANSWER counts as 487; AMD retry by result
+$pdo->exec("UPDATE zynervox_bot_list SET status='CANCEL', called_count=1, last_call_at=UTC_TIMESTAMP() - INTERVAL 2 HOUR, last_sip_code=183 WHERE lead_id=(SELECT lead_id FROM (SELECT lead_id FROM zynervox_bot_list WHERE phone='955555555' AND list_id=$list) q)");
+$sipBefore = $repo->countEligibleLeads($id, 'UP');
+bot_cfg_save($repo, $id, ['rules'=>[['sip_code'=>487, 'max_attempts'=>3, 'retry_delay_min'=>10]]] + $base);
+check('un 183 final reintenta con la regla del 487', $repo->countEligibleLeads($id, 'UP') === $sipBefore + 1);
+bot_cfg_save($repo, $id, ['rules'=>[['sip_code'=>487, 'max_attempts'=>3, 'retry_delay_min'=>180]]] + $base);
+check('la espera de la regla se respeta', $repo->countEligibleLeads($id, 'UP') === $sipBefore);
 // Detection-only campaign (test stage): no trunk and no destination is valid, half-configured is not
 $det = bot_cfg_save($repo, null, ['name'=>'Solo detectar', 'active'=>'1', 'call_origin'=>'7307', 'max_channels'=>'1', 'amd_enabled'=>'1']);
 $pdo->prepare("INSERT INTO zynervox_bot_lists (campaign_id,name,active) VALUES (?,'det',1)")->execute([$det]);

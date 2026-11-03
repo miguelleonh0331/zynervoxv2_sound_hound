@@ -10,9 +10,11 @@ const BOT_ENGINE_BURST = 50;
 const BOT_ENGINE_AMI_GRACE = 10;
 
 /** Variables the zynervoxv2-marcador context reads (contract with Telefonia; the __ prefix makes them inherit). */
-function bot_engine_variables(array $c, array $call, array $headers): array {
+function bot_engine_variables(array $c, array $call, array $headers, array $amdActions = []): array {
     $vars = ['__ZV2_CALL_ID='.$call['call_id'], '__ZV2_LIST_ID='.$call['list_id'], '__ZV2_LEAD_ID='.$call['lead_id'], '__ZV2_CAMPAIGN_ID='.(int)$c['campaign_id']];
     $vars[] = '__ZV2_DIAL_TIMEOUT='.(int)$c['dial_timeout'];
+    // Action per AMD result (transfer|hangup|retry); the dialplan applies it after AMD() and finish records the stage.
+    foreach ($amdActions as $a) $vars[] = '__ZV2_AMD_ACTION_'.$a['result'].'='.$a['action'];
     // Without trunk and destination the campaign only detects (AMD) and hangs up: the dialplan sees no ZV2_XFER_TRUNK.
     if ($c['transfer_carrier_id'] !== '') array_push($vars, '__ZV2_XFER_TRUNK='.$c['transfer_carrier_id'], '__ZV2_XFER_DEST='.$c['transfer_destination']);
     if ((int)$c['amd_enabled']) $vars[] = '__ZV2_AMD=1';
@@ -34,7 +36,7 @@ function bot_engine_originate(\Includes\AmiClient $ami, array $c, array $call, a
     $request = ['Action'=>'Originate', 'Channel'=>'Local/'.$c['call_origin'].$call['phone'].'@zynervoxv2/n', 'Application'=>'Wait', 'Data'=>'600',
         'Async'=>'true', 'Timeout'=>(string)(((int)$c['dial_timeout'] + 5) * 1000), 'ChannelId'=>$call['call_id']];
     if ($c['campaign_cid'] !== '') $request['CallerID'] = $c['campaign_cid'];
-    return ($ami->request($request, bot_engine_variables($c, $call, $headers))['Response'] ?? '') === 'Success';
+    return ($ami->request($request, bot_engine_variables($c, $call, $headers, $c['amd_actions'] ?? []))['Response'] ?? '') === 'Success';
 }
 
 /**
@@ -112,7 +114,7 @@ function bot_engine_tick(\ZynervoxQueries\BotIvrRepository $repo, ?callable $ori
         $row = ['campaign_id'=>$id];
         try {
             $config = $repo->campaignConfig($id);
-            $c = $config['campaign'];
+            $c = $config['campaign'] + ['amd_actions'=>bot_cfg_amd_actions($config['amd_actions'])];
             $row['state'] = $c['dialer_state'];
             if (!$dry && ($c['dialer_state'] !== 'running' || !(int)$c['active'])) { $row['skipped'] = 'detenida'; $report[] = $row; continue; }
             if (!bot_cfg_in_window($c, $config['schedules'], $now)) { $row['skipped'] = 'fuera de franja'; $report[] = $row; continue; }
