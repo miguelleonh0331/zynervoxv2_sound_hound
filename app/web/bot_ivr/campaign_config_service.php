@@ -99,6 +99,11 @@ function bot_cfg_save(\ZynervoxQueries\BotIvrRepository $db, ?int $id, array $in
     return $db->saveCampaignConfig($id, $campaign, bot_cfg_headers($input['headers'] ?? []), bot_cfg_rules($input['retry_rules'] ?? []), bot_cfg_schedules($input['schedules'] ?? []));
 }
 
+/** Last attempts (newest first) with the AMD result and the hangup causes, for the test reports. */
+function bot_cfg_attempts_report(\ZynervoxQueries\BotIvrRepository $db, ?int $campaignId, int $limit): array {
+    return $db->campaignAttemptsReport($campaignId, max(1, min(500, $limit)));
+}
+
 /** Marks the campaign as running. The engine (campaign_engine.php) does the dialing; nothing is launched here. */
 function bot_cfg_start(\ZynervoxQueries\BotIvrRepository $db, int $id, string $actor, ?array $origins = null): void {
     $config = $db->campaignConfig($id);
@@ -108,7 +113,7 @@ function bot_cfg_start(\ZynervoxQueries\BotIvrRepository $db, int $id, string $a
     require_once __DIR__.'/../includes/Carriers.php';
     $origins ??= array_column(\Includes\Carriers::dialOrigins(), 'dial_prefix');
     if (!in_array($c['call_origin'], $origins, true)) throw new RuntimeException('El origen de llamada ya no está disponible.');
-    if ($c['transfer_carrier_id'] === '' || $c['transfer_destination'] === '') throw new RuntimeException('Define el troncal y el destino de la transferencia.');
+    if (($c['transfer_carrier_id'] === '') !== ($c['transfer_destination'] === '')) throw new RuntimeException('Define el troncal y el destino de la transferencia, o deja ambos vacíos para solo detectar.');
     if ($db->countEligibleLeads($id, (string)$c['lead_order']) < 1) throw new RuntimeException('No hay leads elegibles en las listas activas de la campaña.');
     $db->setDialerState($id, 'running', $actor);
 }

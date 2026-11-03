@@ -10,8 +10,9 @@ const BOT_ENGINE_BURST = 50;
 
 /** Variables the zynervoxv2-marcador context reads (contract with Telefonia; the __ prefix makes them inherit). */
 function bot_engine_variables(array $c, array $call, array $headers): array {
-    $vars = ['__ZV2_CALL_ID='.$call['call_id'], '__ZV2_LIST_ID='.$call['list_id'], '__ZV2_LEAD_ID='.$call['lead_id'], '__ZV2_CAMPAIGN_ID='.(int)$c['campaign_id'],
-        '__ZV2_XFER_TRUNK='.$c['transfer_carrier_id'], '__ZV2_XFER_DEST='.$c['transfer_destination']];
+    $vars = ['__ZV2_CALL_ID='.$call['call_id'], '__ZV2_LIST_ID='.$call['list_id'], '__ZV2_LEAD_ID='.$call['lead_id'], '__ZV2_CAMPAIGN_ID='.(int)$c['campaign_id']];
+    // Without trunk and destination the campaign only detects (AMD) and hangs up: the dialplan sees no ZV2_XFER_TRUNK.
+    if ($c['transfer_carrier_id'] !== '') array_push($vars, '__ZV2_XFER_TRUNK='.$c['transfer_carrier_id'], '__ZV2_XFER_DEST='.$c['transfer_destination']);
     if ((int)$c['amd_enabled']) $vars[] = '__ZV2_AMD=1';
     if ($headers) {
         $b64 = base64_encode(json_encode($headers, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
@@ -104,7 +105,7 @@ function bot_engine_tick(\ZynervoxQueries\BotIvrRepository $repo, ?callable $ori
             $row['state'] = $c['dialer_state'];
             if (!$dry && ($c['dialer_state'] !== 'running' || !(int)$c['active'])) { $row['skipped'] = 'detenida'; $report[] = $row; continue; }
             if (!bot_cfg_in_window($c, $config['schedules'], $now)) { $row['skipped'] = 'fuera de franja'; $report[] = $row; continue; }
-            if ($c['call_origin'] === '' || $c['transfer_carrier_id'] === '' || $c['transfer_destination'] === '') { $row['skipped'] = 'configuración incompleta'; $report[] = $row; continue; }
+            if ($c['call_origin'] === '' || ($c['transfer_carrier_id'] === '') !== ($c['transfer_destination'] === '')) { $row['skipped'] = 'configuración incompleta'; $report[] = $row; continue; }
             $active = $repo->campaignActiveCalls($id);
             $slots = min(BOT_ENGINE_BURST, (int)$c['max_channels'] - $active);
             $row += ['active'=>$active, 'max_channels'=>(int)$c['max_channels'], 'slots'=>max(0, $slots)];
@@ -140,15 +141,18 @@ function bot_engine_tick(\ZynervoxQueries\BotIvrRepository $repo, ?callable $ori
 
 if (realpath((string)($_SERVER['SCRIPT_FILENAME'] ?? '')) !== __FILE__) return;
 ini_set('display_errors', '0'); set_time_limit(0); umask(0027);
-$options = getopt('', ['dry-run', 'once', 'campaign:', 'interval:', 'lock:']);
+$options = getopt('', ['dry-run', 'once', 'campaign:', 'interval:', 'lock:', 'report', 'limit:']);
 $dry = isset($options['dry-run']);
 $only = isset($options['campaign']) ? filter_var($options['campaign'], FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]) : null;
 if (isset($options['campaign']) && !$only) { fwrite(STDERR, "--campaign inválido\n"); exit(2); }
-if ($only !== null && !$dry) { fwrite(STDERR, "--campaign solo se admite con --dry-run\n"); exit(2); }
+if ($only !== null && !$dry && !isset($options['report'])) { fwrite(STDERR, "--campaign solo se admite con --dry-run\n"); exit(2); }
 $interval = max(1, (int)($options['interval'] ?? 1));
 $ami = null; $lease = null; $events = null; $buffer = ''; $hangups = [];
 try {
     $repo = bot_ivr_repository();
+    if (isset($options['report'])) { // read-only: AMD result and hangup causes per attempt
+        echo json_encode(bot_cfg_attempts_report($repo, $only, (int)($options['limit'] ?? 50)), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)."\n"; exit(0);
+    }
     if (!$dry) {
         $lease = fopen((string)($options['lock'] ?? '/run/zynervox-dialer/engine.lock'), 'c');
         if (!$lease || !flock($lease, LOCK_EX | LOCK_NB)) throw new RuntimeException('Motor duplicado o sin directorio de ejecución.');

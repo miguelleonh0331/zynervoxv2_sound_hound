@@ -86,5 +86,20 @@ $row = $pdo->query("SELECT status,disposition FROM zynervox_bot_call_attempts WH
 check('transferencia contestada => XFER_OK', $row === ['status'=>'XFER_OK', 'disposition'=>'XFER_OK']);
 bot_cfg_stop($repo, $id, 'test');
 check('detener deja la campaña stopped', $repo->campaign($id)['dialer_state'] === 'stopped');
+// Detection-only campaign (test stage): no trunk and no destination is valid, half-configured is not
+$det = bot_cfg_save($repo, null, ['name'=>'Solo detectar', 'active'=>'1', 'call_origin'=>'7307', 'max_channels'=>'1', 'amd_enabled'=>'1']);
+$pdo->prepare("INSERT INTO zynervox_bot_lists (campaign_id,name,active) VALUES (?,'det',1)")->execute([$det]);
+$detList = (int)$pdo->lastInsertId();
+$pdo->prepare("INSERT INTO zynervox_bot_list (list_id,phone,status) VALUES (?,'955555555','NEW')")->execute([$detList]);
+bot_cfg_start($repo, $det, 'test', ['7307']);
+$calls = [];
+$r = bot_engine_tick($repo, $orig, $det, $mon)[0];
+$vars = $calls ? $calls[0][2] : [];
+check('sin troncal marca y no pasa __ZV2_XFER_*', ($r['launched'] ?? 0) === 1 && in_array('__ZV2_AMD=1', $vars, true) && !preg_grep('/^__ZV2_XFER_/', $vars));
+$repo->setDialerState($det, 'stopped', 'test');
+$repo->saveCampaignConfig($det, ['name'=>'Solo detectar','active'=>1,'call_origin'=>'7307','max_channels'=>1,'amd_enabled'=>1,'transfer_carrier_id'=>'T','transfer_destination'=>'','timezone'=>'America/Lima','lead_order'=>'DOWN','dial_timeout'=>60,'campaign_cid'=>''], [], [], []);
+check('troncal sin destino no inicia', str_contains(throws(fn() => bot_cfg_start($repo, $det, 'test', ['7307'])), 'ambos vacíos'));
+$rep = bot_cfg_attempts_report($repo, $det, 10);
+check('reporte: un intento con las columnas de AMD y causas', count($rep) === 1 && array_key_exists('amd_status', $rep[0]) && array_key_exists('sip_cause', $rep[0]) && array_key_exists('q850', $rep[0]));
 echo $fail ? "$fail FALLOS\n" : "TODO OK\n";
 exit($fail ? 1 : 0);

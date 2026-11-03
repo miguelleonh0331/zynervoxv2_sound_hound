@@ -42,6 +42,12 @@ trait CampaignConfigQueries {
             return $id;
         });
     }
+    public function campaignAttemptsReport(?int $campaignId, int $limit): array {
+        $s = $this->db->prepare('SELECT attempt_id,campaign_id,lead_id,phone,started_at,status,disposition,dial_status,amd_status,amd_cause,sip_cause,hangup_cause AS q850,cause_source,answered_at,billsec
+            FROM zynervox_bot_call_attempts WHERE (? IS NULL OR campaign_id=?) ORDER BY attempt_id DESC LIMIT '.$limit);
+        $s->execute([$campaignId,$campaignId]);
+        return $s->fetchAll(\PDO::FETCH_ASSOC);
+    }
     public function setDialerState(int $id, string $state, string $actor): void {
         if (!in_array($state, ['running','stopped'], true)) throw new \RuntimeException('Estado de marcador inválido.');
         $this->campaign($id);
