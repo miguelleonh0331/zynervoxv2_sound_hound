@@ -22,6 +22,7 @@ $campaigns = [];
 $lists = [];
 $origins = [];
 $maxTotal = null;
+$limits = null;
 try {
     $db = bot_ivr_repository();
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
@@ -71,9 +72,9 @@ try {
     }
     foreach ($db->campaigns() as $campaign) {
         $campaigns[(int)$campaign['campaign_id']] = $campaign;
-        foreach ($db->lists((int)$campaign['campaign_id']) as $list) $lists[] = $list;
     }
-    try { $maxTotal = bot_cfg_get_max_total_channels($db); } catch (Throwable $e) { $error = $error ?: 'No se pudo leer el máximo de canales del servidor: ' . $e->getMessage(); }
+    $lists = bot_cfg_lists_channels($db);
+    try { $limits = bot_cfg_server_limits($db); $maxTotal = $limits['max_channels_server']; } catch (Throwable $e) { $error = $error ?: 'No se pudo leer el máximo de canales del servidor: ' . $e->getMessage(); }
     try { $origins = array_column(\Includes\Carriers::dialOrigins(), 'name', 'dial_prefix'); } catch (Throwable $e) { $origins = []; }
 } catch (Throwable $e) {
     $error = $error ?: $e->getMessage();
@@ -116,13 +117,17 @@ try {
                 <label>Máximo de canales (todo el servidor, 1 a 500) <input type="number" name="max_total" value="<?php echo h($maxTotal ?? ''); ?>" min="1" max="500" required></label>
                 <button type="submit" class="btn-primary">Guardar máximo</button>
             </div>
-            <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 0.5rem;">Los canales de cada lista no pueden superar este valor.</p>
+            <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 0.5rem;">Los canales de cada lista no pueden superar este valor.
+                <?php if ($limits !== null): ?>Llamadas abiertas ahora: <strong><?php echo (int)$limits['open_calls']; ?></strong>. Suma de canales de las listas activas: <strong><?php echo (int)$limits['lists_sum']; ?></strong>.<?php endif; ?></p>
+            <?php if ($limits !== null && (int)$limits['lists_sum'] > (int)$limits['max_channels_server']): ?>
+                <p class="msg-err" style="font-size: 0.8rem;">La suma de canales de las listas activas supera el máximo del servidor: el motor nunca abre más llamadas que el máximo y las reparte por orden de llegada.</p>
+            <?php endif; ?>
         </form>
 
         <div class="card" style="margin-top: 1rem;">
             <h2>Listado de listas</h2>
             <table class="table-compact">
-                <thead><tr><th>ID</th><th>Campaña</th><th>Nombre</th><th>Activa</th><th>Leads</th><th>Origen</th><th>Canales</th><th></th></tr></thead>
+                <thead><tr><th>ID</th><th>Campaña</th><th>Nombre</th><th>Activa</th><th>Leads</th><th>Origen</th><th>Canales</th><th>Abiertas</th><th></th></tr></thead>
                 <tbody>
                 <?php foreach ($lists as $l): $cid = (int)$l['campaign_id']; ?>
                     <tr>
@@ -142,10 +147,11 @@ try {
                                 <button type="submit" class="btn-action">Aplicar</button>
                             </form>
                         </td>
+                        <td><?php echo (int)($l['open_calls'] ?? 0); ?></td>
                         <td><a class="btn-action" href="../../bot_ivr/list_edit.php?id=<?php echo (int)$l['list_id']; ?>&amp;campaign_id=<?php echo $cid; ?>">Ficha</a></td>
                     </tr>
                 <?php endforeach; ?>
-                <?php if (!$lists): ?><tr><td colspan="8" style="color: var(--text-muted);">Sin listas.</td></tr><?php endif; ?>
+                <?php if (!$lists): ?><tr><td colspan="9" style="color: var(--text-muted);">Sin listas.</td></tr><?php endif; ?>
                 </tbody>
             </table>
         </div>

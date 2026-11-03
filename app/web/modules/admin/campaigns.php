@@ -187,7 +187,7 @@ function campaigns_schedule_row(array $r, array $days): string {
                         <?php endforeach; ?>
                         <?php if (($c['call_origin'] ?? '') !== '' && !$originKnown): ?><option value="<?php echo h($c['call_origin']); ?>" selected><?php echo h($c['call_origin']); ?> (no disponible)</option><?php endif; ?>
                         </select></label>
-                    <input type="hidden" name="max_channels" value="<?php echo h($c['max_channels'] ?? 1); ?>"><?php /* los canales ahora son por lista (lists.php); el servicio aún exige el valor */ ?>
+                    
                     <label>AMD
                         <select name="amd_enabled"><option value="1"<?php echo (string)($c['amd_enabled'] ?? '0') === '1' ? ' selected' : ''; ?>>Sí</option><option value="0"<?php echo (string)($c['amd_enabled'] ?? '0') === '1' ? '' : ' selected'; ?>>No</option></select></label>
                     <label>Troncal de transferencia
