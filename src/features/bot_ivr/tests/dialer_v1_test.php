@@ -32,6 +32,9 @@ bot_cfg_save($repo, $id, ['max_channels'=>'2'] + $base);
 
 $pdo->exec("INSERT INTO zynervox_bot_lists (campaign_id,name,active,id_flujo,dial_prefix) VALUES ($id,'L',1,1,'7307')");
 $list = (int)$pdo->lastInsertId();
+check('lista nueva: 1 canal por defecto', (int)$pdo->query("SELECT max_channels FROM zynervox_bot_lists WHERE list_id=$list")->fetchColumn() === 1);
+bot_cfg_set_list_channels($repo, $id, $list, 2);
+check('rechaza canales de lista sobre el máximo del servidor', throws(fn() => bot_cfg_set_list_channels($repo, $id, $list, 11)) !== '' && throws(fn() => bot_cfg_set_list_channels($repo, $id, 999, 1)) !== '');
 $pdo->exec("INSERT INTO zynervox_bot_list (list_id,phone,customer_name,extra_json) VALUES
  ($list,'911111111','Ana','{\"monto\":\"7000\"}'),($list,'922222222','Bo','{\"monto\":\"\"}'),($list,'933333333','Cy','{\"monto\":\"\$5\"}'),($list,'944444444','Di','{\"monto\":\"90\"}'),($list,'955555555','Ed','{\"monto\":\"10\"}')");
 check('campos de lead disponibles', in_array('monto', $repo->campaignLeadFields($id), true));
@@ -84,6 +87,12 @@ bot_engine_handle_event($repo, ['Event'=>'OriginateResponse', 'Uniqueid'=>'otro-
 $repo->finishCall($open[1], 'ANSWER', '', '', 16, true, ['sip_cause'=>'200', 'stage'=>'XFER']);
 $row = $pdo->query("SELECT status,disposition FROM zynervox_bot_call_attempts WHERE call_id='{$open[1]}'")->fetch();
 check('transferencia contestada => XFER_OK', $row === ['status'=>'XFER_OK', 'disposition'=>'XFER_OK']);
+// Hot channel change on the list, campaign still running; global cap
+bot_cfg_set_list_channels($repo, $id, $list, 1);
+bot_cfg_set_max_total_channels($repo, 1);
+$r = bot_engine_tick($repo, $orig, null, $mon)[0];
+check('máximo del servidor 1 con llamadas abiertas: no lanza', ($r['launched'] ?? 0) === 0 && $r['max_total_channels'] === 1);
+bot_cfg_set_max_total_channels($repo, 10);
 bot_cfg_stop($repo, $id, 'test');
 check('detener deja la campaña stopped', $repo->campaign($id)['dialer_state'] === 'stopped');
 // Detection-only campaign (test stage): no trunk and no destination is valid, half-configured is not
@@ -96,10 +105,16 @@ $calls = [];
 $r = bot_engine_tick($repo, $orig, $det, $mon)[0];
 $vars = $calls ? $calls[0][2] : [];
 check('sin troncal marca y no pasa __ZV2_XFER_*', ($r['launched'] ?? 0) === 1 && in_array('__ZV2_AMD=1', $vars, true) && !preg_grep('/^__ZV2_XFER_/', $vars));
+$pdo->prepare("INSERT INTO zynervox_bot_list (list_id,phone,status) VALUES (?,'966666666','NEW')")->execute([$detList]);
+$r = bot_engine_tick($repo, $orig, $det, $mon)[0];
+check('lista con 1 canal y 1 llamada abierta: no lanza más', ($r['launched'] ?? 0) === 0 && count($calls) === 1);
+bot_cfg_set_list_channels($repo, $det, $detList, 2);
+$r = bot_engine_tick($repo, $orig, $det, $mon)[0];
+check('subir los canales de la lista en caliente lanza la segunda', ($r['launched'] ?? 0) === 1 && count($calls) === 2);
 $repo->setDialerState($det, 'stopped', 'test');
 $repo->saveCampaignConfig($det, ['name'=>'Solo detectar','active'=>1,'call_origin'=>'7307','max_channels'=>1,'amd_enabled'=>1,'transfer_carrier_id'=>'T','transfer_destination'=>'','timezone'=>'America/Lima','lead_order'=>'DOWN','dial_timeout'=>60,'campaign_cid'=>''], [], [], []);
 check('troncal sin destino no inicia', str_contains(throws(fn() => bot_cfg_start($repo, $det, 'test', ['7307'])), 'ambos vacíos'));
 $rep = bot_cfg_attempts_report($repo, $det, 10);
-check('reporte: un intento con las columnas de AMD y causas', count($rep) === 1 && array_key_exists('amd_status', $rep[0]) && array_key_exists('sip_cause', $rep[0]) && array_key_exists('q850', $rep[0]));
+check('reporte: intentos con las columnas de AMD y causas', count($rep) === 2 && array_key_exists('amd_status', $rep[0]) && array_key_exists('sip_cause', $rep[0]) && array_key_exists('q850', $rep[0]));
 echo $fail ? "$fail FALLOS\n" : "TODO OK\n";
 exit($fail ? 1 : 0);

@@ -106,14 +106,19 @@ function bot_engine_tick(\ZynervoxQueries\BotIvrRepository $repo, ?callable $ori
             if (!$dry && ($c['dialer_state'] !== 'running' || !(int)$c['active'])) { $row['skipped'] = 'detenida'; $report[] = $row; continue; }
             if (!bot_cfg_in_window($c, $config['schedules'], $now)) { $row['skipped'] = 'fuera de franja'; $report[] = $row; continue; }
             if ($c['call_origin'] === '' || ($c['transfer_carrier_id'] === '') !== ($c['transfer_destination'] === '')) { $row['skipped'] = 'configuración incompleta'; $report[] = $row; continue; }
+            // Channels: per list (enforced in the candidate query, re-read every pass) and a server-wide cap. The campaign max_channels is not used.
             $active = $repo->campaignActiveCalls($id);
-            $slots = min(BOT_ENGINE_BURST, (int)$c['max_channels'] - $active);
-            $row += ['active'=>$active, 'max_channels'=>(int)$c['max_channels'], 'slots'=>max(0, $slots)];
+            $maxTotal = $repo->dialerMaxTotalChannels();
+            $slots = min(BOT_ENGINE_BURST, $maxTotal - $repo->openCallsTotal());
+            $row += ['active'=>$active, 'max_total_channels'=>$maxTotal, 'slots'=>max(0, $slots)];
             if ($slots < 1) { $report[] = $row; continue; }
             $resolve = fn(array $lead) => bot_cfg_resolve_headers($config['headers'], $lead);
             if ($dry) {
                 $row['would_dial'] = [];
+                $free = [];
                 foreach ($repo->previewCampaignLeads($id, (string)$c['lead_order'], $slots) as $lead) {
+                    $free[$lead['list_id']] ??= (int)$lead['list_free'];
+                    if ($free[$lead['list_id']]-- < 1) continue;
                     try { $row['would_dial'][] = ['lead_id'=>(int)$lead['lead_id'], 'phone'=>$lead['phone'], 'headers'=>$resolve($lead)]; }
                     catch (RuntimeException $e) { $row['would_reject'][] = ['lead_id'=>(int)$lead['lead_id'], 'reason'=>$e->getMessage()]; }
                 }

@@ -71,18 +71,39 @@ trait CampaignConfigQueries {
         $s->execute([$id]);
         return (int)$s->fetchColumn();
     }
+    private const OPEN_ATTEMPT = "finished_at IS NULL AND end_source<>'RECOVERY' AND status<>'LOST'";
+    public function dialerMaxTotalChannels(): int {
+        $v = $this->db->query("SELECT value FROM zynervox_bot_dialer_settings WHERE name='max_total_channels'")->fetchColumn();
+        return $v === false ? 10 : (int)$v;
+    }
+    public function setDialerMaxTotalChannels(int $n): void {
+        $this->db->prepare("INSERT INTO zynervox_bot_dialer_settings (name,value) VALUES ('max_total_channels',?) ON DUPLICATE KEY UPDATE value=VALUES(value)")->execute([$n]);
+    }
+    /** Hot change: takes effect on the engine's next pass, the campaign keeps running. */
+    public function setListChannels(int $campaignId, int $listId, int $n): void {
+        $s = $this->db->prepare('UPDATE zynervox_bot_lists SET max_channels=? WHERE list_id=? AND campaign_id=?');
+        $s->execute([$n,$listId,$campaignId]);
+        $e = $this->db->prepare('SELECT COUNT(*) FROM zynervox_bot_lists WHERE list_id=? AND campaign_id=?');
+        $e->execute([$listId,$campaignId]);
+        if (!(int)$e->fetchColumn()) throw new \RuntimeException('Lista inexistente en la campaña.');
+    }
+    public function openCallsTotal(): int {
+        return (int)$this->db->query('SELECT COUNT(*) FROM zynervox_bot_call_attempts WHERE '.self::OPEN_ATTEMPT)->fetchColumn();
+    }
     private function campaignCandidateSql(string $order, string $select, string $tail): string {
         $orderBy = $order === 'RANDOM' ? 'RAND()' : 'l.lead_id '.($order === 'DOWN' ? 'DESC' : 'ASC');
+        $OPEN = "a2.finished_at IS NULL AND a2.end_source<>'RECOVERY' AND a2.status<>'LOST'";
         return "SELECT $select FROM zynervox_bot_list l JOIN zynervox_bot_lists p ON p.list_id=l.list_id AND p.campaign_id=? AND p.active=1
             LEFT JOIN zynervox_bot_campaign_retry_rules r ON r.campaign_id=p.campaign_id AND r.status=l.status AND r.active=1
             WHERE (l.status='NEW' OR (r.status IS NOT NULL AND l.called_count<r.max_attempts))
               AND (l.next_call_at IS NULL OR l.next_call_at<=UTC_TIMESTAMP())
+              AND (SELECT COUNT(*) FROM zynervox_bot_call_attempts a2 WHERE a2.list_id=l.list_id AND $OPEN) < p.max_channels
               AND NOT EXISTS (SELECT 1 FROM zynervox_bot_call_attempts a WHERE a.lead_id=l.lead_id AND a.finished_at IS NULL AND a.end_source<>'RECOVERY' AND a.status<>'LOST')
             ORDER BY $orderBy $tail";
     }
     /** Read-only: next eligible leads (for --dry-run), no locks and no state change. */
     public function previewCampaignLeads(int $id, string $order, int $limit): array {
-        $s = $this->db->prepare($this->campaignCandidateSql($order, 'l.lead_id,l.list_id,l.phone,l.customer_name,l.extra_json,l.status,l.called_count', 'LIMIT '.max(1, min(500, $limit))));
+        $s = $this->db->prepare($this->campaignCandidateSql($order, 'l.lead_id,l.list_id,l.phone,l.customer_name,l.extra_json,l.status,l.called_count,p.max_channels-(SELECT COUNT(*) FROM zynervox_bot_call_attempts a3 WHERE a3.list_id=l.list_id AND a3.finished_at IS NULL AND a3.end_source<>\'RECOVERY\' AND a3.status<>\'LOST\') list_free', 'LIMIT '.max(1, min(500, $limit))));
         $s->execute([$id]);
         return $s->fetchAll(\PDO::FETCH_ASSOC);
     }

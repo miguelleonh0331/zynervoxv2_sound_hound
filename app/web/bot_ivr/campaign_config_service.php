@@ -99,6 +99,16 @@ function bot_cfg_save(\ZynervoxQueries\BotIvrRepository $db, ?int $id, array $in
     return $db->saveCampaignConfig($id, $campaign, bot_cfg_headers($input['headers'] ?? []), bot_cfg_rules($input['retry_rules'] ?? []), bot_cfg_schedules($input['schedules'] ?? []));
 }
 
+/** Channels of one list (1..server max). Safe while the campaign runs: the engine re-reads it on every pass. */
+function bot_cfg_set_list_channels(\ZynervoxQueries\BotIvrRepository $db, int $campaignId, int $listId, $channels): void {
+    $max = $db->dialerMaxTotalChannels();
+    $db->setListChannels($campaignId, $listId, bot_cfg_int($channels, 1, $max, 'Canales de la lista (máximo del servidor '.$max.')'));
+}
+function bot_cfg_get_max_total_channels(\ZynervoxQueries\BotIvrRepository $db): int { return $db->dialerMaxTotalChannels(); }
+function bot_cfg_set_max_total_channels(\ZynervoxQueries\BotIvrRepository $db, $channels): void {
+    $db->setDialerMaxTotalChannels(bot_cfg_int($channels, 1, 500, 'Máximo de canales del servidor'));
+}
+
 /** Last attempts (newest first) with the AMD result and the hangup causes, for the test reports. */
 function bot_cfg_attempts_report(\ZynervoxQueries\BotIvrRepository $db, ?int $campaignId, int $limit): array {
     return $db->campaignAttemptsReport($campaignId, max(1, min(500, $limit)));
