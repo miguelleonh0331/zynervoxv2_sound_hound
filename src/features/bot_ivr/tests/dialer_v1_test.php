@@ -108,6 +108,15 @@ bot_cfg_save($repo, $id, ['rules'=>[['sip_code'=>487, 'max_attempts'=>3, 'retry_
 check('un 183 final reintenta con la regla del 487', $repo->countEligibleLeads($id, 'UP') === $sipBefore + 1);
 bot_cfg_save($repo, $id, ['rules'=>[['sip_code'=>487, 'max_attempts'=>3, 'retry_delay_min'=>180]]] + $base);
 check('la espera de la regla se respeta', $repo->countEligibleLeads($id, 'UP') === $sipBefore);
+// 480 arrives with DIALSTATUS BUSY (lead status B): the retry follows the final SIP code, not the status
+$pdo->exec("UPDATE zynervox_bot_list SET status='B', called_count=1, last_call_at=UTC_TIMESTAMP() - INTERVAL 3 HOUR, last_sip_code=480 WHERE lead_id=(SELECT lead_id FROM (SELECT lead_id FROM zynervox_bot_list WHERE phone='955555555' AND list_id=$list) q)");
+bot_cfg_save($repo, $id, ['rules'=>[['sip_code'=>480, 'max_attempts'=>3, 'retry_delay_min'=>10]]] + $base);
+$with480 = $repo->countEligibleLeads($id, 'UP');
+bot_cfg_save($repo, $id, ['rules'=>[['sip_code'=>486, 'max_attempts'=>3, 'retry_delay_min'=>10]]] + $base);
+check('un B con SIP 480 reintenta solo con la regla del 480', $with480 === $repo->countEligibleLeads($id, 'UP') + 1);
+$pdo->exec("UPDATE zynervox_bot_list SET status='NA', last_sip_code=487 WHERE phone='955555555' AND list_id=$list");
+bot_cfg_save($repo, $id, ['rules'=>[['sip_code'=>487, 'max_attempts'=>3, 'retry_delay_min'=>10]]] + $base);
+check('un NA con SIP 487 (nuestro timeout) reintenta con la regla del 487', $repo->countEligibleLeads($id, 'UP') === $with480);
 // Detection-only campaign (test stage): no trunk and no destination is valid, half-configured is not
 $det = bot_cfg_save($repo, null, ['name'=>'Solo detectar', 'active'=>'1', 'call_origin'=>'7307', 'max_channels'=>'1', 'amd_enabled'=>'1']);
 $pdo->prepare("INSERT INTO zynervox_bot_lists (campaign_id,name,active) VALUES (?,'det',1)")->execute([$det]);
