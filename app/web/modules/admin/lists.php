@@ -45,6 +45,11 @@ try {
                 if ($listId === false) throw new RuntimeException('Elige una lista.');
                 bot_cfg_set_list_channels($db, $campaignId, $listId, $_POST['channels'] ?? null);
                 $_SESSION['lists_message'] = 'Lista #' . $listId . ': canales actualizados (surten efecto en el siguiente ciclo, sin parar la campaña).';
+            } elseif ($action === 'delete_list') {
+                $listId = filter_var($_POST['list_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
+                if ($listId === false) throw new RuntimeException('Elige una lista.');
+                $deleted = bot_list_delete($db, $listId, $campaignId, (string)($_SESSION['user'] ?? 'admin'));
+                $_SESSION['lists_message'] = 'Lista #' . $listId . ' eliminada. Contactos borrados: ' . $deleted;
             } elseif ($action === 'load_base') {
                 $listRaw = (string)($_POST['list_id'] ?? '');
                 $isNew = $listRaw === 'new';
@@ -137,7 +142,7 @@ try {
         <div class="card" style="margin-top: 1rem;">
             <h2>Listado de listas<?php if ($filterCampaign !== null): ?> · campaña #<?php echo (int)$filterCampaign; ?> <a class="btn-action" href="lists.php">Ver todas</a><?php endif; ?></h2>
             <table class="table-compact">
-                <thead><tr><th>ID</th><th>Campaña</th><th>Nombre</th><th>Activa</th><th>Leads</th><th>Origen</th><th>Canales</th><th>Abiertas</th></tr></thead>
+                <thead><tr><th>ID</th><th>Campaña</th><th>Nombre</th><th>Activa</th><th>Leads</th><th>Origen</th><th>Canales</th><th>Abiertas</th><th></th></tr></thead>
                 <tbody>
                 <?php foreach ($lists as $l): $cid = (int)$l['campaign_id']; ?>
                     <tr>
@@ -158,9 +163,18 @@ try {
                             </form>
                         </td>
                         <td><?php echo (int)($l['open_calls'] ?? 0); ?></td>
+                        <td>
+                            <form method="POST" action="lists.php" class="inline-form" style="display: inline;" onsubmit="return confirm(this.getAttribute('data-confirm'));" data-confirm="<?php echo h('Se eliminará la lista «' . $l['name'] . '» (#' . (int)$l['list_id'] . ') y sus ' . (int)$l['leads_count'] . ' contactos. El historial de llamadas se conserva. No se puede deshacer.'); ?>">
+                                <input type="hidden" name="csrf" value="<?php echo h($_SESSION['lists_csrf']); ?>">
+                                <input type="hidden" name="action" value="delete_list">
+                                <input type="hidden" name="campaign_id" value="<?php echo $cid; ?>">
+                                <input type="hidden" name="list_id" value="<?php echo (int)$l['list_id']; ?>">
+                                <button type="submit" class="btn-action">Eliminar</button>
+                            </form>
+                        </td>
                     </tr>
                 <?php endforeach; ?>
-                <?php if (!$lists): ?><tr><td colspan="8" style="color: var(--text-muted);">Sin listas.</td></tr><?php endif; ?>
+                <?php if (!$lists): ?><tr><td colspan="9" style="color: var(--text-muted);">Sin listas.</td></tr><?php endif; ?>
                 </tbody>
             </table>
         </div>
