@@ -57,7 +57,8 @@ try {
             else $form = [ // se vuelve a pintar lo que el usuario escribió
                 'campaign' => array_merge(['campaign_id'=>$id, 'dialer_state'=>'stopped'], $_POST),
                 'headers' => array_map(fn($r) => ['header_name'=>$r['name'] ?? '', 'lead_field'=>$r['field'] ?? ''], (array)($_POST['headers'] ?? [])),
-                'retry_rules' => (array)($_POST['retry_rules'] ?? []),
+                'rules' => (array)($_POST['rules'] ?? []),
+                'amd_actions' => array_values((array)($_POST['amd_actions'] ?? [])),
                 'schedules' => (array)($_POST['schedules'] ?? []),
                 'lead_fields' => ['phone', 'customer_name'], 'active_calls' => 0,
             ];
@@ -77,10 +78,15 @@ try {
 if ($isNew && $form === null) {
     $form = ['campaign'=>['campaign_id'=>null, 'name'=>'', 'active'=>0, 'call_origin'=>'', 'max_channels'=>10, 'amd_enabled'=>0,
         'transfer_carrier_id'=>'', 'transfer_destination'=>'', 'timezone'=>'America/Lima', 'lead_order'=>'DOWN', 'dial_timeout'=>60, 'campaign_cid'=>'', 'dialer_state'=>'stopped'],
-        'headers'=>[], 'retry_rules'=>[], 'schedules'=>[], 'lead_fields'=>['phone', 'customer_name'], 'active_calls'=>0];
+        'headers'=>[], 'rules'=>[], 'amd_actions'=>[], 'schedules'=>[], 'lead_fields'=>['phone', 'customer_name'], 'active_calls'=>0];
 }
 $c = $form['campaign'] ?? [];
 $running = ($c['dialer_state'] ?? '') === 'running';
+$sipCodes = bot_cfg_sip_codes();
+$amdResults = bot_cfg_amd_results();
+$amdDefaults = bot_cfg_amd_defaults();
+$amdSaved = [];
+foreach (($form['amd_actions'] ?? []) as $row) if (isset($row['result'])) $amdSaved[$row['result']] = $row;
 $days = [1=>'Lunes', 2=>'Martes', 3=>'Miércoles', 4=>'Jueves', 5=>'Viernes', 6=>'Sábado', 7=>'Domingo'];
 
 function campaigns_headers_row(array $r): string {
@@ -89,10 +95,20 @@ function campaigns_headers_row(array $r): string {
         . '<td><button type="button" class="btn-action" data-del>Quitar</button></td></tr>';
 }
 function campaigns_rule_row(array $r): string {
-    return '<tr><td><input name="retry_rules[][status]" value="' . h($r['status'] ?? '') . '" placeholder="BUSY" maxlength="80" required></td>'
-        . '<td><input type="number" name="retry_rules[][max_attempts]" value="' . h($r['max_attempts'] ?? 3) . '" min="1" max="99" required></td>'
-        . '<td><input type="number" name="retry_rules[][retry_delay_min]" value="' . h($r['retry_delay_min'] ?? 30) . '" min="0" max="10080" required></td>'
-        . '<td><select name="retry_rules[][active]"><option value="1"' . ((string)($r['active'] ?? '1') === '0' ? '' : ' selected') . '>Sí</option><option value="0"' . ((string)($r['active'] ?? '1') === '0' ? ' selected' : '') . '>No</option></select></td>'
+    global $sipCodes;
+    $select = '<select name="rules[][sip_code]">';
+    $groups = [];
+    foreach ($sipCodes as $c) $groups[$c['group_label']][] = $c;
+    foreach ($groups as $label => $codes) {
+        $select .= '<optgroup label="' . h($label) . '">';
+        foreach ($codes as $c) $select .= '<option value="' . (int)$c['sip_code'] . '"' . (isset($r['sip_code']) && (string)$r['sip_code'] === (string)$c['sip_code'] ? ' selected' : '') . '>' . ((int)$c['sip_code'] > 0 ? (int)$c['sip_code'] . ' · ' : '') . h($c['label']) . '</option>';
+        $select .= '</optgroup>';
+    }
+    $select .= '</select>';
+    return '<tr><td>' . $select . '</td>'
+        . '<td><input type="number" name="rules[][max_attempts]" value="' . h($r['max_attempts'] ?? 3) . '" min="1" max="99" required></td>'
+        . '<td><input type="number" name="rules[][retry_delay_min]" value="' . h($r['retry_delay_min'] ?? 30) . '" min="0" max="10080" required></td>'
+        . '<td><select name="rules[][active]"><option value="1"' . ((string)($r['active'] ?? '1') === '0' ? '' : ' selected') . '>Sí</option><option value="0"' . ((string)($r['active'] ?? '1') === '0' ? ' selected' : '') . '>No</option></select></td>'
         . '<td><button type="button" class="btn-action" data-del>Quitar</button></td></tr>';
 }
 function campaigns_schedule_row(array $r, array $days): string {
@@ -216,11 +232,27 @@ function campaigns_schedule_row(array $r, array $days): string {
             </div>
 
             <div class="card">
-                <h2>Reintentos por estado</h2>
-                <p style="color: var(--text-muted); font-size: 0.8rem;">NEW siempre se marca una vez. Un estado sin regla no se reintenta.</p>
-                <table class="table-compact cfg-table" data-rows="retry"><thead><tr><th>Estado</th><th>Intentos máx.</th><th>Espera (min)</th><th>Activa</th><th></th></tr></thead>
-                    <tbody><?php foreach (($form['retry_rules'] ?? []) as $r) echo campaigns_rule_row($r); ?></tbody></table>
-                <button type="button" class="btn-action" data-add="retry">+ Estado</button>
+                <h2>Acción según el resultado del AMD</h2>
+                <p style="color: var(--text-muted); font-size: 0.8rem;">Se aplica al contestar la llamada. Con el AMD apagado, todo lo contestado se transfiere. «Reintentar» vuelve a llamar según los intentos y la espera indicados.</p>
+                <table class="table-compact cfg-table"><thead><tr><th>Resultado</th><th>Acción</th><th>Intentos máx.</th><th>Espera (min)</th></tr></thead><tbody>
+                <?php foreach ($amdResults as $i => $ar): $cur = $amdSaved[$ar['result']] ?? $amdDefaults[$ar['result']] ?? ['action'=>'hangup', 'max_attempts'=>0, 'retry_delay_min'=>0]; ?>
+                    <tr>
+                        <td><input type="hidden" name="amd_actions[<?php echo $i; ?>][result]" value="<?php echo h($ar['result']); ?>"><?php echo h($ar['label']); ?> (<?php echo h($ar['result']); ?>)</td>
+                        <td><select name="amd_actions[<?php echo $i; ?>][action]"><?php foreach (['transfer'=>'Transferir', 'hangup'=>'Colgar y registrar', 'retry'=>'Reintentar'] as $k => $label): ?><option value="<?php echo $k; ?>"<?php echo ($cur['action'] ?? '') === $k ? ' selected' : ''; ?>><?php echo $label; ?></option><?php endforeach; ?></select></td>
+                        <td><input type="number" name="amd_actions[<?php echo $i; ?>][max_attempts]" value="<?php echo (int)($cur['max_attempts'] ?? 0); ?>" min="0" max="99"></td>
+                        <td><input type="number" name="amd_actions[<?php echo $i; ?>][retry_delay_min]" value="<?php echo (int)($cur['retry_delay_min'] ?? 0); ?>" min="0" max="10080"></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody></table>
+                <p style="color: var(--text-muted); font-size: 0.75rem;">Intentos y espera solo cuentan con «Reintentar» (mínimo 1 intento).</p>
+            </div>
+
+            <div class="card">
+                <h2>Reintentos por código SIP final</h2>
+                <p style="color: var(--text-muted); font-size: 0.8rem;">Un código sin regla no se reintenta. «Sin respuesta del proveedor» cubre las llamadas sin código. El 200 (contestada) lo decide el AMD.</p>
+                <table class="table-compact cfg-table" data-rows="retry"><thead><tr><th>Código SIP</th><th>Intentos máx.</th><th>Espera (min)</th><th>Activa</th><th></th></tr></thead>
+                    <tbody><?php foreach (($form['rules'] ?? []) as $r) echo campaigns_rule_row($r); ?></tbody></table>
+                <button type="button" class="btn-action" data-add="retry">+ Código</button>
             </div>
 
             <div class="card">
@@ -254,7 +286,7 @@ function campaigns_schedule_row(array $r, array $days): string {
         <script>
         (function () {
             var form = document.getElementById('cfg');
-            var prefixes = {headers: 'headers', retry: 'retry_rules', schedule: 'schedules'};
+            var prefixes = {headers: 'headers', retry: 'rules', schedule: 'schedules'};
             // Los nombres usan "x[][campo]"; se numeran por fila antes de enviar para que PHP agrupe bien.
             function renumber() {
                 Object.keys(prefixes).forEach(function (key) {
