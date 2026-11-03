@@ -74,6 +74,61 @@ exten => s,1,Set(ZV2_SIP=)
  same => n,Set(ZV2_SIP=${HANGUPCAUSE(${ZV2_SIPKEY},tech)})
  same => n(fin),AGI(/srv/www/htdocs/zynervoxv2/bot_ivr/call_tracking_agi.php,finish,${ZV2_CALL_ID},${DIALSTATUS},${ZV2_AMD_STATUS},${ZV2_AMD_CAUSE},${HANGUPCAUSE},${ZV2_ANSWERED},${ZV2_SIP},${ZV2_STAGE})
  same => n,Return()
+
+[zynervoxv2-marcador-salida]
+; Marcador de pruebas (multicampaña por variables de canal). El motor origina Local/<teléfono>@zynervoxv2-marcador-salida/n con
+; __ZV2_CALL_ID, __ZV2_TRUNK, __ZV2_DIAL_PREFIX y opcionales __ZV2_DIAL_TIMEOUT, __ZV2_TRANSFERIR=1, __ZV2_XFER_TRUNK, __ZV2_XFER_DEST, __ZV2_FORWARD_HEADERS.
+; Quien marca es esta pata, no el Originate: así el cierre lee siempre el código SIP y la causa Q.850, también sin contestar.
+exten => _X.,1,Set(AGISIGHUP=no)
+ same => n,Set(CHANNEL(hangup_handler_push)=zynervoxv2-marcador-cierre,s,1)
+ same => n,Set(ZV2_STAGE=DIAL)
+ same => n,Set(ZV2_PHONE=${FILTER(0-9,${EXTEN})})
+ same => n,GotoIf($["${ZV2_CALL_ID}" = "" | "${ZV2_TRUNK}" = "" | "${ZV2_PHONE}" != "${EXTEN}" | "${FILTER(A-Za-z0-9_.-,${ZV2_TRUNK})}" != "${ZV2_TRUNK}" | "${FILTER(0-9*#+,${ZV2_DIAL_PREFIX})}" != "${ZV2_DIAL_PREFIX}"]?sinruta)
+ same => n,ExecIf($["${ZV2_DIAL_TIMEOUT}" = ""]?Set(ZV2_DIAL_TIMEOUT=30))
+ same => n,Dial(SIP/${ZV2_TRUNK}/${ZV2_DIAL_PREFIX}${ZV2_PHONE},${ZV2_DIAL_TIMEOUT},b(zynervoxv2-outbound^s^1)U(zynervoxv2-marcador-contestada))
+ same => n,Hangup()
+ same => n(sinruta),Set(ZV2_STAGE=SIN_RUTA)
+ same => n,Hangup()
+
+[zynervoxv2-marcador-contestada]
+exten => s,1,Set(AGISIGHUP=no)
+ same => n,Set(MASTER_CHANNEL(ZV2_ANSWERED)=1)
+ same => n,Set(MASTER_CHANNEL(ZV2_STAGE)=AMD)
+ same => n,AGI(/srv/www/htdocs/zynervoxv2/bot_ivr/call_tracking_agi.php,event,${ZV2_CALL_ID},ANSWER)
+ same => n,AMD()
+ same => n,Set(MASTER_CHANNEL(ZV2_AMD_STATUS)=${AMDSTATUS})
+ same => n,Set(MASTER_CHANNEL(ZV2_AMD_CAUSE)=${AMDCAUSE})
+ same => n,AGI(/srv/www/htdocs/zynervoxv2/bot_ivr/call_tracking_agi.php,event,${ZV2_CALL_ID},AMD,${AMDSTATUS},${AMDCAUSE})
+ same => n,GotoIf($["${ZV2_TRANSFERIR}" = "1" & "${AMDSTATUS}" = "HUMAN"]?xfer)
+ same => n,Set(MASTER_CHANNEL(ZV2_STAGE)=ESPERA)
+ same => n,Wait(3)
+ same => n,Set(MASTER_CHANNEL(ZV2_STAGE)=FIN_PRUEBA)
+ same => n,Hangup()
+ same => n(xfer),Set(MASTER_CHANNEL(ZV2_STAGE)=XFER)
+ same => n,GotoIf($["${ZV2_XFER_TRUNK}" = "" | "${ZV2_XFER_DEST}" = ""]?sindestino)
+ same => n,ExecIf($["${ZV2_XFER_TIMEOUT}" = ""]?Set(ZV2_XFER_TIMEOUT=45))
+ same => n,Dial(SIP/${ZV2_XFER_TRUNK}/${ZV2_XFER_DEST},${ZV2_XFER_TIMEOUT},b(zynervoxv2-forward-headers^s^1))
+ same => n,Set(ZV2_XFER_KEY=${HANGUPCAUSE_KEYS()})
+ same => n,GotoIf($["${ZV2_XFER_KEY}" = ""]?finxfer)
+ same => n,Set(MASTER_CHANNEL(ZV2_XFER_SIP)=${HANGUPCAUSE(${ZV2_XFER_KEY},tech)})
+ same => n,Set(MASTER_CHANNEL(ZV2_XFER_Q850)=${HANGUPCAUSE(${ZV2_XFER_KEY},ast)})
+ same => n(finxfer),Hangup()
+ same => n(sindestino),Set(MASTER_CHANNEL(ZV2_STAGE)=XFER_NODEST)
+ same => n,Hangup()
+
+[zynervoxv2-marcador-cierre]
+exten => s,1,Set(ZV2_SIP=)
+ same => n,Set(ZV2_CAUSE_SRC=DIAL)
+ same => n,Set(ZV2_Q850=${HANGUPCAUSE})
+ same => n,Set(ZV2_SIPKEY=${HANGUPCAUSE_KEYS()})
+ same => n,GotoIf($["${ZV2_SIPKEY}" = ""]?xfer)
+ same => n,Set(ZV2_SIP=${HANGUPCAUSE(${ZV2_SIPKEY},tech)})
+ same => n(xfer),GotoIf($["${ZV2_XFER_SIP}" = ""]?fin)
+ same => n,Set(ZV2_SIP=${ZV2_XFER_SIP})
+ same => n,Set(ZV2_Q850=${ZV2_XFER_Q850})
+ same => n,Set(ZV2_CAUSE_SRC=XFER)
+ same => n(fin),AGI(/srv/www/htdocs/zynervoxv2/bot_ivr/call_tracking_agi.php,finish,${ZV2_CALL_ID},${DIALSTATUS},${ZV2_AMD_STATUS},${ZV2_AMD_CAUSE},${ZV2_Q850},${ZV2_ANSWERED},${ZV2_SIP},${ZV2_STAGE},${ZV2_CAUSE_SRC})
+ same => n,Return()
 ASTERISK;
 
     public static function template(): string {
@@ -91,7 +146,7 @@ ASTERISK;
         $dialplan = str_replace(["\r\n", "\r"], "\n", $dialplan);
         $dialplan = preg_replace('/^\s*; Manual calls: list 1\. Future worker must set ZV2_LIST_ID explicitly\.\s*\n/', '', $dialplan);
         $common=self::commonContexts();
-        $dialplan=preg_replace_callback('/^\s*\[(zynervoxv2-bot-ivr-sin-amd|zynervoxv2-bot-ivr|zynervoxv2-amd|zynervoxv2-call-finish|zynervoxv2-outbound|zynervoxv2-marcador|zynervoxv2-marcador-fin)\][^\n]*\n?(.*?)(?=^\s*\[|\z)/ms', function ($match) use ($common) {
+        $dialplan=preg_replace_callback('/^\s*\[(zynervoxv2-bot-ivr-sin-amd|zynervoxv2-bot-ivr|zynervoxv2-amd|zynervoxv2-call-finish|zynervoxv2-outbound|zynervoxv2-marcador|zynervoxv2-marcador-fin|zynervoxv2-marcador-salida|zynervoxv2-marcador-contestada|zynervoxv2-marcador-cierre)\][^\n]*\n?(.*?)(?=^\s*\[|\z)/ms', function ($match) use ($common) {
             if (trim($match[2])!==$common[$match[1]]) throw new \InvalidArgumentException('El contexto '.$match[1].' pertenece a la plantilla común; no lo redefinas.');
             return '';
         },$dialplan);
