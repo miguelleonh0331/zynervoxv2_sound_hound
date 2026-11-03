@@ -117,6 +117,22 @@ check('un B con SIP 480 reintenta solo con la regla del 480', $with480 === $repo
 $pdo->exec("UPDATE zynervox_bot_list SET status='NA', last_sip_code=487 WHERE phone='955555555' AND list_id=$list");
 bot_cfg_save($repo, $id, ['rules'=>[['sip_code'=>487, 'max_attempts'=>3, 'retry_delay_min'=>10]]] + $base);
 check('un NA con SIP 487 (nuestro timeout) reintenta con la regla del 487', $repo->countEligibleLeads($id, 'UP') === $with480);
+// Campaign deletion: refuses with lists or running, keeps history, removes configuration
+$dl = bot_cfg_save($repo, null, ['name'=>'Borrable', 'active'=>'1', 'call_origin'=>'7307', 'amd_enabled'=>'1', 'rules'=>[['sip_code'=>486, 'max_attempts'=>1, 'retry_delay_min'=>0]], 'schedules'=>[['weekday'=>1, 'start_time'=>'09:00', 'end_time'=>'18:00']]]);
+$pdo->prepare("INSERT INTO zynervox_bot_lists (campaign_id,name,active) VALUES (?,'x',1)")->execute([$dl]);
+$dlList = (int)$pdo->lastInsertId();
+check('no borra una campaña con listas', str_contains(throws(fn() => bot_cfg_delete($repo, $dl, 'test')), 'listas'));
+$pdo->exec("DELETE FROM zynervox_bot_lists WHERE list_id=$dlList");
+$repo->setDialerState($dl, 'running', 'test');
+check('no borra una campaña en marcha', str_contains(throws(fn() => bot_cfg_delete($repo, $dl, 'test')), 'Detén'));
+$repo->setDialerState($dl, 'stopped', 'test');
+$pdo->exec("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,started_at,finished_at,campaign_id) VALUES ('zv2-hist',999,999,'900000000',UTC_TIMESTAMP(),UTC_TIMESTAMP(),$dl)");
+bot_cfg_delete($repo, $dl, 'test');
+check('borra la campaña y su configuración y conserva el historial', (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_campaigns WHERE campaign_id=$dl")->fetchColumn() === 0
+  && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_campaign_sip_rules WHERE campaign_id=$dl")->fetchColumn() === 0
+  && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_campaign_schedules WHERE campaign_id=$dl")->fetchColumn() === 0
+  && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_call_attempts WHERE call_id='zv2-hist'")->fetchColumn() === 1);
+check('borrar una campaña inexistente falla', throws(fn() => bot_cfg_delete($repo, $dl, 'test')) !== '');
 // Detection-only campaign (test stage): no trunk and no destination is valid, half-configured is not
 $det = bot_cfg_save($repo, null, ['name'=>'Solo detectar', 'active'=>'1', 'call_origin'=>'7307', 'max_channels'=>'1', 'amd_enabled'=>'1']);
 $pdo->prepare("INSERT INTO zynervox_bot_lists (campaign_id,name,active) VALUES (?,'det',1)")->execute([$det]);

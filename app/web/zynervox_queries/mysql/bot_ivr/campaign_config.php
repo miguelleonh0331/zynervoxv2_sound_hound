@@ -50,6 +50,23 @@ trait CampaignConfigQueries {
         $s->execute([$campaignId,$campaignId]);
         return $s->fetchAll(\PDO::FETCH_ASSOC);
     }
+    /** Deletes the campaign and its configuration (headers, schedules, AMD actions, SIP and legacy rules cascade). Attempts, events and dial runs stay as history. */
+    public function deleteCampaign(int $id): void {
+        $this->callAtomic(function() use($id) {
+            $s = $this->db->prepare('SELECT dialer_state FROM zynervox_bot_campaigns WHERE campaign_id=? FOR UPDATE');
+            $s->execute([$id]);
+            $state = $s->fetchColumn();
+            if ($state === false) throw new \RuntimeException('Campaña inexistente.');
+            if ($state === 'running') throw new \RuntimeException('Detén la campaña antes de eliminarla.');
+            $l = $this->db->prepare('SELECT COUNT(*) FROM zynervox_bot_lists WHERE campaign_id=?');
+            $l->execute([$id]);
+            if ((int)$l->fetchColumn()) throw new \RuntimeException('Elimina primero las listas de la campaña.');
+            $open = $this->db->prepare("SELECT 1 FROM zynervox_bot_call_attempts WHERE campaign_id=? AND finished_at IS NULL AND end_source<>'RECOVERY' AND status<>'LOST' LIMIT 1");
+            $open->execute([$id]);
+            if ($open->fetchColumn()) throw new \RuntimeException('Espera a que terminen las llamadas antes de eliminar la campaña.');
+            $this->db->prepare('DELETE FROM zynervox_bot_campaigns WHERE campaign_id=?')->execute([$id]);
+        });
+    }
     public function setDialerState(int $id, string $state, string $actor): void {
         if (!in_array($state, ['running','stopped'], true)) throw new \RuntimeException('Estado de marcador inválido.');
         $this->campaign($id);

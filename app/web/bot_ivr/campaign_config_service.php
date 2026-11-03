@@ -163,6 +163,12 @@ function bot_cfg_attempts_report(\ZynervoxQueries\BotIvrRepository $db, ?int $ca
     return $db->campaignAttemptsReport($campaignId, max(1, min(500, $limit)));
 }
 
+/** Deletes a stopped campaign without lists and its configuration. History (attempts, events, dial runs) is kept. */
+function bot_cfg_delete(\ZynervoxQueries\BotIvrRepository $db, int $id, string $actor): void {
+    $db->deleteCampaign($id);
+    error_log('ZV2 campaign_deleted '.json_encode(['campaign_id'=>$id, 'actor'=>$actor, 'at'=>gmdate('c')], JSON_UNESCAPED_UNICODE));
+}
+
 /** Marks the campaign as running. The engine (campaign_engine.php) does the dialing; nothing is launched here. */
 function bot_cfg_start(\ZynervoxQueries\BotIvrRepository $db, int $id, string $actor, ?array $origins = null): void {
     $config = $db->campaignConfig($id);
