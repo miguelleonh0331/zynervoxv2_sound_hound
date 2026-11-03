@@ -10,9 +10,9 @@ const BOT_ENGINE_BURST = 50;
 const BOT_ENGINE_AMI_GRACE = 10;
 
 /** Variables the zynervoxv2-marcador context reads (contract with Telefonia; the __ prefix makes them inherit). */
-function bot_engine_variables(array $c, array $call, array $headers, ?array $route = null): array {
+function bot_engine_variables(array $c, array $call, array $headers): array {
     $vars = ['__ZV2_CALL_ID='.$call['call_id'], '__ZV2_LIST_ID='.$call['list_id'], '__ZV2_LEAD_ID='.$call['lead_id'], '__ZV2_CAMPAIGN_ID='.(int)$c['campaign_id']];
-    if ($route) array_push($vars, '__ZV2_TRUNK='.$route['peer'], '__ZV2_DIAL_PREFIX='.$route['prefix'], '__ZV2_DIAL_TIMEOUT='.(int)$c['dial_timeout']);
+    $vars[] = '__ZV2_DIAL_TIMEOUT='.(int)$c['dial_timeout'];
     // Without trunk and destination the campaign only detects (AMD) and hangs up: the dialplan sees no ZV2_XFER_TRUNK.
     if ($c['transfer_carrier_id'] !== '') array_push($vars, '__ZV2_XFER_TRUNK='.$c['transfer_carrier_id'], '__ZV2_XFER_DEST='.$c['transfer_destination']);
     if ((int)$c['amd_enabled']) $vars[] = '__ZV2_AMD=1';
@@ -24,26 +24,17 @@ function bot_engine_variables(array $c, array $call, array $headers, ?array $rou
     return $vars;
 }
 
-/** Origin dial_prefix -> ['peer'=>chan_sip peer, 'prefix'=>digits before the number], from the active dialplan (Telefonia: Dialplans::route). */
-function bot_engine_route(string $origin): array {
-    require_once __DIR__.'/../includes/Dialplans.php';
-    try { $route = \Includes\Dialplans::route($origin); }
-    catch (InvalidArgumentException $e) { throw new RuntimeException('Origen '.$origin.' sin ruta: '.$e->getMessage()); }
-    if (!preg_match('/^[A-Za-z0-9_.-]{1,80}$/D', (string)($route['peer'] ?? '')) || !preg_match('/^[0-9*#+]{0,20}$/D', (string)($route['prefix'] ?? ''))) throw new RuntimeException('Ruta de origen inválida para '.$origin.'.');
-    return $route;
-}
-
 /**
- * Originate on a Local channel that runs zynervoxv2-marcador-salida (Telefonia): the dialplan dials the carrier, so even unanswered calls
- * report SIP and Q.850 through the finish AGI. The Originate timeout must exceed the dialplan's Dial timeout, or the Local hangs up first and the SIP code is lost.
+ * Originate on a Local channel that runs the dialplan of the origin prefix (context zynervoxv2, Telefonia): Local/<origin><phone>@zynervoxv2/n.
+ * The dialplan dials the carrier, so even unanswered calls report SIP and Q.850 through the finish AGI. The Originate timeout must exceed
+ * the dialplan's Dial timeout (__ZV2_DIAL_TIMEOUT), or the Local hangs up first and the SIP code is lost. Peer and carrier prefix live in the dialplan route.
  */
 function bot_engine_originate(\Includes\AmiClient $ami, array $c, array $call, array $headers): bool {
-    $route = bot_engine_route((string)$c['call_origin']);
-    if (!preg_match('/^[0-9]{1,20}$/D', (string)$call['phone'])) throw new RuntimeException('Teléfono inválido para marcar.');
-    $request = ['Action'=>'Originate', 'Channel'=>'Local/'.$call['phone'].'@zynervoxv2-marcador-salida/n', 'Application'=>'Wait', 'Data'=>'600',
+    if (!preg_match('/^[0-9]{1,20}$/D', (string)$c['call_origin']) || !preg_match('/^[0-9]{1,20}$/D', (string)$call['phone'])) throw new RuntimeException('Origen o teléfono inválido para marcar.');
+    $request = ['Action'=>'Originate', 'Channel'=>'Local/'.$c['call_origin'].$call['phone'].'@zynervoxv2/n', 'Application'=>'Wait', 'Data'=>'600',
         'Async'=>'true', 'Timeout'=>(string)(((int)$c['dial_timeout'] + 5) * 1000), 'ChannelId'=>$call['call_id']];
     if ($c['campaign_cid'] !== '') $request['CallerID'] = $c['campaign_cid'];
-    return ($ami->request($request, bot_engine_variables($c, $call, $headers, $route))['Response'] ?? '') === 'Success';
+    return ($ami->request($request, bot_engine_variables($c, $call, $headers))['Response'] ?? '') === 'Success';
 }
 
 /**
