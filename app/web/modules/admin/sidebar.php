@@ -43,40 +43,41 @@ function _svgIcon($name) {
 // quedaban rotos: apuntaban a bot_ivr/campaigns.php en vez de
 // modules/admin/campaigns.php.)
 function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
-    // "built" = false => la pagina todavia es un stub (_stub.php), se muestra
-    // tachada en el menu para que se note a simple vista que falta construir.
+    // "in_scope" = false => entrada tachada en el menu: fuera de alcance por
+    // ahora (inventario visual de lo que no se trabaja). NO significa que la
+    // pagina no funcione ni que este bloqueada; el enlace sigue igual.
     $items = [
-        ['key' => 'home',        'href' => 'modules/admin/index.php',        'icon' => 'reports',    'label' => 'Dashboard (Inicio)', 'built' => true],
-        ['key' => 'reports',     'href' => 'modules/admin/reports.php',      'icon' => 'chart',      'label' => 'Reportes',           'built' => true],
-        ['key' => 'monitor',     'href' => 'modules/admin/monitor.php',      'icon' => 'monitor',    'label' => 'Monitor',            'built' => true],
-        ['key' => 'campaign_monitor', 'href' => 'modules/admin/campaign_monitor.php', 'icon' => 'campaign_monitor', 'label' => 'Monitor Campañas', 'built' => true],
-        ['key' => 'users',       'href' => 'modules/admin/users.php',        'icon' => 'users',      'label' => 'Users (Usuarios)',   'built' => true],
-        ['key' => 'campaigns',   'href' => 'modules/admin/campaigns.php',    'icon' => 'campaigns',  'label' => 'Campaigns (Campañas)', 'built' => true],
-        ['key' => 'dialer_agent','href' => 'modules/admin/dialer_agent.php', 'icon' => 'phones',     'label' => 'Panel de agente',    'built' => true],
-        ['key' => 'lists',       'href' => 'modules/admin/lists.php',        'icon' => 'lists',      'label' => 'Lists (Bases de Datos)', 'built' => true],
-        ['key' => 'quality',     'href' => 'modules/admin/quality.php',      'icon' => 'quality',    'label' => 'Quality Control (Calidad)', 'built' => false],
-        ['key' => 'scripts',     'href' => 'modules/admin/scripts.php',      'icon' => 'scripts',    'label' => 'Scripts (Guiones)',  'built' => false],
-        ['key' => 'filters',     'href' => 'modules/admin/filters.php',      'icon' => 'filters',    'label' => 'Filters',            'built' => true],
-        ['key' => 'inbound',     'href' => 'modules/admin/inbound.php',      'icon' => 'inbound',    'label' => 'Inbound (Entrantes / DIDs)', 'built' => false],
-        ['key' => 'bot_ivr',     'href' => 'bot_ivr/index.php',              'icon' => 'bot',        'label' => 'Bot IVR',            'built' => true],
-        ['key' => 'ivr_builder', 'href' => 'ivr_builder/index.php',          'icon' => 'bot',        'label' => 'IVR Builder',        'built' => true],
-        ['key' => 'whatsapp',    'href' => 'modules/admin/whatsapp.php',     'icon' => 'whatsapp',   'label' => 'WhatsApp',           'built' => true],
-        ['key' => 'farm',        'href' => 'modules/admin/farm.php',         'icon' => 'farm',       'label' => 'Farm',               'built' => true],
-        ['key' => 'stt_providers','href' => 'modules/admin/stt_providers.php','icon' => 'stt',       'label' => 'Stt Providers',      'built' => true],
-        ['key' => 'zynerdesk',   'href' => 'modules/admin/zynerdesk.php',    'icon' => 'remote',     'label' => 'Zynerdesk',          'built' => true],
-        ['key' => 'usergroups',  'href' => 'modules/admin/usergroups.php',   'icon' => 'usergroups', 'label' => 'User Groups (Grupos)', 'built' => true],
-        ['key' => 'remote',      'href' => 'modules/admin/remoteagents.php', 'icon' => 'remote',     'label' => 'Agents GSM',         'built' => true],
-        ['key' => 'vpn',          'href' => 'modules/vpn/index.php',          'icon' => 'remote',     'label' => 'Vpn',                'built' => true],
-        ['key' => 'phones',      'href' => 'modules/admin/phones.php',       'icon' => 'phones',     'label' => 'Anexos/Teléfonos',   'built' => true],
-        ['key' => 'admin',       'href' => 'modules/admin/carriers.php',     'icon' => 'admin',      'label' => 'Troncales SIP',      'built' => true],
-        ['key' => 'dialplan',    'href' => 'modules/admin/dialplan.php',     'icon' => 'scripts',    'label' => 'Dialplan',           'built' => true],
+        ['key' => 'home',        'href' => 'modules/admin/index.php',        'icon' => 'reports',    'label' => 'Dashboard (Inicio)', 'in_scope' => true],
+        ['key' => 'reports',     'href' => 'modules/admin/reports.php',      'icon' => 'chart',      'label' => 'Reportes',           'in_scope' => true],
+        ['key' => 'monitor',     'href' => 'modules/admin/monitor.php',      'icon' => 'monitor',    'label' => 'Monitor',            'in_scope' => true],
+        ['key' => 'campaign_monitor', 'href' => 'modules/admin/campaign_monitor.php', 'icon' => 'campaign_monitor', 'label' => 'Monitor Campañas', 'in_scope' => true],
+        ['key' => 'users',       'href' => 'modules/admin/users.php',        'icon' => 'users',      'label' => 'Users (Usuarios)',   'in_scope' => true],
+        ['key' => 'campaigns',   'href' => 'modules/admin/campaigns.php',    'icon' => 'campaigns',  'label' => 'Campaigns (Campañas)', 'in_scope' => true],
+        ['key' => 'dialer_agent','href' => 'modules/admin/dialer_agent.php', 'icon' => 'phones',     'label' => 'Panel de agente',    'in_scope' => false],
+        ['key' => 'lists',       'href' => 'modules/admin/lists.php',        'icon' => 'lists',      'label' => 'Lists (Bases de Datos)', 'in_scope' => true],
+        ['key' => 'quality',     'href' => 'modules/admin/quality.php',      'icon' => 'quality',    'label' => 'Quality Control (Calidad)', 'in_scope' => false],
+        ['key' => 'scripts',     'href' => 'modules/admin/scripts.php',      'icon' => 'scripts',    'label' => 'Scripts (Guiones)',  'in_scope' => false],
+        ['key' => 'filters',     'href' => 'modules/admin/filters.php',      'icon' => 'filters',    'label' => 'Filters',            'in_scope' => true],
+        ['key' => 'inbound',     'href' => 'modules/admin/inbound.php',      'icon' => 'inbound',    'label' => 'Inbound (Entrantes / DIDs)', 'in_scope' => false],
+        ['key' => 'bot_ivr',     'href' => 'bot_ivr/index.php',              'icon' => 'bot',        'label' => 'Bot IVR',            'in_scope' => true],
+        ['key' => 'ivr_builder', 'href' => 'ivr_builder/index.php',          'icon' => 'bot',        'label' => 'IVR Builder',        'in_scope' => true],
+        ['key' => 'whatsapp',    'href' => 'modules/admin/whatsapp.php',     'icon' => 'whatsapp',   'label' => 'WhatsApp',           'in_scope' => false],
+        ['key' => 'farm',        'href' => 'modules/admin/farm.php',         'icon' => 'farm',       'label' => 'Farm',               'in_scope' => false],
+        ['key' => 'stt_providers','href' => 'modules/admin/stt_providers.php','icon' => 'stt',       'label' => 'Stt Providers',      'in_scope' => false],
+        ['key' => 'zynerdesk',   'href' => 'modules/admin/zynerdesk.php',    'icon' => 'remote',     'label' => 'Zynerdesk',          'in_scope' => false],
+        ['key' => 'usergroups',  'href' => 'modules/admin/usergroups.php',   'icon' => 'usergroups', 'label' => 'User Groups (Grupos)', 'in_scope' => true],
+        ['key' => 'remote',      'href' => 'modules/admin/remoteagents.php', 'icon' => 'remote',     'label' => 'Agents GSM',         'in_scope' => false],
+        ['key' => 'vpn',          'href' => 'modules/vpn/index.php',          'icon' => 'remote',     'label' => 'Vpn',                'in_scope' => true],
+        ['key' => 'phones',      'href' => 'modules/admin/phones.php',       'icon' => 'phones',     'label' => 'Anexos/Teléfonos',   'in_scope' => true],
+        ['key' => 'admin',       'href' => 'modules/admin/carriers.php',     'icon' => 'admin',      'label' => 'Troncales SIP',      'in_scope' => true],
+        ['key' => 'dialplan',    'href' => 'modules/admin/dialplan.php',     'icon' => 'scripts',    'label' => 'Dialplan',           'in_scope' => true],
     ];
 
     // "Dev" es un checklist interno de roadmap, visible SOLO para el
     // usuario 6666 (pedido explicito). Otros admins nivel 9 ni siquiera ven
     // el item en el menu, ademas de que la pagina se bloquea por su cuenta.
     if (($_SESSION['user'] ?? '') === '6666') {
-        $items[] = ['key' => 'dev', 'href' => 'modules/admin/dev_checklist.php', 'icon' => 'checklist', 'label' => 'Dev (Checklist)', 'built' => true];
+        $items[] = ['key' => 'dev', 'href' => 'modules/admin/dev_checklist.php', 'icon' => 'checklist', 'label' => 'Dev (Checklist)', 'in_scope' => true];
     }
 ?>
 <aside class="sidebar">
@@ -86,7 +87,7 @@ function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
 
     <div class="nav-section">
         <h3 class="nav-title">Herramientas</h3>
-        <a href="<?php echo $rootPrefix; ?>modules/admin/wizard.php" class="nav-item <?php echo $activePage === 'wizard' ? 'active' : ''; ?>">
+        <a href="<?php echo $rootPrefix; ?>modules/admin/wizard.php" class="nav-item <?php echo $activePage === 'wizard' ? 'active' : ''; ?>" style="text-decoration: line-through; opacity: 0.55;" title="Fuera de alcance por ahora">
             <?php echo _svgIcon('wizard'); ?> Asistente (Wizard)
         </a>
     </div>
@@ -95,7 +96,7 @@ function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
         <h3 class="nav-title">Administración</h3>
         <?php foreach ($items as $it): ?>
         <a href="<?php echo $rootPrefix . $it['href']; ?>" class="nav-item <?php echo $activePage === $it['key'] ? 'active' : ''; ?>"
-            <?php if (!$it['built']): ?>style="text-decoration: line-through; opacity: 0.55;" title="Aún no construido"<?php endif; ?>>
+            <?php if (!$it['in_scope']): ?>style="text-decoration: line-through; opacity: 0.55;" title="Fuera de alcance por ahora"<?php endif; ?>>
             <?php echo _svgIcon($it['icon']); ?> <?php echo $it['label']; ?>
         </a>
         <?php endforeach; ?>
@@ -105,8 +106,8 @@ function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
         // separadas de los módulos propios de arriba. Hoy solo trae Zypad;
         // el array deja espacio para futuras sin tocar el <details>.
         $servicios = [
-            ['key' => 'zypad', 'href' => 'modules/admin/services/zypad.php', 'icon' => 'stt', 'label' => 'Zypad'],
-            ['key' => 'zynerdesk_control', 'href' => 'modules/admin/services/zynerdesk_control.php', 'icon' => 'remote', 'label' => 'Zynerdesk'],
+            ['key' => 'zypad', 'href' => 'modules/admin/services/zypad.php', 'icon' => 'stt', 'label' => 'Zypad', 'in_scope' => false],
+            ['key' => 'zynerdesk_control', 'href' => 'modules/admin/services/zynerdesk_control.php', 'icon' => 'remote', 'label' => 'Zynerdesk', 'in_scope' => false],
             ['key' => 'database', 'href' => 'modules/admin/services/database.php', 'icon' => 'services', 'label' => 'Base de datos'],
             ['key' => 'pbx', 'href' => 'modules/admin/services/pbx.php', 'icon' => 'services', 'label' => 'PBX'],
             ['key' => 'test', 'href' => 'modules/admin/services/test.php', 'icon' => 'checklist', 'label' => 'Test'],
@@ -116,7 +117,8 @@ function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
         <details class="nav-group"<?php echo $serviciosOpen ? ' open' : ''; ?>>
             <summary class="nav-item"><?php echo _svgIcon('services'); ?> Servicios</summary>
             <?php foreach ($servicios as $sv): ?>
-            <a href="<?php echo $rootPrefix . $sv['href']; ?>" class="nav-item nav-subitem <?php echo $activePage === $sv['key'] ? 'active' : ''; ?>">
+            <a href="<?php echo $rootPrefix . $sv['href']; ?>" class="nav-item nav-subitem <?php echo $activePage === $sv['key'] ? 'active' : ''; ?>"
+                <?php if (!($sv['in_scope'] ?? true)): ?>style="text-decoration: line-through; opacity: 0.55;" title="Fuera de alcance por ahora"<?php endif; ?>>
                 <?php echo _svgIcon($sv['icon']); ?> <?php echo $sv['label']; ?>
             </a>
             <?php endforeach; ?>
