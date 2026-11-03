@@ -236,7 +236,7 @@ if ($list): ?>
             const id = document.createElement('code'); id.textContent = row.call_id; phone.append(id);
             const state = document.createElement('td'); state.textContent = row.status; state.className = 'call-stats-error';
             const cause = document.createElement('td');
-            cause.textContent = [row.ivr_result === 'ERROR' ? 'Error IVR' : '',row.dial_status,row.end_source === 'RECOVERY' ? 'Cierre recuperado' : row.end_source === 'AMI_REJECTED' ? 'Rechazado por AMI' : '',Number(row.hangup_cause) ? 'Causa Asterisk: ' + row.hangup_cause : ''].filter(Boolean).join(' | ') || row.status;
+            cause.textContent = [row.ivr_result === 'ERROR' ? 'Error de flujo' : '',row.dial_status,row.end_source === 'RECOVERY' ? 'Cierre recuperado' : row.end_source === 'AMI_REJECTED' ? 'Rechazado por AMI' : '',Number(row.hangup_cause) ? 'Causa Asterisk: ' + row.hangup_cause : ''].filter(Boolean).join(' | ') || row.status;
             tr.append(phone,state,cause); errors.append(tr);
         }
         if (!stats.errors.length) { const tr = document.createElement('tr'); const cell = document.createElement('td'); cell.colSpan = 3; cell.textContent = 'Sin errores registrados.'; tr.append(cell); errors.append(tr); }

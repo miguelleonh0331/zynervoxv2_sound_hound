@@ -136,7 +136,7 @@ if ($campaign): ?>
 <details><summary>Modificar</summary><form method="post" class="carsa-form">
 <input type="hidden" name="action" value="update_list"><input type="hidden" name="list_id" value="<?php echo (int)$list['list_id']; ?>"><?php bot_campaign_token(); ?>
 <input aria-label="Nombre de lista <?php echo (int)$list['list_id']; ?>" name="list_name" maxlength="120" value="<?php echo h($list['name']); ?>" required>
-<label>Flujo (IVR Builder)<select name="id_flujo" class="ivr-flow-select" data-selected="<?php echo h($list['id_flujo'] ?? ''); ?>" required><option value="">Cargando flujos...</option></select></label>
+<label>Flujo<select name="id_flujo" class="ivr-flow-select" data-selected="<?php echo h($list['id_flujo'] ?? ''); ?>" required><option value="">Cargando flujos...</option></select></label>
 <label><input type="checkbox" name="active" value="1" <?php echo $list['active'] ? 'checked' : ''; ?>> Activo</label>
 <button class="carsa-btn secondary compact-submit">Guardar lista</button></form></details></td></tr>
 <?php endforeach; ?>
@@ -148,7 +148,7 @@ if ($campaign): ?>
 <h2 id="createListTitle">Crear y asignar lista</h2>
 <form method="post" class="carsa-form"><input type="hidden" name="action" value="create_list"><?php bot_campaign_token(); ?>
 <div class="carsa-field"><label for="list_name">Nombre de lista</label><input id="list_name" name="list_name" maxlength="120" required></div>
-<div class="carsa-field"><label for="list_flow">Flujo (IVR Builder)</label><select id="list_flow" name="id_flujo" class="ivr-flow-select" required><option value="">Cargando flujos...</option></select></div>
+<div class="carsa-field"><label for="list_flow">Flujo</label><select id="list_flow" name="id_flujo" class="ivr-flow-select" required><option value="">Cargando flujos...</option></select></div>
 <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" name="active" value="1" checked style="width:auto;margin:0"> Activo</label>
 <div class="carsa-actions"><button class="carsa-btn">Crear lista</button><button type="button" class="carsa-btn secondary" onclick="document.getElementById('createListModal').close()">Cancelar</button></div>
 </form>

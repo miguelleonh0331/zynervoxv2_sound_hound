@@ -17,7 +17,7 @@ function initial_survey_page_start(string $title, string $subtitle = ''): void {
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title><?php echo $title !== '' ? h($title) . ' - ' : ''; ?>Bot IVR - Zynervox</title>
+<title><?php echo $title !== '' ? h($title) . ' - ' : ''; ?>Campa&ntilde;as - Zynervox</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="../modules/admin/layout.css">
 <style>
