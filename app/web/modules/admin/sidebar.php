@@ -67,10 +67,9 @@ function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
         ['key' => 'zynerdesk',   'href' => 'modules/admin/zynerdesk.php',    'icon' => 'remote',     'label' => 'Zynerdesk',          'in_scope' => false],
         ['key' => 'usergroups',  'href' => 'modules/admin/usergroups.php',   'icon' => 'usergroups', 'label' => 'User Groups (Grupos)', 'in_scope' => false],
         ['key' => 'remote',      'href' => 'modules/admin/remoteagents.php', 'icon' => 'remote',     'label' => 'Agents GSM',         'in_scope' => false],
-        ['key' => 'vpn',          'href' => 'modules/vpn/index.php',          'icon' => 'remote',     'label' => 'Vpn',                'in_scope' => false],
-        ['key' => 'phones',      'href' => 'modules/admin/phones.php',       'icon' => 'phones',     'label' => 'Anexos/Teléfonos',   'in_scope' => false],
-        ['key' => 'admin',       'href' => 'modules/admin/carriers.php',     'icon' => 'admin',      'label' => 'Troncales SIP',      'in_scope' => false],
-        ['key' => 'dialplan',    'href' => 'modules/admin/dialplan.php',     'icon' => 'scripts',    'label' => 'Dialplan',           'in_scope' => false],
+        ['key' => 'phones',      'href' => 'modules/admin/phones.php',       'icon' => 'phones',     'label' => 'Anexos/Teléfonos',   'in_scope' => true],
+        ['key' => 'admin',       'href' => 'modules/admin/carriers.php',     'icon' => 'admin',      'label' => 'Troncales SIP',      'in_scope' => true],
+        ['key' => 'dialplan',    'href' => 'modules/admin/dialplan.php',     'icon' => 'scripts',    'label' => 'Dialplan',           'in_scope' => true],
     ];
 
     // "Dev" es un checklist interno de roadmap, visible SOLO para el
