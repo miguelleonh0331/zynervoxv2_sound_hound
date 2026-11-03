@@ -49,6 +49,7 @@ $sun = new DateTimeImmutable('2026-11-01 14:00:00', new DateTimeZone('UTC'));
 check('franja: lunes 09:00 Lima dentro', bot_cfg_in_window($repo->campaign($id), $repo->campaignConfig($id)['schedules'], $mon));
 check('franja: domingo fuera', !bot_cfg_in_window($repo->campaign($id), $repo->campaignConfig($id)['schedules'], $sun));
 
+$pdo->exec("UPDATE zynervox_bot_lists SET dialer_state='running' WHERE campaign_id=$id");
 $dry = bot_engine_tick($repo, null, $id, $mon)[0];
 check('dry-run lista la llamada con sus headers y el lead sin valor como rechazado', count($dry['would_dial']) === 1 && $dry['would_dial'][0]['headers'] === [['name'=>'X-Monto', 'value'=>'7000'], ['name'=>'X-Cliente', 'value'=>'Ana']] && count($dry['would_reject']) === 1);
 check('dry-run no cambia estado', (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_call_attempts")->fetchColumn() === 0 && $pdo->query("SELECT status FROM zynervox_bot_list WHERE phone='911111111'")->fetchColumn() === 'NEW');
@@ -133,6 +134,40 @@ check('borra la campaña y su configuración y conserva el historial', (int)$pdo
   && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_campaign_schedules WHERE campaign_id=$dl")->fetchColumn() === 0
   && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_call_attempts WHERE call_id='zv2-hist'")->fetchColumn() === 1);
 check('borrar una campaña inexistente falla', throws(fn() => bot_cfg_delete($repo, $dl, 'test')) !== '');
+// List-level control (017): only active AND started lists dial; the campaign follows its lists
+$lc = bot_cfg_save($repo, null, ['name'=>'Por lista', 'active'=>'1', 'call_origin'=>'7307', 'amd_enabled'=>'1', 'schedules'=>[['weekday'=>1, 'start_time'=>'09:00', 'end_time'=>'18:00']]]);
+$pdo->exec("INSERT INTO zynervox_bot_lists (campaign_id,name,active,max_channels) VALUES ($lc,'A',1,2),($lc,'B',1,2),($lc,'C',0,1)");
+$ids = $pdo->query("SELECT list_id FROM zynervox_bot_lists WHERE campaign_id=$lc ORDER BY list_id")->fetchAll(PDO::FETCH_COLUMN);
+[$la, $lb, $lcc] = array_map('intval', $ids);
+foreach ([$la, $lb, $lcc] as $x) $pdo->exec("INSERT INTO zynervox_bot_list (list_id,phone) VALUES ($x,'97000000".$x."'),($x,'98000000".$x."')");
+check('las listas nuevas nacen detenidas', (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_lists WHERE campaign_id=$lc AND dialer_state='stopped'")->fetchColumn() === 3);
+check('lista inactiva no se inicia', str_contains(throws(fn() => bot_cfg_list_start($repo, $lc, $lcc, 'test', ['7307'])), 'Activa la lista'));
+bot_cfg_list_start($repo, $lc, $la, 'test', ['7307']);
+check('iniciar una lista pone la campaña en marcha y solo esa lista', $repo->campaign($lc)['dialer_state'] === 'running' && $repo->listState($lc, $la)['dialer_state'] === 'running' && $repo->listState($lc, $lb)['dialer_state'] === 'stopped');
+$calls = [];
+$r = bot_engine_tick($repo, $orig, null, $mon);
+$rl = array_values(array_filter($r, fn($x) => $x['campaign_id'] === $lc))[0];
+$dialed = array_unique(array_map(fn($c) => $c[0]['list_id'], array_filter($calls, fn($c) => in_array($c[0]['list_id'], [$la, $lb, $lcc], true))));
+check('el motor marca solo la lista iniciada', ($rl['launched'] ?? 0) === 2 && $dialed === [$la]);
+$dash = bot_cfg_dashboard($repo, $mon);
+$dc = array_values(array_filter($dash['campaigns'], fn($c) => $c['campaign_id'] === $lc))[0];
+$dl = array_column($dc['lists'], null, 'list_id');
+check('dashboard por lista sin mezclar', $dl[$la]['started'] && $dl[$la]['open_calls'] === 2 && !$dl[$lb]['started'] && $dl[$lb]['reason'] === 'Lista detenida' && $dl[$lcc]['reason'] === 'Lista inactiva' && $dl[$la]['totals']['contacts'] === 2);
+check('dashboard: motivo canales llenos vacío y sin latido = motor apagado', $dl[$la]['reason'] === '' || $dl[$la]['reason'] === 'Motor apagado');
+bot_cfg_list_stop($repo, $lc, $la, 'test');
+check('detener la última lista detiene la campaña', $repo->campaign($lc)['dialer_state'] === 'stopped');
+$pdo->exec("INSERT INTO zynervox_bot_list (list_id,phone) VALUES ($la,'961000001'),($la,'961000002')");
+bot_cfg_list_start($repo, $lc, $la, 'test', ['7307']); bot_cfg_list_start($repo, $lc, $lb, 'test', ['7307']);
+bot_cfg_list_set_active($repo, $lc, $la, false, 'test');
+check('desactivar una lista la detiene y la campaña sigue con la otra', $repo->listState($lc, $la)['dialer_state'] === 'stopped' && $repo->campaign($lc)['dialer_state'] === 'running');
+bot_cfg_stop($repo, $lc, 'test');
+check('detener la campaña detiene todas sus listas', (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_lists WHERE campaign_id=$lc AND dialer_state='running'")->fetchColumn() === 0);
+bot_cfg_list_set_active($repo, $lc, $la, true, 'test');
+bot_cfg_start($repo, $lc, 'test', ['7307']);
+check('iniciar la campaña inicia solo sus listas activas', $repo->listState($lc, $la)['dialer_state'] === 'running' && $repo->listState($lc, $lb)['dialer_state'] === 'running' && $repo->listState($lc, $lcc)['dialer_state'] === 'stopped');
+$repo->touchDialerHeartbeat();
+check('latido del motor', $repo->dialerHeartbeatAge() !== null && $repo->dialerHeartbeatAge() <= 2 && bot_cfg_dashboard($repo, $mon)['server']['engine_alive'] === true);
+bot_cfg_stop($repo, $lc, 'test');
 // Detection-only campaign (test stage): no trunk and no destination is valid, half-configured is not
 $det = bot_cfg_save($repo, null, ['name'=>'Solo detectar', 'active'=>'1', 'call_origin'=>'7307', 'max_channels'=>'1', 'amd_enabled'=>'1']);
 $pdo->prepare("INSERT INTO zynervox_bot_lists (campaign_id,name,active) VALUES (?,'det',1)")->execute([$det]);

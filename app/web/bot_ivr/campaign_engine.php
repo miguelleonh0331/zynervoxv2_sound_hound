@@ -175,7 +175,7 @@ try {
         $lease = fopen((string)($options['lock'] ?? '/run/zynervox-dialer/engine.lock'), 'c');
         if (!$lease || !flock($lease, LOCK_EX | LOCK_NB)) throw new RuntimeException('Motor duplicado o sin directorio de ejecución.');
     }
-    $lastPing = time();
+    $lastPing = time(); $lastBeat = 0;
     do {
         $originate = null;
         if (!$dry) {
@@ -184,6 +184,7 @@ try {
             $events ??= bot_engine_events_connect(\Includes\PbxAmi::load());
             $originate = fn(array $c, array $call, array $headers) => bot_engine_originate($ami, $c, $call, $headers);
         }
+        if (!$dry && time() - $lastBeat >= 5) { $repo->touchDialerHeartbeat(); $lastBeat = time(); }
         $report = bot_engine_tick($repo, $originate, $only, new DateTimeImmutable('now', new DateTimeZone('UTC')));
         if ($dry) echo json_encode(['dry_run'=>true, 'campaigns'=>$report], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)."\n";
         elseif (array_filter($report, fn($r) => !empty($r['launched']) || !empty($r['error']))) echo json_encode($report, JSON_UNESCAPED_UNICODE)."\n";

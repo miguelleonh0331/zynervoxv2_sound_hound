@@ -67,6 +67,63 @@ trait CampaignConfigQueries {
             $this->db->prepare('DELETE FROM zynervox_bot_campaigns WHERE campaign_id=?')->execute([$id]);
         });
     }
+    /** Starts (active lists only) or stops (all lists) every list of a campaign. */
+    public function setCampaignListsState(int $campaignId, string $state, string $actor): void {
+        if (!in_array($state, ['running','stopped'], true)) throw new \RuntimeException('Estado de lista inválido.');
+        $this->db->prepare('UPDATE zynervox_bot_lists SET dialer_state=?,dialer_changed_at=UTC_TIMESTAMP(),dialer_changed_by=? WHERE campaign_id=? AND dialer_state<>? '.($state === 'running' ? 'AND active=1' : ''))->execute([$state,substr($actor,0,80),$campaignId,$state]);
+    }
+    public function setListDialerState(int $campaignId, int $listId, string $state, string $actor): void {
+        if (!in_array($state, ['running','stopped'], true)) throw new \RuntimeException('Estado de lista inválido.');
+        $s = $this->db->prepare('UPDATE zynervox_bot_lists SET dialer_state=?,dialer_changed_at=UTC_TIMESTAMP(),dialer_changed_by=? WHERE list_id=? AND campaign_id=?');
+        $s->execute([$state,substr($actor,0,80),$listId,$campaignId]);
+        $e = $this->db->prepare('SELECT COUNT(*) FROM zynervox_bot_lists WHERE list_id=? AND campaign_id=?');
+        $e->execute([$listId,$campaignId]);
+        if (!(int)$e->fetchColumn()) throw new \RuntimeException('Lista inexistente en la campaña.');
+    }
+    public function setListActive(int $campaignId, int $listId, bool $active): void {
+        $this->setListDialerState($campaignId, $listId, 'stopped', 'sistema'); // validates the pair
+        $this->db->prepare('UPDATE zynervox_bot_lists SET active=? WHERE list_id=? AND campaign_id=?')->execute([$active ? 1 : 0,$listId,$campaignId]);
+    }
+    public function runningListsCount(int $campaignId): int {
+        $s = $this->db->prepare("SELECT COUNT(*) FROM zynervox_bot_lists WHERE campaign_id=? AND active=1 AND dialer_state='running'");
+        $s->execute([$campaignId]);
+        return (int)$s->fetchColumn();
+    }
+    public function listState(int $campaignId, int $listId): array {
+        $s = $this->db->prepare('SELECT list_id,campaign_id,name,active,dialer_state,max_channels FROM zynervox_bot_lists WHERE list_id=? AND campaign_id=?');
+        $s->execute([$listId,$campaignId]);
+        $row = $s->fetch(\PDO::FETCH_ASSOC);
+        if (!$row) throw new \RuntimeException('Lista inexistente en la campaña.');
+        return $row;
+    }
+    public function listEligibleCount(int $campaignId, int $listId, string $order): int {
+        $s = $this->db->prepare(preg_replace('/ORDER BY (RAND\(\)|l\.lead_id (DESC|ASC))\s*$/', '', $this->campaignCandidateSql($order, 'COUNT(*)', '', false, $listId)));
+        $s->execute([$campaignId]);
+        return (int)$s->fetchColumn();
+    }
+    public function touchDialerHeartbeat(): void {
+        $this->db->exec("INSERT INTO zynervox_bot_dialer_settings (name,value) VALUES ('engine_heartbeat',UNIX_TIMESTAMP()) ON DUPLICATE KEY UPDATE value=UNIX_TIMESTAMP()");
+    }
+    public function dialerHeartbeatAge(): ?int {
+        $v = $this->db->query("SELECT UNIX_TIMESTAMP()-value FROM zynervox_bot_dialer_settings WHERE name='engine_heartbeat'")->fetchColumn();
+        return $v === false ? null : (int)$v;
+    }
+    /** One row per list with leads and attempt counters, grouped in SQL (light enough for a 5 s refresh). */
+    public function dashboardRows(): array {
+        $rows = $this->db->query("SELECT c.campaign_id,c.name campaign_name,c.active campaign_active,c.dialer_state campaign_state,c.timezone,c.scheduled,c.start_time,c.end_time,c.lead_order,
+                p.list_id,p.name list_name,p.active list_active,p.dialer_state list_state,p.max_channels
+            FROM zynervox_bot_campaigns c LEFT JOIN zynervox_bot_lists p ON p.campaign_id=c.campaign_id ORDER BY c.campaign_id,p.list_id")->fetchAll(\PDO::FETCH_ASSOC);
+        $leads = []; foreach ($this->db->query("SELECT list_id,COUNT(*) total,SUM(status='NEW') pending,SUM(called_count>0) called FROM zynervox_bot_list GROUP BY list_id")->fetchAll(\PDO::FETCH_ASSOC) as $r) $leads[$r['list_id']] = $r;
+        $att = []; foreach ($this->db->query("SELECT list_id,COUNT(*) calls,
+                SUM(finished_at IS NULL AND end_source<>'RECOVERY' AND status<>'LOST') open_calls,
+                SUM(finished_at IS NOT NULL AND (amd_status='HUMAN' OR (amd_status='' AND disposition IN ('ANSWER_HUMAN','XFER_OK','XFER_FAIL')))) human,
+                SUM(amd_status='MACHINE') machine, SUM(amd_status='NOTSURE') notsure,
+                SUM(disposition='BUSY') unavailable, SUM(disposition='NOANSWER') noanswer,
+                SUM(disposition IN ('FAILED','CONGESTION','CANCELLED')) failed
+            FROM zynervox_bot_call_attempts WHERE list_id IS NOT NULL GROUP BY list_id")->fetchAll(\PDO::FETCH_ASSOC) as $r) $att[$r['list_id']] = $r;
+        foreach ($rows as &$r) { $r['leads'] = $leads[$r['list_id']] ?? null; $r['att'] = $att[$r['list_id']] ?? null; }
+        return $rows;
+    }
     public function setDialerState(int $id, string $state, string $actor): void {
         if (!in_array($state, ['running','stopped'], true)) throw new \RuntimeException('Estado de marcador inválido.');
         $this->campaign($id);
@@ -116,10 +173,10 @@ trait CampaignConfigQueries {
     public function openCallsTotal(): int {
         return (int)$this->db->query('SELECT COUNT(*) FROM zynervox_bot_call_attempts WHERE '.self::OPEN_ATTEMPT)->fetchColumn();
     }
-    private function campaignCandidateSql(string $order, string $select, string $tail): string {
+    private function campaignCandidateSql(string $order, string $select, string $tail, bool $onlyStarted = true, ?int $listId = null): string {
         $orderBy = $order === 'RANDOM' ? 'RAND()' : 'l.lead_id '.($order === 'DOWN' ? 'DESC' : 'ASC');
         $OPEN = "a2.finished_at IS NULL AND a2.end_source<>'RECOVERY' AND a2.status<>'LOST'";
-        return "SELECT $select FROM zynervox_bot_list l JOIN zynervox_bot_lists p ON p.list_id=l.list_id AND p.campaign_id=? AND p.active=1
+        return "SELECT $select FROM zynervox_bot_list l JOIN zynervox_bot_lists p ON p.list_id=l.list_id AND p.campaign_id=? AND p.active=1".($onlyStarted ? " AND p.dialer_state='running'" : '').($listId !== null ? ' AND p.list_id='.$listId : '')."
             LEFT JOIN zynervox_bot_campaign_sip_rules sr ON sr.campaign_id=p.campaign_id AND sr.active=1 AND l.status IN ('B','NA','UNAV','CONG','CANCEL','FAIL')
                 AND sr.sip_code=IF(l.last_sip_code BETWEEN 100 AND 199,487,l.last_sip_code)
             LEFT JOIN zynervox_bot_campaign_amd_actions aa ON aa.campaign_id=p.campaign_id AND aa.action='retry' AND l.status IN ('AA','ANSWER') AND aa.result=(
@@ -128,7 +185,7 @@ trait CampaignConfigQueries {
             WHERE (l.status='NEW'
                 OR (sr.sip_code IS NOT NULL AND l.called_count<sr.max_attempts AND l.last_call_at<=DATE_SUB(UTC_TIMESTAMP(),INTERVAL sr.retry_delay_min MINUTE))
                 OR (aa.result IS NOT NULL AND l.called_count<aa.max_attempts AND l.last_call_at<=DATE_SUB(UTC_TIMESTAMP(),INTERVAL aa.retry_delay_min MINUTE)))
-              AND (SELECT COUNT(*) FROM zynervox_bot_call_attempts a2 WHERE a2.list_id=l.list_id AND $OPEN) < p.max_channels
+              ".($listId === null ? "AND (SELECT COUNT(*) FROM zynervox_bot_call_attempts a2 WHERE a2.list_id=l.list_id AND $OPEN) < p.max_channels" : '')."
               AND NOT EXISTS (SELECT 1 FROM zynervox_bot_call_attempts a WHERE a.lead_id=l.lead_id AND a.finished_at IS NULL AND a.end_source<>'RECOVERY' AND a.status<>'LOST')
             ORDER BY $orderBy $tail";
     }
@@ -139,7 +196,7 @@ trait CampaignConfigQueries {
         return $s->fetchAll(\PDO::FETCH_ASSOC);
     }
     public function countEligibleLeads(int $id, string $order): int {
-        $s = $this->db->prepare(preg_replace('/ORDER BY (RAND\(\)|l\.lead_id (DESC|ASC))\s*$/', '', $this->campaignCandidateSql($order, 'COUNT(*)', '')));
+        $s = $this->db->prepare(preg_replace('/ORDER BY (RAND\(\)|l\.lead_id (DESC|ASC))\s*$/', '', $this->campaignCandidateSql($order, 'COUNT(*)', '', false)));
         $s->execute([$id]);
         return (int)$s->fetchColumn();
     }

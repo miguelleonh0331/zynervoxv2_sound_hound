@@ -169,21 +169,97 @@ function bot_cfg_delete(\ZynervoxQueries\BotIvrRepository $db, int $id, string $
     error_log('ZV2 campaign_deleted '.json_encode(['campaign_id'=>$id, 'actor'=>$actor, 'at'=>gmdate('c')], JSON_UNESCAPED_UNICODE));
 }
 
-/** Marks the campaign as running. The engine (campaign_engine.php) does the dialing; nothing is launched here. */
-function bot_cfg_start(\ZynervoxQueries\BotIvrRepository $db, int $id, string $actor, ?array $origins = null): void {
-    $config = $db->campaignConfig($id);
-    $c = $config['campaign'];
+/** Checks that the campaign can dial (shared by starting a campaign and starting one of its lists). */
+function bot_cfg_check_startable(\ZynervoxQueries\BotIvrRepository $db, array $c, ?array $origins): void {
     if (!(int)$c['active']) throw new RuntimeException('Activa la campaña antes de iniciar.');
     if ($c['call_origin'] === '') throw new RuntimeException('Elige el origen de llamada.');
     require_once __DIR__.'/../includes/Carriers.php';
     $origins ??= array_column(\Includes\Carriers::dialOrigins(), 'dial_prefix');
     if (!in_array($c['call_origin'], $origins, true)) throw new RuntimeException('El origen de llamada ya no está disponible.');
     if (($c['transfer_carrier_id'] === '') !== ($c['transfer_destination'] === '')) throw new RuntimeException('Define el troncal y el destino de la transferencia, o deja ambos vacíos para solo detectar.');
+}
+
+/** Starts the campaign and its ACTIVE lists. The engine (campaign_engine.php) does the dialing; nothing is launched here. */
+function bot_cfg_start(\ZynervoxQueries\BotIvrRepository $db, int $id, string $actor, ?array $origins = null): void {
+    $c = $db->campaignConfig($id)['campaign'];
+    bot_cfg_check_startable($db, $c, $origins);
     if ($db->countEligibleLeads($id, (string)$c['lead_order']) < 1) throw new RuntimeException('No hay leads elegibles en las listas activas de la campaña.');
+    $db->setCampaignListsState($id, 'running', $actor);
     $db->setDialerState($id, 'running', $actor);
 }
+/** Stops the campaign and all its lists; calls in progress finish by themselves. */
 function bot_cfg_stop(\ZynervoxQueries\BotIvrRepository $db, int $id, string $actor): void {
-    $db->setDialerState($id, 'stopped', $actor); // calls in progress finish by themselves
+    $db->setDialerState($id, 'stopped', $actor);
+    $db->setCampaignListsState($id, 'stopped', $actor);
+}
+/** Starts ONE list (it must be active) and puts its campaign in motion if it was not. */
+function bot_cfg_list_start(\ZynervoxQueries\BotIvrRepository $db, int $campaignId, int $listId, string $actor, ?array $origins = null): void {
+    $list = $db->listState($campaignId, $listId);
+    if (!(int)$list['active']) throw new RuntimeException('Activa la lista antes de iniciarla.');
+    $c = $db->campaignConfig($campaignId)['campaign'];
+    bot_cfg_check_startable($db, $c, $origins);
+    if ($db->listEligibleCount($campaignId, $listId, (string)$c['lead_order']) < 1) throw new RuntimeException('No hay contactos por llamar en la lista.');
+    $db->setListDialerState($campaignId, $listId, 'running', $actor);
+    if ($c['dialer_state'] !== 'running') $db->setDialerState($campaignId, 'running', $actor);
+}
+/** Stops ONE list; stopping the last started list stops the campaign. Calls in progress finish by themselves. */
+function bot_cfg_list_stop(\ZynervoxQueries\BotIvrRepository $db, int $campaignId, int $listId, string $actor): void {
+    $db->setListDialerState($campaignId, $listId, 'stopped', $actor);
+    if ($db->runningListsCount($campaignId) < 1) $db->setDialerState($campaignId, 'stopped', $actor);
+}
+/** Enables or disables a list. Disabling stops it (and the campaign when it was the last one running). */
+function bot_cfg_list_set_active(\ZynervoxQueries\BotIvrRepository $db, int $campaignId, int $listId, bool $active, string $actor): void {
+    $db->setListActive($campaignId, $listId, $active);
+    if (!$active) bot_cfg_list_stop($db, $campaignId, $listId, $actor);
+}
+
+/** Why a list is not dialing right now, in plain Spanish ('' = it is dialing or has calls in progress). */
+function bot_cfg_list_reason(array $row, array $c, bool $engineAlive, bool $inWindow, int $eligible, int $serverFree): string {
+    if (!(int)$row['list_active']) return 'Lista inactiva';
+    if ($row['list_state'] !== 'running') return 'Lista detenida';
+    if ($row['campaign_state'] !== 'running' || !(int)$c['campaign_active']) return 'Campaña detenida';
+    if (!$engineAlive) return 'Motor apagado';
+    if (!$inWindow) return 'Fuera de horario';
+    $open = (int)($row['att']['open_calls'] ?? 0);
+    if ($open >= (int)$row['max_channels']) return '';
+    if ($eligible < 1) return 'Sin contactos por llamar';
+    if ($serverFree < 1) return 'Máximo de canales del servidor';
+    return '';
+}
+
+/**
+ * Operational view, one entry per campaign and list (never mixed). Light: grouped SQL plus one eligibility count per started list.
+ * Returns ['server'=>[max_channels,open_calls,engine_alive], 'campaigns'=>[[campaign_id,name,active,started,lists=>[...]]]].
+ */
+function bot_cfg_dashboard(\ZynervoxQueries\BotIvrRepository $db, ?DateTimeInterface $now = null): array {
+    $now ??= new DateTimeImmutable('now', new DateTimeZone('UTC'));
+    $age = $db->dialerHeartbeatAge();
+    $alive = $age !== null && $age <= 15;
+    $max = $db->dialerMaxTotalChannels(); $openTotal = $db->openCallsTotal();
+    $out = ['server'=>['max_channels'=>$max, 'open_calls'=>$openTotal, 'engine_alive'=>$alive], 'campaigns'=>[]];
+    $schedules = [];
+    foreach ($db->dashboardRows() as $r) {
+        $cid = (int)$r['campaign_id'];
+        if (!isset($out['campaigns'][$cid])) {
+            $schedules[$cid] ??= $db->campaignConfig($cid)['schedules'];
+            $out['campaigns'][$cid] = ['campaign_id'=>$cid, 'name'=>$r['campaign_name'], 'active'=>(int)$r['campaign_active'] === 1, 'started'=>$r['campaign_state'] === 'running', 'lists'=>[]];
+        }
+        if ($r['list_id'] === null) continue;
+        $c = ['campaign_active'=>$r['campaign_active'], 'timezone'=>$r['timezone'], 'scheduled'=>$r['scheduled'], 'start_time'=>$r['start_time'], 'end_time'=>$r['end_time']];
+        $inWindow = bot_cfg_in_window($c, $schedules[$cid], $now);
+        $L = $r['leads'] ?? ['total'=>0, 'pending'=>0, 'called'=>0]; $A = $r['att'] ?? [];
+        $started = (int)$r['list_active'] === 1 && $r['list_state'] === 'running';
+        $eligible = ($started && $r['campaign_state'] === 'running') ? $db->listEligibleCount($cid, (int)$r['list_id'], (string)$r['lead_order']) : 0;
+        $total = (int)$L['total'];
+        $out['campaigns'][$cid]['lists'][] = ['list_id'=>(int)$r['list_id'], 'name'=>$r['list_name'], 'active'=>(int)$r['list_active'] === 1, 'started'=>$started, 'channels'=>(int)$r['max_channels'],
+            'open_calls'=>(int)($A['open_calls'] ?? 0),
+            'totals'=>['contacts'=>$total, 'not_called'=>(int)$L['pending'], 'calls'=>(int)($A['calls'] ?? 0), 'human'=>(int)($A['human'] ?? 0), 'machine'=>(int)($A['machine'] ?? 0), 'not_sure'=>(int)($A['notsure'] ?? 0),
+                'unavailable'=>(int)($A['unavailable'] ?? 0), 'no_answer'=>(int)($A['noanswer'] ?? 0), 'failed'=>(int)($A['failed'] ?? 0)],
+            'progress_pct'=>$total > 0 ? (int)round(100 * (int)$L['called'] / $total) : 0,
+            'reason'=>bot_cfg_list_reason($r + ['att'=>$A], $c + ['campaign_active'=>$r['campaign_active']], $alive, $inWindow, $eligible, $max - $openTotal)];
+    }
+    $out['campaigns'] = array_values($out['campaigns']);
+    return $out;
 }
 
 /** True when $now (any timezone) is inside a call window. Schedule rows win; without rows scheduled=1 uses start/end_time, else always open. */
