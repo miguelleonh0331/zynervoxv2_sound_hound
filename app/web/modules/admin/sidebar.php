@@ -55,18 +55,10 @@ function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
         ['key' => 'campaigns',   'href' => 'modules/admin/campaigns.php',    'icon' => 'campaigns',  'label' => 'Campaigns (Campañas)', 'in_scope' => false],
         ['key' => 'dialer_agent','href' => 'modules/admin/dialer_agent.php', 'icon' => 'phones',     'label' => 'Panel de agente',    'in_scope' => false],
         ['key' => 'lists',       'href' => 'modules/admin/lists.php',        'icon' => 'lists',      'label' => 'Lists (Bases de Datos)', 'in_scope' => false],
-        ['key' => 'quality',     'href' => 'modules/admin/quality.php',      'icon' => 'quality',    'label' => 'Quality Control (Calidad)', 'in_scope' => false],
-        ['key' => 'scripts',     'href' => 'modules/admin/scripts.php',      'icon' => 'scripts',    'label' => 'Scripts (Guiones)',  'in_scope' => false],
         ['key' => 'filters',     'href' => 'modules/admin/filters.php',      'icon' => 'filters',    'label' => 'Filters',            'in_scope' => false],
-        ['key' => 'inbound',     'href' => 'modules/admin/inbound.php',      'icon' => 'inbound',    'label' => 'Inbound (Entrantes / DIDs)', 'in_scope' => false],
         ['key' => 'bot_ivr',     'href' => 'bot_ivr/index.php',              'icon' => 'bot',        'label' => 'Bot IVR',            'in_scope' => false],
         ['key' => 'ivr_builder', 'href' => 'ivr_builder/index.php',          'icon' => 'bot',        'label' => 'IVR Builder',        'in_scope' => false],
-        ['key' => 'whatsapp',    'href' => 'modules/admin/whatsapp.php',     'icon' => 'whatsapp',   'label' => 'WhatsApp',           'in_scope' => false],
-        ['key' => 'farm',        'href' => 'modules/admin/farm.php',         'icon' => 'farm',       'label' => 'Farm',               'in_scope' => false],
-        ['key' => 'stt_providers','href' => 'modules/admin/stt_providers.php','icon' => 'stt',       'label' => 'Stt Providers',      'in_scope' => false],
-        ['key' => 'zynerdesk',   'href' => 'modules/admin/zynerdesk.php',    'icon' => 'remote',     'label' => 'Zynerdesk',          'in_scope' => false],
         ['key' => 'usergroups',  'href' => 'modules/admin/usergroups.php',   'icon' => 'usergroups', 'label' => 'User Groups (Grupos)', 'in_scope' => false],
-        ['key' => 'remote',      'href' => 'modules/admin/remoteagents.php', 'icon' => 'remote',     'label' => 'Agents GSM',         'in_scope' => false],
         ['key' => 'phones',      'href' => 'modules/admin/phones.php',       'icon' => 'phones',     'label' => 'Anexos/Teléfonos',   'in_scope' => true],
         ['key' => 'admin',       'href' => 'modules/admin/carriers.php',     'icon' => 'admin',      'label' => 'Troncales SIP',      'in_scope' => true],
         ['key' => 'dialplan',    'href' => 'modules/admin/dialplan.php',     'icon' => 'scripts',    'label' => 'Dialplan',           'in_scope' => true],
@@ -82,13 +74,6 @@ function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
 <aside class="sidebar">
     <div class="sidebar-logo">
         <span><a href="<?php echo $rootPrefix; ?>modules/admin/index.php" class="sidebar-logo-link">SERVEX</a></span>
-    </div>
-
-    <div class="nav-section">
-        <h3 class="nav-title">Herramientas</h3>
-        <a href="<?php echo $rootPrefix; ?>modules/admin/wizard.php" class="nav-item <?php echo $activePage === 'wizard' ? 'active' : ''; ?>" style="text-decoration: line-through; opacity: 0.55;" title="Fuera de alcance por ahora">
-            <?php echo _svgIcon('wizard'); ?> Asistente (Wizard)
-        </a>
     </div>
 
     <div class="nav-section">
