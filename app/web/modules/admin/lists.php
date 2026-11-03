@@ -137,7 +137,7 @@ try {
         <div class="card" style="margin-top: 1rem;">
             <h2>Listado de listas<?php if ($filterCampaign !== null): ?> · campaña #<?php echo (int)$filterCampaign; ?> <a class="btn-action" href="lists.php">Ver todas</a><?php endif; ?></h2>
             <table class="table-compact">
-                <thead><tr><th>ID</th><th>Campaña</th><th>Nombre</th><th>Activa</th><th>Leads</th><th>Origen</th><th>Canales</th><th>Abiertas</th><th></th></tr></thead>
+                <thead><tr><th>ID</th><th>Campaña</th><th>Nombre</th><th>Activa</th><th>Leads</th><th>Origen</th><th>Canales</th><th>Abiertas</th></tr></thead>
                 <tbody>
                 <?php foreach ($lists as $l): $cid = (int)$l['campaign_id']; ?>
                     <tr>
@@ -158,10 +158,9 @@ try {
                             </form>
                         </td>
                         <td><?php echo (int)($l['open_calls'] ?? 0); ?></td>
-                        <td><a class="btn-action" href="../../bot_ivr/list_edit.php?id=<?php echo (int)$l['list_id']; ?>&amp;campaign_id=<?php echo $cid; ?>">Ficha</a></td>
                     </tr>
                 <?php endforeach; ?>
-                <?php if (!$lists): ?><tr><td colspan="9" style="color: var(--text-muted);">Sin listas.</td></tr><?php endif; ?>
+                <?php if (!$lists): ?><tr><td colspan="8" style="color: var(--text-muted);">Sin listas.</td></tr><?php endif; ?>
                 </tbody>
             </table>
         </div>
