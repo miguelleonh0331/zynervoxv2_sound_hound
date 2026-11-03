@@ -23,6 +23,7 @@ $lists = [];
 $origins = [];
 $maxTotal = null;
 $filterCampaign = null;
+$allLists = [];
 $limits = null;
 try {
     $db = bot_ivr_repository();
@@ -39,20 +40,22 @@ try {
             }
             $campaignId = filter_var($_POST['campaign_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
             if ($campaignId === false) throw new RuntimeException('Elige una campaña.');
-            if ($action === 'create_list') {
-                $listId = bot_campaign_list_create($db, $campaignId, (string)($_POST['list_name'] ?? ''), isset($_POST['active']));
-                $_SESSION['lists_message'] = 'Lista #' . $listId . ' creada en la campaña #' . $campaignId . '.';
-            } elseif ($action === 'set_channels') {
+            if ($action === 'set_channels') {
                 $listId = filter_var($_POST['list_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
                 if ($listId === false) throw new RuntimeException('Elige una lista.');
                 bot_cfg_set_list_channels($db, $campaignId, $listId, $_POST['channels'] ?? null);
                 $_SESSION['lists_message'] = 'Lista #' . $listId . ': canales actualizados (surten efecto en el siguiente ciclo, sin parar la campaña).';
-            } elseif ($action === 'upload_list') {
-                $listId = filter_var($_POST['list_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
-                if ($listId === false) throw new RuntimeException('Elige una lista.');
-                bot_list_get($db, $listId, $campaignId);
-                $running = bot_list_call_status($listId, $campaignId);
-                if ($running && in_array($running['state'], ['starting','running','stopping'], true)) throw new RuntimeException('Deten la marcacion antes de modificar la lista.');
+            } elseif ($action === 'load_base') {
+                $listRaw = (string)($_POST['list_id'] ?? '');
+                $isNew = $listRaw === 'new';
+                $listId = $isNew ? null : filter_var($listRaw, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
+                if (!$isNew && !$listId) throw new RuntimeException('Elige una lista o «Nueva lista».');
+                if ($isNew) bot_campaign_name((string)($_POST['list_name'] ?? ''));
+                else {
+                    bot_list_get($db, $listId, $campaignId);
+                    $running = bot_list_call_status($listId, $campaignId);
+                    if ($running && in_array($running['state'], ['starting','running','stopping'], true)) throw new RuntimeException('Deten la marcacion antes de modificar la lista.');
+                }
                 $upload = $_FILES['clients_txt'] ?? [];
                 if (($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) throw new RuntimeException('Selecciona un archivo TXT/CSV dentro del límite de subida de esta instalación.');
                 if (!in_array(strtolower(pathinfo((string)$upload['name'], PATHINFO_EXTENSION)), ['txt','csv'], true)) throw new RuntimeException('El archivo debe tener extensión .txt o .csv.');
@@ -60,8 +63,11 @@ try {
                 if ((int)$upload['size'] > BOT_LIST_UPLOAD_BYTES) throw new RuntimeException('El archivo supera 10 MB.');
                 $contents = file_get_contents((string)$upload['tmp_name']);
                 if ($contents === false) throw new RuntimeException('No se pudo leer el archivo.');
-                $result = bot_list_import($db, $listId, $campaignId, bot_list_parse_txt($contents));
-                $summary = 'Lista #' . $listId . ' · base reemplazada. Importados: ' . $result['saved'] . '. Duplicados: ' . $result['duplicates'] . '. Rechazados: ' . $result['rejected'] . '.';
+                $parsed = bot_list_parse_txt($contents);
+                if (!$parsed['rows']) throw new RuntimeException('El archivo no contiene contactos válidos.' . ($parsed['errors'] ? ' ' . implode(' · ', $parsed['errors']) : ''));
+                if ($isNew) $listId = bot_campaign_list_create($db, $campaignId, (string)$_POST['list_name'], true);
+                $result = bot_list_import($db, $listId, $campaignId, $parsed);
+                $summary = 'Lista #' . $listId . ($isNew ? ' creada' : ' · base reemplazada') . '. Importados: ' . $result['saved'] . '. Duplicados: ' . $result['duplicates'] . '. Rechazados: ' . $result['rejected'] . '.';
                 if ($result['errors']) $summary .= ' Motivos: ' . implode(' · ', $result['errors']);
                 $_SESSION['lists_message'] = $summary;
             } else {
@@ -75,6 +81,7 @@ try {
         $campaigns[(int)$campaign['campaign_id']] = $campaign;
     }
     $lists = bot_cfg_lists_channels($db);
+    $allLists = $lists;
     $filterCampaign = filter_var($_GET['campaign_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]) ?: null;
     if ($filterCampaign !== null) $lists = array_values(array_filter($lists, fn($l) => (int)$l['campaign_id'] === $filterCampaign));
     try { $limits = bot_cfg_server_limits($db); $maxTotal = $limits['max_channels_server']; } catch (Throwable $e) { $error = $error ?: 'No se pudo leer el máximo de canales del servidor: ' . $e->getMessage(); }
@@ -105,7 +112,7 @@ try {
         <header class="top-bar" style="margin-bottom: 1rem;">
             <div>
                 <h1 style="font-size: 1.25rem; font-weight: 700;">Listas</h1>
-                <p style="color: var(--text-muted); font-size: 0.8125rem;">Crear listas y cargar la base de contactos</p>
+                <p style="color: var(--text-muted); font-size: 0.8125rem;">Cargar la base de contactos en una lista nueva o existente</p>
             </div>
         </header>
 
@@ -159,45 +166,52 @@ try {
             </table>
         </div>
 
-        <form method="POST" action="lists.php" class="card">
-            <h2>Crear lista</h2>
+        <form method="POST" action="lists.php" enctype="multipart/form-data" class="card" id="load-form">
+            <h2>Cargar base</h2>
             <input type="hidden" name="csrf" value="<?php echo h($_SESSION['lists_csrf']); ?>">
-            <input type="hidden" name="action" value="create_list">
+            <input type="hidden" name="action" value="load_base">
             <div class="cfg-grid">
                 <label>Campaña
-                    <select name="campaign_id" required><option value="">— elegir —</option>
-                    <?php foreach ($campaigns as $cid => $campaign): ?><option value="<?php echo $cid; ?>">#<?php echo $cid; ?> <?php echo h($campaign['name']); ?></option><?php endforeach; ?>
+                    <select name="campaign_id" id="lb_campaign" required><option value="">— elegir —</option>
+                    <?php foreach ($campaigns as $cid => $campaign): ?><option value="<?php echo $cid; ?>"<?php echo $filterCampaign === $cid ? ' selected' : ''; ?>>#<?php echo $cid; ?> <?php echo h($campaign['name']); ?></option><?php endforeach; ?>
                     </select></label>
-                <label>Nombre <input name="list_name" maxlength="120" required></label>
-                <label>Activa <select name="active"><option value="1">Sí</option><option value="">No</option></select></label>
-                <button type="submit" class="btn-primary">Crear lista</button>
-            </div>
-        </form>
-
-        <form method="POST" action="lists.php" enctype="multipart/form-data" class="card">
-            <h2>Cargar base de contactos</h2>
-            <input type="hidden" name="csrf" value="<?php echo h($_SESSION['lists_csrf']); ?>">
-            <input type="hidden" name="action" value="upload_list">
-            <input type="hidden" name="campaign_id" id="up_campaign" value="">
-            <div class="cfg-grid">
                 <label>Lista
-                    <select name="list_id" id="up_list" required><option value="">— elegir —</option>
-                    <?php foreach ($lists as $l): ?><option value="<?php echo (int)$l['list_id']; ?>" data-campaign="<?php echo (int)$l['campaign_id']; ?>">#<?php echo (int)$l['list_id']; ?> · <?php echo h($l['name']); ?> (campaña #<?php echo (int)$l['campaign_id']; ?>)</option><?php endforeach; ?>
+                    <select name="list_id" id="lb_list" required>
+                        <option value="">— elegir —</option>
+                        <option value="new">Nueva lista…</option>
+                        <?php foreach ($allLists as $l): ?><option value="<?php echo (int)$l['list_id']; ?>" data-campaign="<?php echo (int)$l['campaign_id']; ?>" data-name="<?php echo h($l['name']); ?>" data-leads="<?php echo (int)$l['leads_count']; ?>">#<?php echo (int)$l['list_id']; ?> · <?php echo h($l['name']); ?></option><?php endforeach; ?>
                     </select></label>
+                <label id="lb_name_wrap" hidden>Nombre de la lista nueva <input name="list_name" id="lb_name" maxlength="120"></label>
                 <label>Archivo (TXT/CSV) <input type="file" name="clients_txt" accept=".txt,.csv,text/plain,text/csv" required></label>
-                <button type="submit" class="btn-primary">Reemplazar base</button>
+                <button type="submit" class="btn-primary">Cargar base</button>
             </div>
             <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 0.75rem;">
                 Primera línea: cabecera de 2 a 10 columnas separadas por comas; <code>numero</code> es obligatoria y el resto se conserva como variables del contacto
                 (ej. <code>numero,nombre,monto</code>). UTF-8, hasta 50000 registros y 10 MB (límite de esta instalación: <?php echo h(ini_get('upload_max_filesize')); ?>).
-                <strong>La carga reemplaza todos los contactos de la lista.</strong> Se informan importados, duplicados y rechazados con sus motivos.
+                <strong>En una lista existente la carga reemplaza todos sus contactos.</strong> Se informan importados, duplicados y rechazados con sus motivos.
             </p>
         </form>
         <script>
-        document.getElementById('up_list').addEventListener('change', function () {
-            var o = this.options[this.selectedIndex];
-            document.getElementById('up_campaign').value = o ? (o.getAttribute('data-campaign') || '') : '';
-        });
+        (function () {
+            var camp = document.getElementById('lb_campaign'), list = document.getElementById('lb_list');
+            var wrap = document.getElementById('lb_name_wrap'), name = document.getElementById('lb_name');
+            function sync() {
+                Array.prototype.forEach.call(list.options, function (o) {
+                    var c = o.getAttribute('data-campaign');
+                    var show = !c || c === camp.value;
+                    o.hidden = !show; o.disabled = !show;
+                });
+                var cur = list.options[list.selectedIndex];
+                if (cur && cur.disabled) list.value = '';
+                var isNew = list.value === 'new';
+                wrap.hidden = !isNew; name.required = isNew;
+            }
+            camp.addEventListener('change', sync); list.addEventListener('change', sync); sync();
+            document.getElementById('load-form').addEventListener('submit', function (e) {
+                var o = list.options[list.selectedIndex];
+                if (o && o.getAttribute('data-leads') !== null && !confirm('Se borrarán los ' + o.getAttribute('data-leads') + ' contactos actuales de la lista «' + o.getAttribute('data-name') + '» (#' + o.value + ') y se cargará el archivo nuevo. ¿Continuar?')) e.preventDefault();
+            });
+        })();
         </script>
     </main>
 </body>
