@@ -38,13 +38,11 @@ function dash_server(): array {
         'disk_pct' => $total ? (int)round(100 * ($total - $free) / $total) : null, 'disk_used' => $total ? $total - $free : null, 'disk_total' => $total ?: null,
     ];
 }
-/** Procesos vivos por nombre (lee /proc, no ejecuta nada). null = no se pudo comprobar. */
-function dash_processes(): ?array {
-    $names = [];
-    $dirs = @glob('/proc/[0-9]*', GLOB_ONLYDIR);
-    if (!$dirs) return null;
-    foreach ($dirs as $d) { $c = @file_get_contents($d . '/comm'); if ($c !== false) $names[trim($c)] = true; }
-    return $names ?: null;
+/** Servicio local escuchando en un puerto: true/false, o null si no se pudo comprobar (p. ej. bloqueado por SELinux). Bajo php-fpm /proc no deja ver otros servicios. */
+function dash_port(int $port): ?bool {
+    $s = @stream_socket_client('tcp://127.0.0.1:' . $port, $errno, $err, 1);
+    if ($s) { fclose($s); return true; }
+    return $errno === 111 ? false : null;
 }
 
 try {
@@ -71,11 +69,10 @@ try {
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') dash_json(405, ['ok' => false, 'error' => 'Método no permitido.']);
     $out = ['ok' => true, 'at' => gmdate('c'), 'server' => dash_server(), 'services' => null, 'dashboard' => null, 'dashboard_error' => ''];
     try { $out['dashboard'] = bot_cfg_dashboard($db); } catch (Throwable $e) { $out['dashboard_error'] = 'No se pudo leer el estado de las campañas.'; }
-    $p = dash_processes();
     $out['services'] = [
-        ['key' => 'asterisk', 'label' => 'Asterisk', 'on' => $p === null ? null : isset($p['asterisk'])],
-        ['key' => 'mysql', 'label' => 'MySQL', 'on' => $p === null ? null : (isset($p['mariadbd']) || isset($p['mysqld']))],
-        ['key' => 'apache', 'label' => 'Apache', 'on' => $p === null ? null : isset($p['httpd'])],
+        ['key' => 'asterisk', 'label' => 'Asterisk', 'on' => dash_port(5038)],
+        ['key' => 'mysql', 'label' => 'MySQL', 'on' => $out['dashboard'] ? true : dash_port(3306)],
+        ['key' => 'apache', 'label' => 'Apache', 'on' => true],
         ['key' => 'dialer', 'label' => 'Motor de marcación', 'on' => $out['dashboard'] ? (bool)$out['dashboard']['server']['engine_alive'] : null],
     ];
     dash_json(200, $out);
