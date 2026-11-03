@@ -77,7 +77,7 @@ function bot_cfg_schedules($input): array {
 
 /** $input: name, active, call_origin, max_channels, amd_enabled, transfer_carrier_id, transfer_destination, timezone, lead_order, dial_timeout, campaign_cid, headers[], retry_rules[], schedules[]. Returns the campaign id. */
 function bot_cfg_save(\ZynervoxQueries\BotIvrRepository $db, ?int $id, array $input): int {
-    $old = $id === null ? ['lead_order'=>'DOWN','dial_timeout'=>60,'campaign_cid'=>''] : $db->campaign($id);
+    $old = $id === null ? ['lead_order'=>'DOWN','dial_timeout'=>60,'campaign_cid'=>'','max_channels'=>1] : $db->campaign($id);
     $origin = trim((string)($input['call_origin'] ?? ''));
     if (!preg_match('/^[0-9]{0,20}$/D', $origin)) throw new RuntimeException('Origen de llamada inválido.');
     $carrier = trim((string)($input['transfer_carrier_id'] ?? ''));
@@ -91,7 +91,7 @@ function bot_cfg_save(\ZynervoxQueries\BotIvrRepository $db, ?int $id, array $in
     $campaign = ['name'=>bot_campaign_name((string)($input['name'] ?? '')),
         'active'=>(string)($input['active'] ?? '') === '1' ? 1 : 0,
         'call_origin'=>$origin,
-        'max_channels'=>bot_cfg_int($input['max_channels'] ?? null, 1, 500, 'Canales'),
+        'max_channels'=>bot_cfg_int($input['max_channels'] ?? $old['max_channels'], 1, 500, 'Canales'), // obsolete: the engine uses the list channels
         'amd_enabled'=>(string)($input['amd_enabled'] ?? '') === '1' ? 1 : 0,
         'transfer_carrier_id'=>$carrier, 'transfer_destination'=>$destination, 'timezone'=>$timezone, 'lead_order'=>$order,
         'dial_timeout'=>bot_cfg_int($input['dial_timeout'] ?? $old['dial_timeout'], 1, 255, 'Tiempo de llamada'),
@@ -103,6 +103,13 @@ function bot_cfg_save(\ZynervoxQueries\BotIvrRepository $db, ?int $id, array $in
 function bot_cfg_set_list_channels(\ZynervoxQueries\BotIvrRepository $db, int $campaignId, int $listId, $channels): void {
     $max = $db->dialerMaxTotalChannels();
     $db->setListChannels($campaignId, $listId, bot_cfg_int($channels, 1, $max, 'Canales de la lista (máximo del servidor '.$max.')'));
+}
+/** All lists with max_channels and open_calls (live). */
+function bot_cfg_lists_channels(\ZynervoxQueries\BotIvrRepository $db): array { return $db->listsChannels(); }
+/** max_channels_server: cap for all open calls; open_calls: open right now; lists_sum: sum of the active lists' limits (informative, may exceed the cap: the engine never opens more than the cap). */
+function bot_cfg_server_limits(\ZynervoxQueries\BotIvrRepository $db): array {
+    return ['max_channels_server'=>$db->dialerMaxTotalChannels(), 'open_calls'=>$db->openCallsTotal(),
+        'lists_sum'=>array_sum(array_map(fn($l) => (int)$l['active'] ? (int)$l['max_channels'] : 0, $db->listsChannels()))];
 }
 function bot_cfg_get_max_total_channels(\ZynervoxQueries\BotIvrRepository $db): int { return $db->dialerMaxTotalChannels(); }
 function bot_cfg_set_max_total_channels(\ZynervoxQueries\BotIvrRepository $db, $channels): void {

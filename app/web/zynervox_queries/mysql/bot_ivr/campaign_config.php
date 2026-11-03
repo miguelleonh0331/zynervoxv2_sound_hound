@@ -87,6 +87,13 @@ trait CampaignConfigQueries {
         $e->execute([$listId,$campaignId]);
         if (!(int)$e->fetchColumn()) throw new \RuntimeException('Lista inexistente en la campaña.');
     }
+    /** Every list with its channel limit and the calls open right now. */
+    public function listsChannels(): array {
+        return $this->db->query('SELECT p.list_id,p.campaign_id,p.name,p.active,p.dial_prefix,p.max_channels,
+            (SELECT COUNT(*) FROM zynervox_bot_list l WHERE l.list_id=p.list_id) leads_count,
+            (SELECT COUNT(*) FROM zynervox_bot_call_attempts a WHERE a.list_id=p.list_id AND a.'.str_replace(' AND ',' AND a.',self::OPEN_ATTEMPT).') open_calls
+            FROM zynervox_bot_lists p ORDER BY p.campaign_id,p.list_id')->fetchAll(\PDO::FETCH_ASSOC);
+    }
     public function openCallsTotal(): int {
         return (int)$this->db->query('SELECT COUNT(*) FROM zynervox_bot_call_attempts WHERE '.self::OPEN_ATTEMPT)->fetchColumn();
     }

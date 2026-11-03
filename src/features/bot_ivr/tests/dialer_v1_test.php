@@ -111,6 +111,9 @@ check('lista con 1 canal y 1 llamada abierta: no lanza más', ($r['launched'] ??
 bot_cfg_set_list_channels($repo, $det, $detList, 2);
 $r = bot_engine_tick($repo, $orig, $det, $mon)[0];
 check('subir los canales de la lista en caliente lanza la segunda', ($r['launched'] ?? 0) === 1 && count($calls) === 2);
+$lim = bot_cfg_server_limits($repo);
+check('límites del servidor y listado de listas', $lim['max_channels_server'] === 10 && $lim['open_calls'] >= 2 && array_filter(bot_cfg_lists_channels($repo), fn($l) => (int)$l['list_id'] === $detList && (int)$l['open_calls'] === 2 && (int)$l['max_channels'] === 2));
+check('campaña sin max_channels en la entrada es válida', bot_cfg_save($repo, null, ['name'=>'Sin canales', 'active'=>'1', 'call_origin'=>'7307']) > 0);
 $repo->setDialerState($det, 'stopped', 'test');
 $repo->saveCampaignConfig($det, ['name'=>'Solo detectar','active'=>1,'call_origin'=>'7307','max_channels'=>1,'amd_enabled'=>1,'transfer_carrier_id'=>'T','transfer_destination'=>'','timezone'=>'America/Lima','lead_order'=>'DOWN','dial_timeout'=>60,'campaign_cid'=>''], [], [], []);
 check('troncal sin destino no inicia', str_contains(throws(fn() => bot_cfg_start($repo, $det, 'test', ['7307'])), 'ambos vacíos'));
