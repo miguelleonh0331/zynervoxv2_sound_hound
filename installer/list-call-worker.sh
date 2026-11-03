@@ -6,6 +6,7 @@ mysql zynervox_core < "$source_root/src/features/bot_ivr/models/012-dial-runs.sq
 mysql zynervox_core < "$source_root/src/features/bot_ivr/models/014-dialer-v1.sql"
 mysql zynervox_core < "$source_root/src/features/bot_ivr/models/015-dialer-channels.sql"
 mysql zynervox_core < "$source_root/src/features/bot_ivr/models/016-dialer-amd-sip-rules.sql"
+mysql zynervox_core < "$source_root/src/features/bot_ivr/models/017-dialer-list-state.sql"
 mysql <<'SQL'
 GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_dial_runs TO 'zynervoxv2_bot_ivr'@'localhost';
 GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_dial_runs TO 'zynervoxv2_bot_ivr'@'127.0.0.1';
