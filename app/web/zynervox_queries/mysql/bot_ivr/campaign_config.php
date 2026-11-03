@@ -118,11 +118,56 @@ trait CampaignConfigQueries {
                 SUM(finished_at IS NULL AND end_source<>'RECOVERY' AND status<>'LOST') open_calls,
                 SUM(finished_at IS NOT NULL AND (amd_status='HUMAN' OR (amd_status='' AND disposition IN ('ANSWER_HUMAN','XFER_OK','XFER_FAIL')))) human,
                 SUM(amd_status='MACHINE') machine, SUM(amd_status='NOTSURE') notsure,
+                SUM(amd_status IN ('HUMAN','MACHINE','NOTSURE') OR disposition IN ('ANSWER_HUMAN','XFER_OK','XFER_FAIL')) answered,
+                SUM(started_at>=UTC_TIMESTAMP()-INTERVAL 15 MINUTE) calls15,
                 SUM(disposition='BUSY') unavailable, SUM(disposition='NOANSWER') noanswer,
                 SUM(disposition IN ('FAILED','CONGESTION','CANCELLED')) failed
             FROM zynervox_bot_call_attempts WHERE list_id IS NOT NULL GROUP BY list_id")->fetchAll(\PDO::FETCH_ASSOC) as $r) $att[$r['list_id']] = $r;
         foreach ($rows as &$r) { $r['leads'] = $leads[$r['list_id']] ?? null; $r['att'] = $att[$r['list_id']] ?? null; }
         return $rows;
+    }
+    private const REPORT_ANSWERED = "(a.amd_status IN ('HUMAN','MACHINE','NOTSURE') OR a.disposition IN ('ANSWER_HUMAN','XFER_OK','XFER_FAIL'))";
+    private const REPORT_HUMAN = "(a.amd_status='HUMAN' OR (a.amd_status='' AND a.disposition IN ('ANSWER_HUMAN','XFER_OK','XFER_FAIL')))";
+    /** Normalized filters: from_utc/to_utc (Y-m-d H:i:s, nullable), campaign_id/list_id (nullable), include_test, include_invalid_amd, invalid_before_utc, offset_seconds. */
+    private function reportWhere(array $f): array {
+        $w = ['a.finished_at IS NOT NULL']; $p = [];
+        if ($f['from_utc'] !== null) { $w[] = 'a.started_at>=?'; $p[] = $f['from_utc']; }
+        if ($f['to_utc'] !== null) { $w[] = 'a.started_at<?'; $p[] = $f['to_utc']; }
+        if ($f['campaign_id'] !== null) { $w[] = 'a.campaign_id=?'; $p[] = $f['campaign_id']; }
+        if ($f['list_id'] !== null) { $w[] = 'a.list_id=?'; $p[] = $f['list_id']; }
+        if (!$f['include_test']) $w[] = "a.call_id NOT LIKE 'TEST-%'";
+        return [implode(' AND ', $w), $p];
+    }
+    private function reportCounters(array $f): string {
+        $v = $f['include_invalid_amd'] ? '1=1' : "a.started_at>='".$f['invalid_before_utc']."'";
+        $A = self::REPORT_ANSWERED; $H = self::REPORT_HUMAN;
+        return "COUNT(*) calls, COALESCE(SUM($A),0) answered, COALESCE(SUM($H AND $v),0) human, COALESCE(SUM(a.amd_status='MACHINE' AND $v),0) machine, COALESCE(SUM(a.amd_status='NOTSURE' AND $v),0) not_sure,
+            COALESCE(SUM(a.disposition='BUSY'),0) unavailable, COALESCE(SUM(a.disposition='NOANSWER'),0) no_answer, COALESCE(SUM(a.disposition IN ('FAILED','CONGESTION','CANCELLED')),0) failed,
+            COALESCE(SUM(a.disposition='XFER_OK'),0) xfer_ok, COALESCE(SUM(a.disposition='XFER_FAIL'),0) xfer_fail";
+    }
+    public function reportAggregates(array $f): array {
+        [$where, $params] = $this->reportWhere($f);
+        $off = (int)$f['offset_seconds']; $C = $this->reportCounters($f);
+        $from = "FROM zynervox_bot_call_attempts a LEFT JOIN zynervox_bot_lists p ON p.list_id=a.list_id LEFT JOIN zynervox_bot_campaigns c ON c.campaign_id=a.campaign_id WHERE $where";
+        $q = function(string $sql, array $extra = []) use($params) { $s = $this->db->prepare($sql); $s->execute(array_merge($params, $extra)); return $s->fetchAll(\PDO::FETCH_ASSOC); };
+        $out = [];
+        $out['kpi'] = $q("SELECT $C, COALESCE(ROUND(AVG(a.billsec)),0) avg_billsec, MIN(DATE_ADD(a.started_at, INTERVAL $off SECOND)) first_call, MAX(DATE_ADD(a.started_at, INTERVAL $off SECOND)) last_call $from")[0];
+        $out['by_hour'] = $q("SELECT DATE_FORMAT(DATE_ADD(a.started_at, INTERVAL $off SECOND), '%Y-%m-%d %H:00') hour_local, $C $from GROUP BY hour_local ORDER BY hour_local");
+        $out['by_list'] = $q("SELECT a.campaign_id, COALESCE(c.name,'campaña eliminada') campaign, a.list_id, COALESCE(p.name,'lista eliminada') list, p.list_id IS NULL list_deleted, $C $from GROUP BY a.campaign_id, c.name, a.list_id, p.name, p.list_id ORDER BY a.campaign_id, a.list_id");
+        $valid = $f['include_invalid_amd'] ? '' : " AND a.started_at>='".$f['invalid_before_utc']."'";
+        $out['by_amd'] = $q("SELECT IF(a.amd_cause IN ('TOOLONG','LONGGREETING','INITIALSILENCE','MAXWORDS','MAXWORDLENGTH'), a.amd_cause, a.amd_status) result, a.amd_status, a.amd_cause, COUNT(*) calls $from AND a.amd_status<>''$valid GROUP BY result, a.amd_status, a.amd_cause ORDER BY calls DESC");
+        $out['by_cause'] = $q("SELECT a.sip_cause, a.hangup_cause q850, a.disposition, COUNT(*) calls $from GROUP BY a.sip_cause, a.hangup_cause, a.disposition ORDER BY calls DESC");
+        return $out;
+    }
+    public function reportDetail(array $f, int $limit, int $offset): array {
+        [$where, $params] = $this->reportWhere($f); $off = (int)$f['offset_seconds'];
+        $from = "FROM zynervox_bot_call_attempts a LEFT JOIN zynervox_bot_lists p ON p.list_id=a.list_id LEFT JOIN zynervox_bot_campaigns c ON c.campaign_id=a.campaign_id WHERE $where";
+        $t = $this->db->prepare("SELECT COUNT(*) $from"); $t->execute($params);
+        $s = $this->db->prepare("SELECT a.attempt_id, DATE_FORMAT(DATE_ADD(a.started_at, INTERVAL $off SECOND), '%Y-%m-%d %H:%i:%s') started_at_local, a.started_at>='".$f['invalid_before_utc']."' amd_valid,
+                a.campaign_id, COALESCE(c.name,'campaña eliminada') campaign, a.list_id, COALESCE(p.name,'lista eliminada') list, a.lead_id, a.phone, a.status, a.disposition, a.amd_status, a.amd_cause,
+                a.sip_cause, a.hangup_cause q850, a.billsec, a.cause_source $from ORDER BY a.attempt_id DESC LIMIT ".(int)$limit." OFFSET ".(int)$offset);
+        $s->execute($params);
+        return ['total'=>(int)$t->fetchColumn(), 'rows'=>$s->fetchAll(\PDO::FETCH_ASSOC)];
     }
     public function setDialerState(int $id, string $state, string $actor): void {
         if (!in_array($state, ['running','stopped'], true)) throw new \RuntimeException('Estado de marcador inválido.');

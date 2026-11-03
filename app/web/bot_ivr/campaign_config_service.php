@@ -231,13 +231,32 @@ function bot_cfg_list_reason(array $row, array $c, bool $engineAlive, bool $inWi
  * Operational view, one entry per campaign and list (never mixed). Light: grouped SQL plus one eligibility count per started list.
  * Returns ['server'=>[max_channels,open_calls,engine_alive], 'campaigns'=>[[campaign_id,name,active,started,lists=>[...]]]].
  */
+/**
+ * PROVISIONAL thresholds (the AMD is not calibrated yet): temperature is read from the contact rate (answered / calls).
+ * Chosen from the real tests of 03/11/2026, where lists reached about 40 % contact with 20-30 % unavailable. Change them here only.
+ */
+const BOT_TEMP_MIN_CALLS = 20;     // fewer calls: "Sin datos"
+const BOT_TEMP_HOT_CONTACT = 35;   // contact % >= this: Caliente -> Seguir
+const BOT_TEMP_WARM_CONTACT = 20;  // contact % >= this: Tibia -> Vigilar; below: Fría -> Revisar lista
+
+/** Rates in % of calls and the 15-minute pace, plus the temperature and its recommendation. */
+function bot_cfg_list_temperature(array $totals, int $calls15): array {
+    $calls = (int)$totals['calls'];
+    $pct = fn(int $n) => $calls > 0 ? round(100 * $n / $calls, 1) : 0.0;
+    $rates = ['contact'=>$pct((int)$totals['answered']), 'human'=>$pct((int)$totals['human']), 'machine'=>$pct((int)$totals['machine']),
+        'unavailable'=>$pct((int)$totals['unavailable']), 'no_answer'=>$pct((int)$totals['no_answer'])];
+    [$temp, $advice] = $calls < BOT_TEMP_MIN_CALLS ? ['Sin datos', 'Seguir'] : ($rates['contact'] >= BOT_TEMP_HOT_CONTACT ? ['Caliente', 'Seguir'] : ($rates['contact'] >= BOT_TEMP_WARM_CONTACT ? ['Tibia', 'Vigilar'] : ['Fría', 'Revisar lista']));
+    return ['rates_pct'=>$rates, 'pace'=>['calls_last_15min'=>$calls15, 'calls_per_min'=>round($calls15 / 15, 2)], 'temperature'=>$temp, 'recommendation'=>$advice,
+        'thresholds_provisional'=>true, 'thresholds'=>['min_calls'=>BOT_TEMP_MIN_CALLS, 'hot_contact_pct'=>BOT_TEMP_HOT_CONTACT, 'warm_contact_pct'=>BOT_TEMP_WARM_CONTACT]];
+}
+
 function bot_cfg_dashboard(\ZynervoxQueries\BotIvrRepository $db, ?DateTimeInterface $now = null): array {
     $now ??= new DateTimeImmutable('now', new DateTimeZone('UTC'));
     $age = $db->dialerHeartbeatAge();
     $alive = $age !== null && $age <= 15;
     $max = $db->dialerMaxTotalChannels(); $openTotal = $db->openCallsTotal();
     $out = ['server'=>['max_channels'=>$max, 'open_calls'=>$openTotal, 'engine_alive'=>$alive], 'campaigns'=>[]];
-    $schedules = [];
+    $schedules = []; $calls15 = [];
     foreach ($db->dashboardRows() as $r) {
         $cid = (int)$r['campaign_id'];
         if (!isset($out['campaigns'][$cid])) {
@@ -250,14 +269,17 @@ function bot_cfg_dashboard(\ZynervoxQueries\BotIvrRepository $db, ?DateTimeInter
         $L = $r['leads'] ?? ['total'=>0, 'pending'=>0, 'called'=>0]; $A = $r['att'] ?? [];
         $started = (int)$r['list_active'] === 1 && $r['list_state'] === 'running';
         $eligible = ($started && $r['campaign_state'] === 'running') ? $db->listEligibleCount($cid, (int)$r['list_id'], (string)$r['lead_order']) : 0;
-        $total = (int)$L['total'];
+        $total = (int)$L['total']; $calls15[(int)$r['list_id']] = (int)($A['calls15'] ?? 0);
         $out['campaigns'][$cid]['lists'][] = ['list_id'=>(int)$r['list_id'], 'name'=>$r['list_name'], 'active'=>(int)$r['list_active'] === 1, 'started'=>$started, 'channels'=>(int)$r['max_channels'],
             'open_calls'=>(int)($A['open_calls'] ?? 0),
-            'totals'=>['contacts'=>$total, 'not_called'=>(int)$L['pending'], 'calls'=>(int)($A['calls'] ?? 0), 'human'=>(int)($A['human'] ?? 0), 'machine'=>(int)($A['machine'] ?? 0), 'not_sure'=>(int)($A['notsure'] ?? 0),
+            'totals'=>['contacts'=>$total, 'not_called'=>(int)$L['pending'], 'calls'=>(int)($A['calls'] ?? 0), 'answered'=>(int)($A['answered'] ?? 0), 'human'=>(int)($A['human'] ?? 0), 'machine'=>(int)($A['machine'] ?? 0), 'not_sure'=>(int)($A['notsure'] ?? 0),
                 'unavailable'=>(int)($A['unavailable'] ?? 0), 'no_answer'=>(int)($A['noanswer'] ?? 0), 'failed'=>(int)($A['failed'] ?? 0)],
+            'insight'=>null,
             'progress_pct'=>$total > 0 ? (int)round(100 * (int)$L['called'] / $total) : 0,
             'reason'=>bot_cfg_list_reason($r + ['att'=>$A], $c + ['campaign_active'=>$r['campaign_active']], $alive, $inWindow, $eligible, $max - $openTotal)];
     }
+    foreach ($out['campaigns'] as &$camp) foreach ($camp['lists'] as &$l) $l['insight'] = bot_cfg_list_temperature($l['totals'], $calls15[$l['list_id']] ?? 0);
+    unset($camp, $l);
     $out['campaigns'] = array_values($out['campaigns']);
     return $out;
 }
@@ -289,4 +311,62 @@ function bot_cfg_resolve_headers(array $headers, array $lead): array {
     try { ivr_forwarding_config(['forwarding'=>['mode'=>'trunk', 'endpoint'=>'x', 'number'=>'1', 'headers'=>$out]]); }
     catch (InvalidArgumentException $e) { throw new RuntimeException('Valor de header no permitido para el lead.'); }
     return $out;
+}
+
+const BOT_AMD_VALID_FROM_LIMA = '2026-11-03 15:31:54'; // audio of the provider reached Asterisk from here on; earlier AMD results are not valid
+
+/** Local time (Lima, no DST) to UTC string, or null. 'Y-m-d' as an upper bound means the end of that day. */
+function bot_cfg_report_time($value, bool $isEnd, DateTimeZone $tz): ?string {
+    $value = is_string($value) ? trim($value) : '';
+    if ($value === '') return null;
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}(:\d{2})?)?$/D', $value)) throw new RuntimeException('Fecha inválida: usa AAAA-MM-DD o AAAA-MM-DD HH:MM.');
+    $dt = new DateTimeImmutable($value, $tz);
+    if ($isEnd && strlen($value) === 10) $dt = $dt->modify('+1 day');
+    return $dt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+}
+/** Normalizes the report filters: from, to (America/Lima), campaign_id, list_id, include_test, include_invalid_amd. */
+function bot_cfg_report_filters(array $in): array {
+    $tz = new DateTimeZone('America/Lima');
+    $id = fn($v, string $label) => ($v === null || $v === '' || $v === 0 || $v === '0') ? null : bot_cfg_int($v, 1, PHP_INT_MAX, $label);
+    $from = bot_cfg_report_time($in['from'] ?? null, false, $tz); $to = bot_cfg_report_time($in['to'] ?? null, true, $tz);
+    if ($from !== null && $to !== null && $from >= $to) throw new RuntimeException('El rango de fechas es inválido: "desde" debe ser anterior a "hasta".');
+    return ['from_utc'=>$from, 'to_utc'=>$to, 'campaign_id'=>$id($in['campaign_id'] ?? null, 'Campaña'), 'list_id'=>$id($in['list_id'] ?? null, 'Lista'),
+        'include_test'=>!empty($in['include_test']), 'include_invalid_amd'=>!empty($in['include_invalid_amd']),
+        'invalid_before_utc'=>(new DateTimeImmutable(BOT_AMD_VALID_FROM_LIMA, $tz))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s'),
+        'offset_seconds'=>$tz->getOffset(new DateTimeImmutable('now', $tz))];
+}
+function bot_cfg_report_mask_phone(string $phone): string { return strlen($phone) > 3 ? str_repeat('*', strlen($phone) - 3).substr($phone, -3) : $phone; }
+
+/**
+ * Report data: kpi, by_hour, by_list, by_amd, by_cause, transfers and a paginated detail. Hours in America/Lima (started_at is UTC).
+ * Deleted lists/campaigns stay in the history as "lista eliminada"/"campaña eliminada". TEST-% attempts are excluded unless include_test.
+ * AMD results before 03/11/2026 15:31:54 Lima are flagged amd_valid=false and left out of the AMD figures unless include_invalid_amd.
+ * Phones are masked (last 3 digits).
+ */
+function bot_cfg_report(\ZynervoxQueries\BotIvrRepository $db, array $filters = [], int $page = 1, int $perPage = 50): array {
+    $f = bot_cfg_report_filters($filters);
+    $perPage = max(1, min(500, $perPage)); $page = max(1, $page);
+    $agg = $db->reportAggregates($f);
+    $detail = $db->reportDetail($f, $perPage, ($page - 1) * $perPage);
+    foreach ($detail['rows'] as &$r) { $r['phone'] = bot_cfg_report_mask_phone((string)$r['phone']); $r['amd_valid'] = (bool)$r['amd_valid']; }
+    unset($r);
+    $kpi = $agg['kpi']; $calls = (int)$kpi['calls'];
+    $kpi['contact_pct'] = $calls > 0 ? round(100 * (int)$kpi['answered'] / $calls, 1) : 0.0;
+    return ['filters'=>['from_utc'=>$f['from_utc'], 'to_utc'=>$f['to_utc'], 'campaign_id'=>$f['campaign_id'], 'list_id'=>$f['list_id'], 'include_test'=>$f['include_test'], 'include_invalid_amd'=>$f['include_invalid_amd'], 'timezone'=>'America/Lima', 'amd_valid_from_local'=>BOT_AMD_VALID_FROM_LIMA],
+        'kpi'=>$kpi, 'by_hour'=>$agg['by_hour'], 'by_list'=>$agg['by_list'], 'by_amd'=>$agg['by_amd'], 'by_cause'=>$agg['by_cause'],
+        'transfers'=>['ok'=>(int)$kpi['xfer_ok'], 'failed'=>(int)$kpi['xfer_fail']],
+        'detail'=>['page'=>$page, 'per_page'=>$perPage, 'total'=>$detail['total'], 'rows'=>$detail['rows']]];
+}
+
+/** CSV (UTF-8 with BOM) of the whole filtered detail, local Lima times, masked phones; cells that start like a formula are neutralized. */
+function bot_cfg_report_csv(\ZynervoxQueries\BotIvrRepository $db, array $filters = [], int $maxRows = 50000): string {
+    $f = bot_cfg_report_filters($filters);
+    $rows = $db->reportDetail($f, max(1, min(100000, $maxRows)), 0)['rows'];
+    $head = ['attempt_id','inicio_lima','amd_valido','campana_id','campana','lista_id','lista','contacto_id','telefono','estado','disposicion','amd','amd_causa','sip','q850','billsec','origen_causa'];
+    $h = fopen('php://temp', 'r+'); fwrite($h, "\xEF\xBB\xBF"); fputcsv($h, $head, ',', '"', '');
+    $safe = fn($v) => (is_string($v) && $v !== '' && strpbrk($v[0], "=+-@\t\r") !== false) ? "'".$v : $v;
+    foreach ($rows as $r) fputcsv($h, array_map($safe, [$r['attempt_id'], $r['started_at_local'], $r['amd_valid'] ? 'si' : 'no', $r['campaign_id'], $r['campaign'], $r['list_id'], $r['list'], $r['lead_id'],
+        bot_cfg_report_mask_phone((string)$r['phone']), $r['status'], $r['disposition'], $r['amd_status'], $r['amd_cause'], $r['sip_cause'], $r['q850'], $r['billsec'], $r['cause_source']]), ',', '"', '');
+    rewind($h); $csv = (string)stream_get_contents($h); fclose($h);
+    return $csv;
 }

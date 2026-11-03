@@ -168,6 +168,24 @@ check('iniciar la campaña inicia solo sus listas activas', $repo->listState($lc
 $repo->touchDialerHeartbeat();
 check('latido del motor', $repo->dialerHeartbeatAge() !== null && $repo->dialerHeartbeatAge() <= 2 && bot_cfg_dashboard($repo, $mon)['server']['engine_alive'] === true);
 bot_cfg_stop($repo, $lc, 'test');
+// Temperature (provisional thresholds) and report
+check('temperatura: menos de 20 llamadas = Sin datos', bot_cfg_list_temperature(['calls'=>19, 'answered'=>19, 'human'=>0, 'machine'=>0, 'unavailable'=>0, 'no_answer'=>0], 3)['temperature'] === 'Sin datos');
+$tHot = bot_cfg_list_temperature(['calls'=>20, 'answered'=>8, 'human'=>1, 'machine'=>7, 'unavailable'=>8, 'no_answer'=>4], 15);
+check('temperatura: 40 % de contacto = Caliente/Seguir y ritmo', $tHot['temperature'] === 'Caliente' && $tHot['recommendation'] === 'Seguir' && $tHot['pace']['calls_per_min'] === 1.0 && $tHot['thresholds_provisional'] === true && $tHot['rates_pct']['contact'] === 40.0);
+check('temperatura: Tibia y Fría', bot_cfg_list_temperature(['calls'=>20, 'answered'=>5, 'human'=>0, 'machine'=>0, 'unavailable'=>0, 'no_answer'=>0], 0)['recommendation'] === 'Vigilar' && bot_cfg_list_temperature(['calls'=>20, 'answered'=>1, 'human'=>0, 'machine'=>0, 'unavailable'=>0, 'no_answer'=>0], 0)['recommendation'] === 'Revisar lista');
+$pdo->exec("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,started_at,finished_at,campaign_id,status,disposition,amd_status,amd_cause,sip_cause,hangup_cause,billsec) VALUES
+ ('TEST-r1',999,999,'911223344',UTC_TIMESTAMP(),UTC_TIMESTAMP(),$id,'ANSWER','ANSWER_HUMAN','HUMAN','HUMAN','SIP 200 OK',16,5),
+ ('zv2-r2',999,998,'911223355',UTC_TIMESTAMP(),UTC_TIMESTAMP(),$id,'ANSWER','AMD_MACHINE','MACHINE','MAXWORDS','SIP 200 OK',16,3),
+ ('zv2-r3',999,997,'911223366','2026-11-03 18:00:00','2026-11-03 18:00:30',$id,'ANSWER','ANSWER_HUMAN','NOTSURE','TOOLONG','SIP 200 OK',16,11)");
+$rep = bot_cfg_report($repo, ['campaign_id'=>$id], 1, 5);
+check('reporte: excluye TEST-% por defecto y lista eliminada etiquetada', !in_array('TEST-r1', array_column($rep['detail']['rows'], 'call_id') ?: [], true) && count(array_filter($rep['by_list'], fn($l) => $l['list'] === 'lista eliminada')) >= 1);
+check('reporte: teléfono enmascarado y AMD inválido marcado', (bool)array_filter($rep['detail']['rows'], fn($r) => str_starts_with($r['phone'], '*')) && (bool)array_filter($rep['detail']['rows'], fn($r) => $r['amd_valid'] === false));
+$repAll = bot_cfg_report($repo, ['campaign_id'=>$id, 'include_test'=>1, 'include_invalid_amd'=>1], 1, 500);
+check('reporte: con include_test e include_invalid_amd aparecen más datos', $repAll['kpi']['calls'] > $rep['kpi']['calls'] && $repAll['kpi']['not_sure'] > $rep['kpi']['not_sure']);
+check('reporte: estructura (kpi, serie por hora, por AMD, por causa, transferencias)', isset($rep['kpi']['contact_pct']) && is_array($rep['by_hour']) && is_array($rep['by_amd']) && is_array($rep['by_cause']) && isset($rep['transfers']['ok']) && $rep['detail']['per_page'] === 5);
+check('reporte: fechas en hora de Lima', throws(fn() => bot_cfg_report($repo, ['from'=>'ayer'])) !== '' && bot_cfg_report_filters(['from'=>'2026-11-03 15:31'])['from_utc'] === '2026-11-03 20:31:00' && bot_cfg_report_filters(['to'=>'2026-11-03'])['to_utc'] === '2026-11-04 05:00:00');
+$csv = bot_cfg_report_csv($repo, ['campaign_id'=>$id]);
+check('CSV con BOM, cabecera y teléfonos enmascarados', str_starts_with($csv, "\xEF\xBB\xBFattempt_id,inicio_lima") && !str_contains($csv, '911223355'));
 // Detection-only campaign (test stage): no trunk and no destination is valid, half-configured is not
 $det = bot_cfg_save($repo, null, ['name'=>'Solo detectar', 'active'=>'1', 'call_origin'=>'7307', 'max_channels'=>'1', 'amd_enabled'=>'1']);
 $pdo->prepare("INSERT INTO zynervox_bot_lists (campaign_id,name,active) VALUES (?,'det',1)")->execute([$det]);
