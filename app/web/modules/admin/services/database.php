@@ -27,7 +27,7 @@ require_once __DIR__ . '/../../../includes/Auth.php';
             <div>
                 <h1 style="font-size: 1.1rem; font-weight: 700;">Servicios / Base de datos</h1>
                 <p style="color: var(--text-muted); font-size: 0.75rem;">
-                    Conexión única del sistema telefónico (IVR Builder, Bot IVR). Pensado para
+                    Conexión única del sistema telefónico (campañas y listas del marcador). Pensado para
                     cluster: apunte aquí a la base de datos central que comparten todos los nodos.
                 </p>
             </div>

@@ -267,7 +267,7 @@ function campaigns_schedule_row(array $r, array $days): string {
                 <button type="submit" name="action" value="save" class="btn-primary">Guardar</button>
                 <a class="btn-action" href="campaigns.php">Volver</a>
                 <?php if ($c['campaign_id']): ?>
-                    <a class="btn-action" href="../../bot_ivr/campaign_edit.php?id=<?php echo (int)$c['campaign_id']; ?>">Listas</a>
+                    <a class="btn-action" href="lists.php?campaign_id=<?php echo (int)$c['campaign_id']; ?>">Listas</a>
                     <span style="margin-left: auto; color: <?php echo $running ? '#10b981' : '#9ca3af'; ?>;">
                         Marcador: <?php echo $running ? 'en marcha' : 'detenido'; ?> · llamadas activas: <?php echo (int)($form['active_calls'] ?? 0); ?>
                     </span>

@@ -22,6 +22,7 @@ $campaigns = [];
 $lists = [];
 $origins = [];
 $maxTotal = null;
+$filterCampaign = null;
 $limits = null;
 try {
     $db = bot_ivr_repository();
@@ -74,6 +75,8 @@ try {
         $campaigns[(int)$campaign['campaign_id']] = $campaign;
     }
     $lists = bot_cfg_lists_channels($db);
+    $filterCampaign = filter_var($_GET['campaign_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]) ?: null;
+    if ($filterCampaign !== null) $lists = array_values(array_filter($lists, fn($l) => (int)$l['campaign_id'] === $filterCampaign));
     try { $limits = bot_cfg_server_limits($db); $maxTotal = $limits['max_channels_server']; } catch (Throwable $e) { $error = $error ?: 'No se pudo leer el máximo de canales del servidor: ' . $e->getMessage(); }
     try { $origins = array_column(\Includes\Carriers::dialOrigins(), 'name', 'dial_prefix'); } catch (Throwable $e) { $origins = []; }
 } catch (Throwable $e) {
@@ -125,7 +128,7 @@ try {
         </form>
 
         <div class="card" style="margin-top: 1rem;">
-            <h2>Listado de listas</h2>
+            <h2>Listado de listas<?php if ($filterCampaign !== null): ?> · campaña #<?php echo (int)$filterCampaign; ?> <a class="btn-action" href="lists.php">Ver todas</a><?php endif; ?></h2>
             <table class="table-compact">
                 <thead><tr><th>ID</th><th>Campaña</th><th>Nombre</th><th>Activa</th><th>Leads</th><th>Origen</th><th>Canales</th><th>Abiertas</th><th></th></tr></thead>
                 <tbody>
