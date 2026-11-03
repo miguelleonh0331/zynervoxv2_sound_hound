@@ -48,7 +48,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         .bar.progress > span { background: #3b82f6; }
         .live .bar.progress > span { background-image: linear-gradient(45deg, rgba(255,255,255,.25) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.25) 50%, rgba(255,255,255,.25) 75%, transparent 75%); background-size: 16px 16px; animation: move 1s linear infinite; }
         @keyframes move { to { background-position: 16px 0; } }
-        .rates { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin: 0.5rem 0; }
+        .rates { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin: 0.5rem 0; }
         .rate { font-size: 0.72rem; color: var(--text-muted); }
         .rate strong { font-size: 1.15rem; color: var(--text); }
         .legend { display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.68rem; color: var(--text-muted); }
@@ -138,7 +138,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             if (why) card.appendChild(el('div', 'reason' + (l.reason ? '' : ' ok'), why));
 
             var rt = el('div', 'rates');
-            [['Contacto', rates.contact], ['Humano', rates.human]].forEach(function (x) { var d = el('div', 'rate', x[0]); d.insertBefore(el('strong', '', (x[1] == null ? 0 : x[1]) + ' %'), d.firstChild); d.insertBefore(el('br'), d.childNodes[1]); rt.appendChild(d); });
+            [['Humano', rates.human], ['Contestadora', rates.machine], ['Contacto', rates.contact]].forEach(function (x) { var d = el('div', 'rate', x[0]); d.insertBefore(el('strong', '', (x[1] == null ? 0 : x[1]) + ' %'), d.firstChild); d.insertBefore(el('br'), d.childNodes[1]); rt.appendChild(d); });
             card.appendChild(rt);
 
             card.appendChild(el('div', 'rate', 'Resultados (' + l.totals.calls + ' llamadas)')); card.appendChild(stackBar(l.totals));
@@ -159,7 +159,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
                 go.addEventListener('click', function () { act('start', c.campaign_id, l.list_id, 'Al iniciar, el marcador empezará a llamar de verdad a los contactos de la lista «' + l.name + '». ¿Continuar?'); });
             }
             ac.appendChild(go); card.appendChild(ac);
-            if (ins.thresholds_provisional && ins.thresholds) card.appendChild(el('div', 'foot', 'Umbrales provisionales: Caliente ≥ ' + ins.thresholds.hot_contact_pct + ' % de contacto, Tibia ≥ ' + ins.thresholds.warm_contact_pct + ' %, Fría por debajo; con menos de ' + ins.thresholds.min_calls + ' llamadas, Sin datos.'));
+            if (ins.thresholds_provisional && ins.thresholds) card.appendChild(el('div', 'foot', 'Umbrales provisionales (según % de humanos): Caliente ≥ ' + ins.thresholds.hot_human_pct + ' %, Tibia ≥ ' + ins.thresholds.warm_human_pct + ' %, Fría por debajo; con menos de ' + ins.thresholds.min_calls + ' llamadas, Sin datos.'));
             return card;
         }
 
