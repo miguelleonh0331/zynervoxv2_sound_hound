@@ -14,6 +14,7 @@ if (empty($_SESSION['campaigns_csrf'])) $_SESSION['campaigns_csrf'] = bin2hex(ra
 if (!function_exists('h')) { function h($value): string { return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); } }
 
 $error = '';
+$errorLink = '';
 $message = (string)($_SESSION['campaigns_message'] ?? '');
 unset($_SESSION['campaigns_message']);
 $id = filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]) ?: null;
@@ -44,6 +45,11 @@ try {
                 bot_cfg_stop($db, $postId, $actor);
                 $savedId = $postId;
                 $_SESSION['campaigns_message'] = 'Marcador detenido; las llamadas en curso terminan solas.';
+            } elseif ($action === 'delete' && $postId !== null) {
+                bot_cfg_delete($db, $postId, $actor);
+                $_SESSION['campaigns_message'] = 'Campaña #' . $postId . ' eliminada.';
+                header('Location: campaigns.php');
+                exit;
             } else {
                 throw new RuntimeException('Acción inválida.');
             }
@@ -51,6 +57,12 @@ try {
             exit;
         } catch (Throwable $e) {
             $error = $e->getMessage();
+            if (($action ?? '') === 'delete' && strpos($error, 'Elimina primero las listas') === 0) {
+                $n = 0;
+                foreach (bot_cfg_list($db) as $row) if ((int)$row['campaign_id'] === (int)$postId) $n = (int)$row['lists_count'];
+                $error = 'Tiene ' . $n . ' ' . ($n === 1 ? 'lista' : 'listas') . ($n === 1 ? ': elimínala primero en Listas.' : ': elimínalas primero en Listas.');
+                $errorLink = 'lists.php?campaign_id=' . (int)$postId;
+            }
             $id = $postId ?? null;
             $isNew = $id === null;
             if (($_POST['from'] ?? '') === 'list') { $id = null; $isNew = false; } // vuelve al listado con el error
@@ -150,7 +162,7 @@ function campaigns_schedule_row(array $r, array $days): string {
         </header>
 
         <?php if ($message !== ''): ?><p class="msg-ok"><?php echo h($message); ?></p><?php endif; ?>
-        <?php if ($error !== ''): ?><p class="msg-err"><?php echo h($error); ?></p><?php endif; ?>
+        <?php if ($error !== ''): ?><p class="msg-err"><?php echo h($error); ?><?php if ($errorLink !== ''): ?> <a href="<?php echo h($errorLink); ?>">Ir a Listas</a><?php endif; ?></p><?php endif; ?>
 
 <?php if ($form === null): ?>
         <div class="card">
@@ -177,6 +189,12 @@ function campaigns_schedule_row(array $r, array $days): string {
                                 <?php else: ?>
                                     <button type="submit" name="action" value="start" class="btn-action">Iniciar</button>
                                 <?php endif; ?>
+                            </form>
+                            <form method="POST" action="campaigns.php" class="inline-form" style="display: inline;" onsubmit="return confirm(this.getAttribute('data-confirm'));" data-confirm="<?php echo h('Se eliminará la campaña «' . $row['name'] . '» (#' . (int)$row['campaign_id'] . ') y su configuración. El historial de llamadas se conserva. No se puede deshacer.'); ?>">
+                                <input type="hidden" name="csrf" value="<?php echo h($_SESSION['campaigns_csrf']); ?>">
+                                <input type="hidden" name="campaign_id" value="<?php echo (int)$row['campaign_id']; ?>">
+                                <input type="hidden" name="from" value="list">
+                                <button type="submit" name="action" value="delete" class="btn-action">Eliminar</button>
                             </form>
                         </td>
                     </tr>
