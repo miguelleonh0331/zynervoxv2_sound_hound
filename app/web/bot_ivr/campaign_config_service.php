@@ -232,22 +232,23 @@ function bot_cfg_list_reason(array $row, array $c, bool $engineAlive, bool $inWi
  * Returns ['server'=>[max_channels,open_calls,engine_alive], 'campaigns'=>[[campaign_id,name,active,started,lists=>[...]]]].
  */
 /**
- * PROVISIONAL thresholds (the AMD is not calibrated yet): temperature is read from the contact rate (answered / calls).
- * Chosen from the real tests of 03/11/2026, where lists reached about 40 % contact with 20-30 % unavailable. Change them here only.
+ * PROVISIONAL thresholds (the AMD is not calibrated yet). The temperature is read from the HUMAN rate (humans / calls),
+ * not from the contact rate: answering machines also answer, so contact alone would make a list look hot when nobody talks.
+ * Checked against the real tests of 03/11/2026 (human rate 0 % to 15 % per list of 20). Change them here only.
  */
-const BOT_TEMP_MIN_CALLS = 20;     // fewer calls: "Sin datos"
-const BOT_TEMP_HOT_CONTACT = 35;   // contact % >= this: Caliente -> Seguir
-const BOT_TEMP_WARM_CONTACT = 20;  // contact % >= this: Tibia -> Vigilar; below: Fría -> Revisar lista
+const BOT_TEMP_MIN_CALLS = 20;    // fewer calls: "Sin datos"
+const BOT_TEMP_HOT_HUMAN = 10;    // human % >= this: Caliente -> Seguir
+const BOT_TEMP_WARM_HUMAN = 5;    // human % >= this: Tibia -> Vigilar; below: Fría -> Revisar lista
 
-/** Rates in % of calls and the 15-minute pace, plus the temperature and its recommendation. */
+/** Rates in % of calls and the 15-minute pace, plus the temperature (by human rate) and its recommendation. */
 function bot_cfg_list_temperature(array $totals, int $calls15): array {
     $calls = (int)$totals['calls'];
     $pct = fn(int $n) => $calls > 0 ? round(100 * $n / $calls, 1) : 0.0;
     $rates = ['contact'=>$pct((int)$totals['answered']), 'human'=>$pct((int)$totals['human']), 'machine'=>$pct((int)$totals['machine']),
         'unavailable'=>$pct((int)$totals['unavailable']), 'no_answer'=>$pct((int)$totals['no_answer'])];
-    [$temp, $advice] = $calls < BOT_TEMP_MIN_CALLS ? ['Sin datos', 'Seguir'] : ($rates['contact'] >= BOT_TEMP_HOT_CONTACT ? ['Caliente', 'Seguir'] : ($rates['contact'] >= BOT_TEMP_WARM_CONTACT ? ['Tibia', 'Vigilar'] : ['Fría', 'Revisar lista']));
-    return ['rates_pct'=>$rates, 'pace'=>['calls_last_15min'=>$calls15, 'calls_per_min'=>round($calls15 / 15, 2)], 'temperature'=>$temp, 'recommendation'=>$advice,
-        'thresholds_provisional'=>true, 'thresholds'=>['min_calls'=>BOT_TEMP_MIN_CALLS, 'hot_contact_pct'=>BOT_TEMP_HOT_CONTACT, 'warm_contact_pct'=>BOT_TEMP_WARM_CONTACT]];
+    [$temp, $advice] = $calls < BOT_TEMP_MIN_CALLS ? ['Sin datos', 'Seguir'] : ($rates['human'] >= BOT_TEMP_HOT_HUMAN ? ['Caliente', 'Seguir'] : ($rates['human'] >= BOT_TEMP_WARM_HUMAN ? ['Tibia', 'Vigilar'] : ['Fría', 'Revisar lista']));
+    return ['rates_pct'=>$rates, 'pace'=>['calls_last_15min'=>$calls15, 'calls_per_min'=>round($calls15 / 15, 2)], 'temperature'=>$temp, 'recommendation'=>$advice, 'basis'=>'human',
+        'thresholds_provisional'=>true, 'thresholds'=>['min_calls'=>BOT_TEMP_MIN_CALLS, 'hot_human_pct'=>BOT_TEMP_HOT_HUMAN, 'warm_human_pct'=>BOT_TEMP_WARM_HUMAN]];
 }
 
 function bot_cfg_dashboard(\ZynervoxQueries\BotIvrRepository $db, ?DateTimeInterface $now = null): array {

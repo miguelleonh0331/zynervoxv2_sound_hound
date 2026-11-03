@@ -170,9 +170,10 @@ check('latido del motor', $repo->dialerHeartbeatAge() !== null && $repo->dialerH
 bot_cfg_stop($repo, $lc, 'test');
 // Temperature (provisional thresholds) and report
 check('temperatura: menos de 20 llamadas = Sin datos', bot_cfg_list_temperature(['calls'=>19, 'answered'=>19, 'human'=>0, 'machine'=>0, 'unavailable'=>0, 'no_answer'=>0], 3)['temperature'] === 'Sin datos');
-$tHot = bot_cfg_list_temperature(['calls'=>20, 'answered'=>8, 'human'=>1, 'machine'=>7, 'unavailable'=>8, 'no_answer'=>4], 15);
-check('temperatura: 40 % de contacto = Caliente/Seguir y ritmo', $tHot['temperature'] === 'Caliente' && $tHot['recommendation'] === 'Seguir' && $tHot['pace']['calls_per_min'] === 1.0 && $tHot['thresholds_provisional'] === true && $tHot['rates_pct']['contact'] === 40.0);
-check('temperatura: Tibia y Fría', bot_cfg_list_temperature(['calls'=>20, 'answered'=>5, 'human'=>0, 'machine'=>0, 'unavailable'=>0, 'no_answer'=>0], 0)['recommendation'] === 'Vigilar' && bot_cfg_list_temperature(['calls'=>20, 'answered'=>1, 'human'=>0, 'machine'=>0, 'unavailable'=>0, 'no_answer'=>0], 0)['recommendation'] === 'Revisar lista');
+$tHot = bot_cfg_list_temperature(['calls'=>20, 'answered'=>8, 'human'=>2, 'machine'=>6, 'unavailable'=>8, 'no_answer'=>4], 15);
+check('temperatura: 10 % de humanos = Caliente/Seguir, con ritmo y base humana', $tHot['temperature'] === 'Caliente' && $tHot['recommendation'] === 'Seguir' && $tHot['pace']['calls_per_min'] === 1.0 && $tHot['thresholds_provisional'] === true && $tHot['basis'] === 'human' && $tHot['rates_pct']['human'] === 10.0 && $tHot['rates_pct']['machine'] === 30.0);
+check('temperatura: mucho contacto pero 1 humano en 20 y 7 contestadoras = Tibia, no Caliente', bot_cfg_list_temperature(['calls'=>20, 'answered'=>8, 'human'=>1, 'machine'=>7, 'unavailable'=>8, 'no_answer'=>4], 0)['temperature'] === 'Tibia');
+check('temperatura: Fría y Revisar lista', bot_cfg_list_temperature(['calls'=>20, 'answered'=>8, 'human'=>0, 'machine'=>8, 'unavailable'=>8, 'no_answer'=>4], 0)['recommendation'] === 'Revisar lista');
 $pdo->exec("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,started_at,finished_at,campaign_id,status,disposition,amd_status,amd_cause,sip_cause,hangup_cause,billsec) VALUES
  ('TEST-r1',999,999,'911223344',UTC_TIMESTAMP(),UTC_TIMESTAMP(),$id,'ANSWER','ANSWER_HUMAN','HUMAN','HUMAN','SIP 200 OK',16,5),
  ('zv2-r2',999,998,'911223355',UTC_TIMESTAMP(),UTC_TIMESTAMP(),$id,'ANSWER','AMD_MACHINE','MACHINE','MAXWORDS','SIP 200 OK',16,3),
