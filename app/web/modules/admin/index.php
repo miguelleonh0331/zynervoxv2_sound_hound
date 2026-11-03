@@ -1,214 +1,162 @@
 <?php
+declare(strict_types=1);
 require_once __DIR__ . '/../../includes/Auth.php';
-require_once __DIR__ . '/../../includes/DashboardStats.php';
 require_once __DIR__ . '/sidebar.php';
 use Includes\Auth;
-use Includes\DashboardStats;
 
 Auth::checkAccess(9);
-if (\Config\Config::deployment('isolated', false)) {
-    $monitorTitle='Dashboard';
-    require __DIR__.'/../../bot_ivr/campaign_monitor_view.php';
-    exit;
-}
-
-$summary = DashboardStats::getTenantSummary();
-$live = DashboardStats::getLiveCounts();
-// "asterisk -V" solo imprime la version del binario compilado, no requiere
-// conectarse al socket de control (evita darle a www-data acceso al AMI/CLI
-// completo de Asterisk solo para mostrar un numero de version).
-$asteriskVersionRaw = trim(shell_exec("asterisk -V 2>/dev/null") ?? '');
-if (preg_match('/Asterisk\s+([0-9.]+)/', $asteriskVersionRaw, $m)) {
-    $asteriskVersion = $m[1];
-} else {
-    $asteriskVersion = '--';
-}
-
-$rowLabels = [
-    'users'     => 'Usuarios (Users)',
-    'campaigns' => 'Campañas (Campaigns)',
-    'lists'     => 'Listas / Leads (Lists)',
-    'ingroups'  => 'Colas Entrantes (In-Groups)',
-    'dids'      => 'Números Telefónicos (DIDs)',
-];
+if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(random_bytes(32));
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - Zynervox</title>
     <link rel="stylesheet" href="layout.css">
     <style>
-        .strip-top {
-            background: var(--bg-sidebar); color: var(--sidebar-text-muted);
-            font-size: 0.7rem; padding: 4px 1.5rem; display: flex;
-            justify-content: flex-end; gap: 1.5rem; margin: -1.25rem -1.5rem 0 -1.5rem;
-        }
-        .strip-top strong { color: #fff; }
-
-        .dash-topbar {
-            background: var(--bg-card); border: 1px solid var(--border);
-            border-radius: 2px; padding: 0.6rem 1.5rem;
-            margin: 0 -1.5rem 1rem -1.5rem;
-            display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;
-        }
-        .dash-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--dark, var(--text)); }
-        .dash-brand .dot { width: 26px; height: 26px; border-radius: 2px; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; }
-        .dash-brand small { display: block; font-size: 0.6rem; color: var(--text-muted); font-weight: 700; letter-spacing: 0.5px; }
-        .dash-status { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #10b981; font-weight: 700; }
-        .dash-status .dot-live { width: 8px; height: 8px; border-radius: 50%; background: #10b981; display: inline-block; }
-        .dash-nav { display: flex; gap: 1.25rem; font-size: 0.8rem; color: var(--text-muted); margin-left: auto; align-items: center; }
-        .dash-nav a { color: var(--text-muted); text-decoration: none; }
-        .dash-nav a:hover { color: var(--primary); }
-        .dash-nav .badge-count { background: #ef4444; color: #fff; border-radius: 2px; font-size: 0.6rem; padding: 0 5px; margin-left: 3px; }
-
-        .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-bottom: 1rem; }
-        .stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 2px; padding: 0.75rem 0.9rem; }
-        .stat-card .stat-top { display: flex; justify-content: space-between; align-items: flex-start; }
-        .stat-card .stat-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
-        .stat-card .stat-value { font-size: 1.7rem; font-weight: 700; margin-top: 2px; }
-        .stat-card .stat-sub { font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; }
-        .stat-card .stat-icon { width: 30px; height: 30px; border-radius: 2px; background: var(--glass); display: flex; align-items: center; justify-content: center; font-size: 1rem; }
-        .stat-card .mini-badge { font-size: 0.65rem; font-weight: 700; padding: 1px 7px; border-radius: 2px; }
-
-        .summary-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
-        .refresh-badge { font-size: 0.65rem; color: var(--text-muted); border: 1px solid var(--border); padding: 2px 8px; border-radius: 2px; }
-
-        .dash-footer {
-            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;
-            margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border);
-            font-size: 0.75rem; color: var(--text-muted);
-        }
+        .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+        .metric { background: var(--bg-card); border: 1px solid var(--border); border-radius: 2px; padding: 0.75rem; }
+        .metric-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); }
+        .metric-value { font-size: 1.5rem; font-weight: 700; margin: 0.25rem 0; }
+        .metric-sub { font-size: 0.75rem; color: var(--text-muted); }
+        .bar { height: 6px; background: var(--glass); border-radius: 3px; overflow: hidden; margin-top: 0.4rem; }
+        .bar > span { display: block; height: 100%; background: #10b981; }
+        .bar > span.warn { background: #f59e0b; } .bar > span.crit { background: #ef4444; }
+        .services { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+        .svc { display: flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.7rem; border: 1px solid var(--border); border-radius: 2px; background: var(--bg-card); font-size: 0.8rem; }
+        .dot { width: 9px; height: 9px; border-radius: 50%; background: #9ca3af; }
+        .dot.on { background: #10b981; } .dot.off { background: #ef4444; }
+        .camp { margin-bottom: 1rem; }
+        .camp h2 { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: baseline; }
+        .tag { font-size: 0.65rem; padding: 1px 6px; border-radius: 2px; background: var(--glass); color: var(--text-muted); text-transform: uppercase; }
+        .tag.run { background: #064e3b; color: #6ee7b7; }
+        .lists { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 0.75rem; }
+        .list-card { border: 1px solid var(--border); border-radius: 2px; padding: 0.75rem; background: var(--bg-card); }
+        .list-head { display: flex; justify-content: space-between; gap: 0.5rem; align-items: baseline; flex-wrap: wrap; }
+        .list-name { font-weight: 700; }
+        .reason { font-size: 0.78rem; margin: 0.4rem 0; color: #fbbf24; }
+        .reason.ok { color: #10b981; }
+        .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem 0.5rem; margin: 0.6rem 0; }
+        .stat { font-size: 0.72rem; color: var(--text-muted); }
+        .stat strong { display: block; font-size: 1rem; color: var(--text); }
+        .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+        .actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+        .dash-error { color: #fca5a5; margin-bottom: 1rem; }
+        .dash-msg { color: #10b981; margin-bottom: 1rem; }
+        @media (max-width: 600px) { .stats { grid-template-columns: repeat(2, 1fr); } .lists { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
-
     <?php renderSidebar('home'); ?>
-
     <main class="main-content">
-        <div class="strip-top">
-            <span><strong>ASTERISK V<?php echo htmlspecialchars($asteriskVersion); ?></strong> / WEBRTC</span>
-            <span id="dash-clock">--</span>
-        </div>
-
-        <div class="dash-topbar">
-            <div class="dash-brand">
-                <span class="dot">Z</span>
-                <span>Zynervox<br><small>DIALER PRO</small></span>
+        <header class="top-bar" style="margin-bottom: 1rem;">
+            <div>
+                <h1 style="font-size: 1.25rem; font-weight: 700;">Dashboard</h1>
+                <p style="color: var(--text-muted); font-size: 0.8125rem;">Servidor, servicios y listas · se actualiza cada 5 segundos <span id="updated"></span></p>
             </div>
-
-            <div class="dash-nav">
-                <a href="../../logout.php">Cerrar Sesión (<?php echo htmlspecialchars($_SESSION['user']); ?>)</a>
-            </div>
-        </div>
-
-        <div class="stat-grid">
-            <div class="stat-card">
-                <div class="stat-top">
-                    <div>
-                        <div class="stat-label">Agentes Conectados</div>
-                        <div class="stat-value"><?php echo $live['connected']; ?></div>
-                    </div>
-                    <div class="stat-icon">&#128101;</div>
-                </div>
-                <div class="stat-sub"><?php echo $live['ready']; ?> disponibles &middot; <?php echo $live['paused']; ?> en pausa</div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-top">
-                    <div>
-                        <div class="stat-label">Agentes en Llamada</div>
-                        <div class="stat-value"><?php echo $live['incall']; ?></div>
-                    </div>
-                    <div class="stat-icon">&#127908;</div>
-                </div>
-                <div class="stat-sub"><?php echo $live['queue']; ?> en cola</div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-top">
-                    <div>
-                        <div class="stat-label">Llamadas Activas</div>
-                        <div class="stat-value"><?php echo $live['incall']; ?></div>
-                    </div>
-                    <div class="stat-icon">&#128222;</div>
-                </div>
-                <div class="stat-sub">Troncal SIP: <span style="color:var(--text-muted);">--</span></div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-top">
-                    <div>
-                        <div class="stat-label">Llamadas Timbrando</div>
-                        <div class="stat-value"><?php echo $live['ringing'] ?? '--'; ?></div>
-                    </div>
-                    <div class="stat-icon">&#128276;</div>
-                </div>
-                <div class="stat-sub">Hopper: <span style="color:var(--text-muted);">-- leads listos</span></div>
-            </div>
-        </div>
-
-        <div class="card" style="margin-bottom: 1.25rem;">
-            <div class="summary-head">
-                <h2>Resumen del Sistema: Registros del Tenant</h2>
-                <span class="refresh-badge">Refresco automático: 5s</span>
-            </div>
-            <table class="table-compact">
-                <thead>
-                    <tr><th>Registros (Records)</th><th>Activos (Active)</th><th>Inactivos (Inactive)</th><th>Total</th></tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($rowLabels as $key => $label): $s = $summary[$key]; ?>
-                    <tr>
-                        <td><?php echo $label; ?></td>
-                        <td style="color:#10b981; font-weight:700;"><?php echo $s['active']; ?></td>
-                        <td style="color:var(--text-muted);"><?php echo $s['inactive']; ?></td>
-                        <td><strong><?php echo $s['total']; ?></strong></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-
-        <div class="card" style="margin-bottom: 1.25rem;">
-            <div class="summary-head">
-                <h2>Estadísticas Totales de Hoy (Total Stats for Today)</h2>
-                <a href="#" class="link-action">ver estadísticas detalladas / max stats</a>
-            </div>
-            <table class="table-compact">
-                <thead><tr><th>Total Llamadas</th><th>Total Entrantes (Inbound)</th><th>Total Salientes Predictivas</th><th>Máximo Agentes</th><th>Contactabilidad (RPC)</th></tr></thead>
-                <tbody><tr><td colspan="5" style="text-align:center; color:var(--text-muted);">Pendiente de conectar (ver ROADMAP.md)</td></tr></tbody>
-            </table>
-        </div>
-
-        <div class="card">
-            <div class="summary-head">
-                <h2>Estadísticas Totales de Ayer (Total Stats for Yesterday)</h2>
-                <a href="#" class="link-action">ver histórico consolidado</a>
-            </div>
-            <table class="table-compact">
-                <thead><tr><th>Total Llamadas</th><th>Entrantes</th><th>Salientes</th><th>Máximo Agentes</th><th>Ventas Concretadas (Sale)</th></tr></thead>
-                <tbody><tr><td colspan="5" style="text-align:center; color:var(--text-muted);">Pendiente de conectar (ver ROADMAP.md)</td></tr></tbody>
-            </table>
-        </div>
-
-        <div class="dash-footer">
-            <div>Carga CPU: <span style="color:var(--text-muted);">--</span> &nbsp;|&nbsp; Memoria RAM: <span style="color:var(--text-muted);">--</span> &nbsp;|&nbsp; MySQL Latencia: <span style="color:var(--text-muted);">--</span></div>
-            <div style="display:flex; gap:0.6rem;">
-                <button class="btn-action">Forzar Hopper Reload</button>
-                <a href="campaigns.php" class="btn-primary" style="padding: 0.5rem 1rem;">+ Nueva Campaña</a>
-            </div>
-        </div>
+        </header>
+        <div id="notice"></div>
+        <div id="status"></div>
+        <section class="dash-grid" id="server" aria-label="Servidor"></section>
+        <section class="services" id="services" aria-label="Servicios"></section>
+        <section id="campaigns" aria-label="Campañas y listas"></section>
     </main>
+    <script>
+    (function () {
+        var CSRF = <?php echo json_encode($_SESSION['dashboard_csrf']); ?>;
+        var API = 'dashboard_api.php';
+        var busy = false, timer = null;
+        var LABELS = [['contacts', 'Contactos'], ['not_called', 'Sin llamar'], ['calls', 'Llamadas'], ['human', 'Humano'], ['machine', 'Contestadora'], ['not_sure', 'No seguro'], ['unavailable', 'No disponible'], ['no_answer', 'Sin respuesta'], ['failed', 'Fallidas']];
 
-<script>
-function tickClock() {
-    const now = new Date();
-    document.getElementById('dash-clock').textContent = now.toLocaleDateString('es-PE', { weekday:'long', year:'numeric', month:'long', day:'numeric' }) + ' - ' + now.toLocaleTimeString('es-PE');
-}
-tickClock();
-setInterval(tickClock, 1000);
-</script>
+        function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+        function gb(b) { return b == null ? '' : (b / 1073741824).toFixed(1) + ' GB'; }
+        function metric(label, pct, sub) {
+            var m = el('div', 'metric'); m.appendChild(el('div', 'metric-label', label));
+            m.appendChild(el('div', 'metric-value', pct == null ? '—' : pct + ' %'));
+            if (sub) m.appendChild(el('div', 'metric-sub', sub));
+            var bar = el('div', 'bar'), fill = el('span', pct >= 90 ? 'crit' : pct >= 75 ? 'warn' : '');
+            fill.style.width = (pct == null ? 0 : Math.min(100, pct)) + '%'; bar.appendChild(fill); m.appendChild(bar); return m;
+        }
+        function showNotice(text, cls, id) { var n = document.getElementById(id || 'notice'); n.textContent = ''; if (text) n.appendChild(el('p', cls, text)); }
 
+        function post(action, c, l) {
+            var body = new URLSearchParams({ action: action, campaign_id: c, list_id: l, csrf: CSRF });
+            return fetch(API, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': CSRF }, body: body }).then(function (r) { return r.json(); }).then(function (j) {
+                if (!j.ok) throw new Error(j.error || 'No se pudo completar la acción.');
+            });
+        }
+        function act(action, c, l, confirmText) {
+            if (confirmText && !window.confirm(confirmText)) return;
+            showNotice('', '');
+            post(action, c, l).then(refresh).catch(function (e) { showNotice(e.message, 'dash-error'); refresh(); });
+        }
+
+        function listCard(c, l) {
+            var card = el('div', 'list-card');
+            var head = el('div', 'list-head');
+            head.appendChild(el('span', 'list-name', l.name + ' (#' + l.list_id + ')'));
+            var tags = el('span'); tags.appendChild(el('span', 'tag' + (l.started ? ' run' : ''), l.started ? 'Marcando' : 'Detenida'));
+            tags.appendChild(document.createTextNode(' ')); tags.appendChild(el('span', 'tag', l.active ? 'Activa' : 'Inactiva')); head.appendChild(tags);
+            card.appendChild(head);
+            var why = l.reason || (l.started ? 'Marcando' : '');
+            if (why) card.appendChild(el('div', 'reason' + (l.reason ? '' : ' ok'), why));
+            var pb = el('div', 'bar'), pf = el('span'); pf.style.width = l.progress_pct + '%'; pb.appendChild(pf); card.appendChild(pb);
+            card.appendChild(el('div', 'metric-sub', 'Avance ' + l.progress_pct + ' % · Canales ' + l.channels + ' · En curso ' + l.open_calls));
+            var st = el('div', 'stats');
+            LABELS.forEach(function (p) { var s = el('div', 'stat', p[1]); s.insertBefore(el('strong', '', String(l.totals[p[0]] || 0)), s.firstChild); st.appendChild(s); });
+            card.appendChild(st);
+            var ac = el('div', 'actions');
+            var tog = el('button', 'btn-action', l.active ? 'Desactivar' : 'Activar');
+            tog.type = 'button'; tog.addEventListener('click', function () { act(l.active ? 'deactivate' : 'activate', c.campaign_id, l.list_id, l.active && l.started ? 'Se desactivará la lista «' + l.name + '» y se detendrá. ¿Continuar?' : ''); });
+            ac.appendChild(tog);
+            var go = el('button', 'btn-action', l.started ? 'Detener' : 'Iniciar'); go.type = 'button';
+            if (l.started) go.addEventListener('click', function () { act('stop', c.campaign_id, l.list_id, ''); });
+            else {
+                if (!l.active) { go.disabled = true; go.title = 'Lista inactiva: actívala primero'; }
+                go.addEventListener('click', function () { act('start', c.campaign_id, l.list_id, 'Al iniciar, el marcador empezará a llamar de verdad a los contactos de la lista «' + l.name + '». ¿Continuar?'); });
+            }
+            ac.appendChild(go); card.appendChild(ac);
+            return card;
+        }
+
+        function render(d) {
+            var s = d.server, sv = document.getElementById('server'); sv.textContent = '';
+            sv.appendChild(metric('CPU', s.cpu_pct, ''));
+            sv.appendChild(metric('Memoria', s.ram_pct, s.ram_total ? gb(s.ram_used) + ' de ' + gb(s.ram_total) : ''));
+            sv.appendChild(metric('Disco', s.disk_pct, s.disk_total ? gb(s.disk_used) + ' de ' + gb(s.disk_total) : ''));
+            if (d.dashboard) {
+                var srv = d.dashboard.server, m = el('div', 'metric'); m.appendChild(el('div', 'metric-label', 'Llamadas en curso'));
+                m.appendChild(el('div', 'metric-value', String(srv.open_calls))); m.appendChild(el('div', 'metric-sub', 'Máximo del servidor: ' + srv.max_channels)); sv.appendChild(m);
+            }
+            var sc = document.getElementById('services'); sc.textContent = '';
+            (d.services || []).forEach(function (x) {
+                var b = el('div', 'svc'); b.appendChild(el('span', 'dot ' + (x.on === null ? '' : x.on ? 'on' : 'off')));
+                b.appendChild(el('span', '', x.label + ': ' + (x.on === null ? 'sin datos' : x.on ? 'encendido' : 'apagado'))); sc.appendChild(b);
+            });
+            var cs = document.getElementById('campaigns'); cs.textContent = '';
+            if (!d.dashboard) { showNotice(d.dashboard_error || 'No se pudo leer el estado de las campañas.', 'dash-error', 'status'); return; }
+            if (!d.dashboard.campaigns.length) cs.appendChild(el('p', 'metric-sub', 'Aún no hay campañas.'));
+            d.dashboard.campaigns.forEach(function (c) {
+                var box = el('div', 'card camp'), h = el('h2', '', c.name); h.appendChild(el('span', 'tag' + (c.started ? ' run' : ''), c.started ? 'En marcha' : 'Detenida'));
+                if (!c.active) h.appendChild(el('span', 'tag', 'Inactiva')); box.appendChild(h);
+                var ls = el('div', 'lists'); c.lists.forEach(function (l) { ls.appendChild(listCard(c, l)); });
+                if (!c.lists.length) box.appendChild(el('p', 'metric-sub', 'Sin listas.')); else box.appendChild(ls);
+                cs.appendChild(box);
+            });
+            var u = document.getElementById('updated'); u.textContent = '· ' + new Date().toLocaleTimeString();
+        }
+
+        function refresh() {
+            if (busy) return; busy = true; clearTimeout(timer);
+            fetch(API, { credentials: 'same-origin', cache: 'no-store' }).then(function (r) { return r.json().then(function (j) { if (!r.ok || !j.ok) throw new Error(j.error || 'Error'); return j; }); })
+                .then(function (d) { showNotice('', '', 'status'); render(d); })
+                .catch(function (e) { showNotice('No se pudo actualizar el panel: ' + e.message, 'dash-error', 'status'); })
+                .then(function () { busy = false; timer = setTimeout(refresh, 5000); });
+        }
+        document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
+        refresh();
+    })();
+    </script>
 </body>
 </html>
