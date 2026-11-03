@@ -13,7 +13,7 @@ $monitorTitle=$monitorTitle??'Monitor de campanas';
 </style></head><body>
 <?php if((int)($_SESSION['user_level']??0)===9){require_once __DIR__.'/../modules/admin/sidebar.php';renderSidebar($monitorTitle==='Dashboard'?'home':'campaign_monitor');}else{require_once __DIR__.'/../modules/sup/sidebar.php';renderSupSidebar('campaign_monitor');} ?>
 <main class="main-content"><h1><?php echo htmlspecialchars($monitorTitle,ENT_QUOTES,'UTF-8'); ?></h1>
-<p class="monitor-note">Estado de las campanas IVR &middot; actualizacion cada 5 segundos</p>
+<p class="monitor-note">Estado de las campa&ntilde;as &middot; actualizacion cada 5 segundos</p>
 <p id="monitor-error" class="monitor-error" role="status"><?php echo htmlspecialchars($monitorError,ENT_QUOTES,'UTF-8'); ?></p>
 <div id="monitor-campaigns" class="monitor-grid"></div>
 </main><script>
