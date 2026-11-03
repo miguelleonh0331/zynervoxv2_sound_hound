@@ -49,7 +49,6 @@ function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
     $items = [
         ['key' => 'home',        'href' => 'modules/admin/index.php',        'icon' => 'reports',    'label' => 'Dashboard (Inicio)', 'in_scope' => false],
         ['key' => 'reports',     'href' => 'modules/admin/reports.php',      'icon' => 'chart',      'label' => 'Reportes',           'in_scope' => false],
-        ['key' => 'campaign_monitor', 'href' => 'modules/admin/campaign_monitor.php', 'icon' => 'campaign_monitor', 'label' => 'Monitor Campañas', 'in_scope' => false],
         ['key' => 'users',       'href' => 'modules/admin/users.php',        'icon' => 'users',      'label' => 'Users (Usuarios)',   'in_scope' => false],
         ['key' => 'campaigns',   'href' => 'modules/admin/campaigns.php',    'icon' => 'campaigns',  'label' => 'Campaigns (Campañas)', 'in_scope' => false],
         ['key' => 'lists',       'href' => 'modules/admin/lists.php',        'icon' => 'lists',      'label' => 'Lists (Bases de Datos)', 'in_scope' => false],
