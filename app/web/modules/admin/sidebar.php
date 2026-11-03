@@ -47,12 +47,12 @@ function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
     // ahora (inventario visual de lo que no se trabaja). NO significa que la
     // pagina no funcione ni que este bloqueada; el enlace sigue igual.
     $items = [
-        ['key' => 'home',        'href' => 'modules/admin/index.php',        'icon' => 'reports',    'label' => 'Dashboard (Inicio)', 'in_scope' => false],
-        ['key' => 'reports',     'href' => 'modules/admin/reports.php',      'icon' => 'chart',      'label' => 'Reportes',           'in_scope' => false],
-        ['key' => 'users',       'href' => 'modules/admin/users.php',        'icon' => 'users',      'label' => 'Users (Usuarios)',   'in_scope' => false],
-        ['key' => 'campaigns',   'href' => 'modules/admin/campaigns.php',    'icon' => 'campaigns',  'label' => 'Campaigns (Campañas)', 'in_scope' => false],
-        ['key' => 'lists',       'href' => 'modules/admin/lists.php',        'icon' => 'lists',      'label' => 'Lists (Bases de Datos)', 'in_scope' => false],
-        ['key' => 'bot_ivr',     'href' => 'bot_ivr/index.php',              'icon' => 'bot',        'label' => 'Bot IVR',            'in_scope' => false],
+        ['key' => 'home',        'href' => 'modules/admin/index.php',        'icon' => 'reports',    'label' => 'Dashboard (Inicio)', 'in_scope' => true],
+        ['key' => 'reports',     'href' => 'modules/admin/reports.php',      'icon' => 'chart',      'label' => 'Reportes',           'in_scope' => true],
+        ['key' => 'users',       'href' => 'modules/admin/users.php',        'icon' => 'users',      'label' => 'Users (Usuarios)',   'in_scope' => true],
+        ['key' => 'campaigns',   'href' => 'modules/admin/campaigns.php',    'icon' => 'campaigns',  'label' => 'Campaigns (Campañas)', 'in_scope' => true],
+        ['key' => 'lists',       'href' => 'modules/admin/lists.php',        'icon' => 'lists',      'label' => 'Lists (Bases de Datos)', 'in_scope' => true],
+        ['key' => 'bot_ivr',     'href' => 'bot_ivr/index.php',              'icon' => 'bot',        'label' => 'Bot IVR',            'in_scope' => true],
         ['key' => 'phones',      'href' => 'modules/admin/phones.php',       'icon' => 'phones',     'label' => 'Anexos/Teléfonos',   'in_scope' => true],
         ['key' => 'admin',       'href' => 'modules/admin/carriers.php',     'icon' => 'admin',      'label' => 'Troncales SIP',      'in_scope' => true],
         ['key' => 'dialplan',    'href' => 'modules/admin/dialplan.php',     'icon' => 'scripts',    'label' => 'Dialplan',           'in_scope' => true],
