@@ -23,7 +23,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         .tile .t-value.warn { color: #f59e0b; } .tile .t-value.crit { color: #ef4444; }
         .tile .t-sub { font-size: 0.74rem; color: var(--text-muted); }
         .g-sub { font-size: 0.72rem; color: var(--text-muted); }
-        .needle-wrap { flex-basis: 100%; text-align: center; margin-top: 0.3rem; } .needle-wrap canvas { max-width: 100%; height: auto !important; }
+        .needle-wrap { flex-basis: 100%; text-align: center; margin-top: 0.1rem; line-height: 0; } .needle-wrap .needle-text { line-height: 1.3; margin-top: 0.2rem; } .needle-wrap canvas { max-width: 100%; height: auto !important; }
         .needle-text { text-align: center; font-size: 0.8rem; font-weight: 600; }
         .services { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
         .svc { display: flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.7rem; border: 1px solid var(--border); border-radius: 2px; background: var(--bg-card); font-size: 0.8rem; }
@@ -41,10 +41,10 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         .pulse { width: 10px; height: 10px; border-radius: 50%; background: #6b7280; flex: none; }
         .live .pulse { background: #10b981; animation: pulse 1.4s ease-out infinite; }
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.7); } 100% { box-shadow: 0 0 0 10px rgba(16,185,129,0); } }
-        .temp { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; margin: 0.6rem 0; padding: 0.5rem 0.7rem; border-radius: 2px; color: #fff; background: #4b5563; }
-        .temp .t-name { font-size: 1.15rem; font-weight: 800; letter-spacing: 0.03em; }
-        .temp .t-advice { font-size: 0.8rem; font-weight: 700; background: rgba(0,0,0,.25); padding: 2px 8px; border-radius: 2px; }
-        .temp.hot { background: #dc2626; } .temp.warm { background: #d97706; } .temp.cold { background: #2563eb; }
+        .temp { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.4rem; margin: 0.6rem 0; padding: 0.5rem 0.7rem; border-radius: 2px; color: var(--text); background: #fff; border: 1px solid #d1d5db; }
+        .temp .t-name { font-size: 1.15rem; font-weight: 800; letter-spacing: 0.03em; color: #4b5563; }
+        .temp .t-advice { font-size: 0.8rem; font-weight: 700; padding: 1px 8px; border-radius: 2px; border: 1px solid currentColor; color: #4b5563; }
+        .temp.hot .t-name, .temp.hot .t-advice { color: #15803d; } .temp.warm .t-name, .temp.warm .t-advice { color: #b45309; } .temp.cold .t-name, .temp.cold .t-advice { color: #1d4ed8; }
         .reason { font-size: 0.78rem; margin: 0.3rem 0; color: #fbbf24; }
         .reason.ok { color: #10b981; }
         .bar { height: 8px; background: var(--glass); border-radius: 4px; overflow: hidden; margin: 0.25rem 0; display: flex; }
@@ -124,12 +124,12 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
                 if (!ent) {
                     var canvas = document.createElement('canvas');
                     var g = new RadialGauge({
-                        renderTo: canvas, width: 206, height: 206, units: '% humanos', minValue: 0, maxValue: o.max, value: value, majorTicks: o.ticks, minorTicks: 5, strokeTicks: true,
-                        highlights: o.hl, highlightsWidth: 12, startAngle: 60, ticksAngle: 240, valueBox: false, needle: !noData,
+                        renderTo: canvas, width: 124, height: 124, units: '% humanos', minValue: 0, maxValue: o.max, value: value, majorTicks: o.ticks, minorTicks: 5, strokeTicks: true,
+                        highlights: o.hl, highlightsWidth: 8, startAngle: 60, ticksAngle: 240, valueBox: false, needle: !noData,
                         colorPlate: '#fdfdfd', colorPlateEnd: '#e6e8ec', colorMajorTicks: '#1f2937', colorMinorTicks: '#4b5563', colorNumbers: '#1f2937', colorUnits: '#4b5563',
-                        borders: true, borderShadowWidth: 0, borderOuterWidth: 6, borderMiddleWidth: 3, borderInnerWidth: 2, colorBorderOuter: '#c9ced6', colorBorderOuterEnd: '#59616e', colorBorderMiddle: '#eef0f3', colorBorderMiddleEnd: '#8b93a0', colorBorderInner: '#fafafa', colorBorderInnerEnd: '#d7dbe1',
-                        needleType: 'arrow', needleWidth: 3, needleStart: 0, needleEnd: 82, needleCircleSize: 9, needleCircleOuter: true, needleCircleInner: false, needleShadow: true, colorNeedle: '#dc2626', colorNeedleEnd: '#7f1d1d', colorNeedleShadowDown: 'rgba(0,0,0,.45)', colorNeedleCircleOuter: '#d1d5db', colorNeedleCircleOuterEnd: '#374151',
-                        fontNumbersSize: 24, fontUnitsSize: 20, animation: true, animationDuration: 600, animationRule: 'linear'
+                        borders: true, borderShadowWidth: 0, borderOuterWidth: 4, borderMiddleWidth: 2, borderInnerWidth: 1, colorBorderOuter: '#c9ced6', colorBorderOuterEnd: '#59616e', colorBorderMiddle: '#eef0f3', colorBorderMiddleEnd: '#8b93a0', colorBorderInner: '#fafafa', colorBorderInnerEnd: '#d7dbe1',
+                        needleType: 'arrow', needleWidth: 2, needleStart: 0, needleEnd: 82, needleCircleSize: 6, needleCircleOuter: true, needleCircleInner: false, needleShadow: true, colorNeedle: '#dc2626', colorNeedleEnd: '#7f1d1d', colorNeedleShadowDown: 'rgba(0,0,0,.45)', colorNeedleCircleOuter: '#d1d5db', colorNeedleCircleOuterEnd: '#374151',
+                        fontNumbersSize: 15, fontUnitsSize: 11, animation: true, animationDuration: 600, animationRule: 'linear'
                     });
                     g.draw(); ent = GAUGES[listId] = { g: g, key: key, canvas: canvas, value: value };
                 } else if (ent.value !== value) { ent.g.value = value; ent.value = value; }
