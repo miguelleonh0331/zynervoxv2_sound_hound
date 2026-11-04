@@ -315,7 +315,7 @@ function bot_cfg_dashboard(\ZynervoxQueries\BotIvrRepository $db, ?DateTimeInter
             'open_calls'=>(int)($A['open_calls'] ?? 0),
             'totals'=>['contacts'=>$total, 'not_called'=>(int)$L['pending'], 'calls'=>(int)($A['calls'] ?? 0), 'answered'=>(int)($A['answered'] ?? 0), 'human'=>(int)($A['human'] ?? 0), 'machine'=>(int)($A['machine'] ?? 0), 'not_sure'=>(int)($A['notsure'] ?? 0),
                 'unavailable'=>(int)($A['unavailable'] ?? 0), 'no_answer'=>(int)($A['noanswer'] ?? 0), 'failed'=>(int)($A['failed'] ?? 0)],
-            'distribution'=>isset($sumByList[(int)$r['list_id']]) && $sumByList[(int)$r['list_id']]['dist_at'] !== null ? marcador_contact_block(bot_cfg_summary_counts($sumByList[(int)$r['list_id']])) + ['as_of_utc'=>$sumByList[(int)$r['list_id']]['dist_at']] : null,
+            'distribution'=>isset($sumByList[(int)$r['list_id']]) && ($sumByList[(int)$r['list_id']]['dist_at'] ?? null) !== null ? marcador_contact_block(bot_cfg_summary_counts($sumByList[(int)$r['list_id']])) + ['as_of_utc'=>$sumByList[(int)$r['list_id']]['dist_at']] : null,
             'insight'=>null,
             'progress_pct'=>$total > 0 ? (int)round(100 * (int)$L['called'] / $total) : 0,
             'reason'=>bot_cfg_list_reason($r + ['att'=>$A], $c + ['campaign_active'=>$r['campaign_active']], $alive, $inWindow, $eligible, $max - $openTotal, fn() => $db->listRetryPendingCount($cid, (int)$r['list_id'], (string)$r['lead_order']))];
@@ -649,7 +649,7 @@ function bot_cfg_contact_distribution(\ZynervoxQueries\BotIvrRepository $db, arr
     if ($ranged) {
         foreach ($db->contactDistributionRange($f) as $r) $counts[(int)$r['list_id']][$r['cat']] = (int)$r['n'];
     } else {
-        foreach ($sums as $id=>$u) if ($u['dist_at'] !== null) $counts[$id] = bot_cfg_summary_counts($u);
+        foreach ($sums as $id=>$u) if (($u['dist_at'] ?? null) !== null) $counts[$id] = bot_cfg_summary_counts($u);
     }
     $lists = []; $byCamp = []; $total = array_fill_keys(array_keys(MARCADOR_CONTACT_CATEGORIES), 0);
     foreach ($counts as $lid=>$c) {
