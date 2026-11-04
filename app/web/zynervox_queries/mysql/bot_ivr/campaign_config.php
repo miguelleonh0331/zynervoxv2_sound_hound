@@ -170,6 +170,26 @@ trait CampaignConfigQueries {
         $out['by_cause'] = $q("SELECT a.sip_cause, a.hangup_cause q850, a.disposition, COUNT(*) calls $from GROUP BY a.sip_cause, a.hangup_cause, a.disposition ORDER BY calls DESC");
         return $out;
     }
+    /** Extra report series (same filters as reportAggregates): daily, weekday x hour, per-lead attempts, SIP codes, AMD by cause, per carrier. */
+    public function reportExtra(array $f): array {
+        [$where, $params] = $this->reportWhere($f);
+        $off = (int)$f['offset_seconds']; $C = $this->reportCounters($f);
+        $loc = "DATE_ADD(a.started_at, INTERVAL $off SECOND)";
+        $from = "FROM zynervox_bot_call_attempts a WHERE $where";
+        $q = function(string $sql) use($params) { $s = $this->db->prepare($sql); $s->execute($params); return $s->fetchAll(\PDO::FETCH_ASSOC); };
+        $valid = $f['include_invalid_amd'] ? '' : " AND a.started_at>='".$f['invalid_before_utc']."'";
+        $out = [];
+        $out['by_day'] = $q("SELECT DATE_FORMAT($loc, '%Y-%m-%d') day_local, $C $from GROUP BY day_local ORDER BY day_local");
+        $out['by_weekday_hour'] = $q("SELECT WEEKDAY($loc)+1 weekday, HOUR($loc) hour_local, $C $from GROUP BY weekday, hour_local ORDER BY weekday, hour_local");
+        $out['funnel'] = $q("SELECT $C $from")[0];
+        $out['attempts_per_lead'] = $q("SELECT t.list_id, LEAST(t.c,4) attempts, COUNT(*) leads FROM (SELECT a.list_id, a.lead_id, COUNT(*) c $from GROUP BY a.list_id, a.lead_id) t GROUP BY t.list_id, attempts ORDER BY t.list_id, attempts");
+        $A = self::REPORT_ANSWERED;
+        $out['first_contact_attempt'] = $q("SELECT m.n attempt_no, COUNT(*) leads FROM (SELECT x.lead_id, MIN(x.n) n FROM (SELECT a.lead_id, ROW_NUMBER() OVER (PARTITION BY a.lead_id ORDER BY a.attempt_id) n, ($A) ans $from) x WHERE x.ans=1 GROUP BY x.lead_id) m GROUP BY m.n ORDER BY m.n");
+        $out['by_sip_code'] = $q("SELECT COALESCE(REGEXP_SUBSTR(a.sip_cause, '[0-9]{3}'), '') code, a.disposition, COUNT(*) calls $from GROUP BY code, a.disposition ORDER BY calls DESC");
+        $out['amd_by_cause'] = $q("SELECT a.amd_status, a.amd_cause, COUNT(*) calls $from AND a.amd_status<>''$valid GROUP BY a.amd_status, a.amd_cause ORDER BY calls DESC");
+        $out['by_carrier'] = $q("SELECT a.carrier, $C $from GROUP BY a.carrier ORDER BY calls DESC");
+        return $out;
+    }
     public function reportDetail(array $f, int $limit, int $offset): array {
         [$where, $params] = $this->reportWhere($f); $off = (int)$f['offset_seconds'];
         $from = "FROM zynervox_bot_call_attempts a LEFT JOIN zynervox_bot_lists p ON p.list_id=a.list_id LEFT JOIN zynervox_bot_campaigns c ON c.campaign_id=a.campaign_id WHERE $where";

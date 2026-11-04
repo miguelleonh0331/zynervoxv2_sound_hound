@@ -491,3 +491,63 @@ function bot_cfg_summary(\ZynervoxQueries\BotIvrRepository $db, array $filters =
     unset($c);
     return ['lists'=>$lists, 'campaigns'=>array_values($campaigns)];
 }
+
+/**
+ * Extra report series for the charts, same filters as bot_cfg_report (from, to, campaign_id, list_id; Lima time, TEST-% excluded, AMD before 03/11 15:31:54 Lima left out of human/machine).
+ * by_day, by_weekday_hour (weekday 1=Monday..7), funnel (+stages and leaks), attempts_per_lead (0 = never dialed, only lists that still exist; 4 = four or more),
+ * first_contact_attempt (leads first reached at attempt n, with cumulative %), sip_families (partial flag), amd_by_cause, by_carrier (multiple=true when there is more than one).
+ * Attempt numbering counts only the attempts inside the filters.
+ */
+function bot_cfg_report_extra(\ZynervoxQueries\BotIvrRepository $db, array $filters = []): array {
+    $f = bot_cfg_report_filters($filters);
+    $x = $db->reportExtra($f);
+    $int = fn(array $r, array $keys) => array_map(fn($k) => (int)$r[$k], array_combine($keys, $keys));
+    $fn = $x['funnel'];
+    $answered = (int)$fn['answered']; $human = (int)$fn['human'] + (int)$fn['not_sure']; $started = (int)$fn['xfer_ok'] + (int)$fn['xfer_fail'];
+    $pct = fn(int $a, int $b) => $b > 0 ? round(100 * $a / $b, 1) : null;
+    $stages = [['key'=>'attempts', 'label'=>'Intentos', 'n'=>(int)$fn['calls']], ['key'=>'answered', 'label'=>'Contestadas', 'n'=>$answered], ['key'=>'human', 'label'=>'Humano (HUMAN/NOTSURE)', 'n'=>$human],
+        ['key'=>'xfer_started', 'label'=>'Transferencia iniciada', 'n'=>$started], ['key'=>'xfer_ok', 'label'=>'Transferencia contestada', 'n'=>(int)$fn['xfer_ok']]];
+    foreach ($stages as $i=>&$st) $st['pct_prev'] = $i === 0 ? null : $pct($st['n'], $stages[$i - 1]['n']);
+    unset($st);
+    $leaks = ['machine'=>(int)$fn['machine'], 'unavailable'=>(int)$fn['unavailable'], 'no_answer'=>(int)$fn['no_answer'], 'failed'=>(int)$fn['failed'], 'xfer_fail'=>(int)$fn['xfer_fail']];
+    // Attempts per lead: bucket 0 comes from the summary (contacts - leads dialed), only for lists that still exist.
+    $perList = [];
+    foreach ($x['attempts_per_lead'] as $r) $perList[(int)$r['list_id']][(int)$r['attempts']] = (int)$r['leads'];
+    $sums = [];
+    foreach ($db->listSummaries($f['campaign_id'], $f['list_id']) as $u) $sums[(int)$u['list_id']] = $u;
+    $apl = []; $total = [0=>0, 1=>0, 2=>0, 3=>0, 4=>0];
+    foreach ($perList + array_fill_keys(array_keys($sums), []) as $lid=>$b) {
+        $u = $sums[$lid] ?? null; $deleted = $u === null || $u['state'] === 'deleted';
+        $row = [0=>0, 1=>$b[1] ?? 0, 2=>$b[2] ?? 0, 3=>$b[3] ?? 0, 4=>$b[4] ?? 0];
+        if (!$deleted && $f['from_utc'] === null && $f['to_utc'] === null) $row[0] = max(0, (int)$u['contacts'] - array_sum($row));
+        foreach ($row as $k=>$v) $total[$k] += $v;
+        $apl[] = ['list_id'=>(int)$lid, 'list'=>$u['list_name'] ?? 'lista eliminada', 'list_deleted'=>$deleted, 'never_dialed_known'=>!$deleted && $f['from_utc'] === null && $f['to_utc'] === null, 'leads_by_attempts'=>$row];
+    }
+    $reached = array_sum(array_map(fn($r) => (int)$r['leads'], $x['first_contact_attempt'])); $cum = 0; $fc = [];
+    foreach ($x['first_contact_attempt'] as $r) { $cum += (int)$r['leads']; $fc[] = ['attempt_no'=>(int)$r['attempt_no'], 'leads'=>(int)$r['leads'], 'cumulative'=>$cum, 'cumulative_pct'=>$pct($cum, $reached)]; }
+    // SIP families (contract section v2). Partial capture: attempts without a code or with a provisional 1xx where a final code should be.
+    $family = function (string $code): string {
+        if ($code === '') return 'sin_codigo';
+        return match (true) { in_array($code, ['486', '600'], true) => 'ocupado', in_array($code, ['480', '408'], true) => 'no_disponible', in_array($code, ['404', '484'], true) => 'inexistente',
+            $code === '603' => 'rechazo', $code === '487' => 'cancelado', $code[0] === '5' => 'congestion', $code[0] === '1' => 'provisional_1xx', $code[0] === '2' => 'contestada', default => 'otros' };
+    };
+    $labels = ['ocupado'=>'Ocupado 486/600', 'no_disponible'=>'No disponible 480/408', 'inexistente'=>'Inexistente 404/484', 'congestion'=>'Congestión 5xx', 'rechazo'=>'Rechazo 603', 'cancelado'=>'Cancelado 487',
+        'provisional_1xx'=>'Solo llegó un provisional (1xx)', 'contestada'=>'Contestada 2xx', 'sin_codigo'=>'Sin código capturado', 'otros'=>'Otros'];
+    $fam = []; $codes = []; $partial = 0;
+    foreach ($x['by_sip_code'] as $r) {
+        $code = (string)$r['code']; $n = (int)$r['calls']; $fk = $family($code);
+        $isUnanswered = in_array($r['disposition'], ['NOANSWER', 'BUSY', 'FAILED', 'CONGESTION', 'CANCELLED'], true);
+        if ($isUnanswered && in_array($fk, ['sin_codigo', 'provisional_1xx'], true)) $partial += $n;
+        $fam[$fk] = ($fam[$fk] ?? 0) + $n;
+        $codes[] = ['code' => $code, 'family' => $fk, 'disposition' => $r['disposition'], 'calls' => $n];
+    }
+    arsort($fam);
+    $families = []; foreach ($fam as $k=>$n) $families[] = ['family'=>$k, 'label'=>$labels[$k], 'calls'=>$n];
+    $carriers = array_map(fn($r) => ['carrier'=>$r['carrier'] === '' ? '(sin troncal)' : $r['carrier']] + $r + ['contact_pct'=>$pct((int)$r['answered'], (int)$r['calls'])], $x['by_carrier']);
+    return ['filters'=>['from_utc'=>$f['from_utc'], 'to_utc'=>$f['to_utc'], 'campaign_id'=>$f['campaign_id'], 'list_id'=>$f['list_id'], 'timezone'=>'America/Lima', 'amd_valid_from_local'=>BOT_AMD_VALID_FROM_LIMA],
+        'by_day'=>$x['by_day'], 'by_weekday_hour'=>$x['by_weekday_hour'],
+        'funnel'=>['stages'=>$stages, 'leaks'=>$leaks],
+        'attempts_per_lead'=>['total'=>$total, 'lists'=>$apl], 'first_contact_attempt'=>$fc,
+        'sip'=>['families'=>$families, 'codes'=>$codes, 'partial'=>$partial > 0, 'partial_calls'=>$partial],
+        'amd_by_cause'=>$x['amd_by_cause'], 'by_carrier'=>['multiple'=>count($carriers) > 1, 'rows'=>$carriers]];
+}
