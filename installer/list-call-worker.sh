@@ -10,6 +10,7 @@ mysql zynervox_core < "$source_root/src/features/bot_ivr/models/017-dialer-list-
 mysql zynervox_core < "$source_root/src/features/bot_ivr/models/018-amd-audit.sql"
 mysql zynervox_core < "$source_root/src/features/bot_ivr/models/019-amd-global-summary-indexes.sql"
 mysql zynervox_core < "$source_root/src/features/bot_ivr/models/020-amd-contact-audio.sql"
+mysql zynervox_core < "$source_root/src/features/bot_ivr/models/021-zypad.sql"
 mysql <<'SQL'
 GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_dial_runs TO 'zynervoxv2_bot_ivr'@'localhost';
 GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_dial_runs TO 'zynervoxv2_bot_ivr'@'127.0.0.1';
@@ -33,6 +34,8 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_amd_global_versi
 GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_list_summary TO 'zynervoxv2_bot_ivr'@'localhost';
 GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_amd_global_versions TO 'zynervoxv2_bot_ivr'@'127.0.0.1';
 GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_list_summary TO 'zynervoxv2_bot_ivr'@'127.0.0.1';
+GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_zypad_words TO 'zynervoxv2_bot_ivr'@'localhost';
+GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_zypad_words TO 'zynervoxv2_bot_ivr'@'127.0.0.1';
 SQL
 install -d -o root -g "${WEB_GROUP:-www}" -m 2770 "$runtime_root/bot_ivr/call_jobs"
 install -d -o root -g "${WEB_GROUP:-www}" -m 0750 "$runtime_root/modules/bot_ivr"
