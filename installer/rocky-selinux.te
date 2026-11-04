@@ -5,9 +5,11 @@ require {
     type asterisk_t;
     type httpd_sys_content_t;
     attribute file_type;
+    attribute port_type;
     class dir { add_name create getattr open read remove_name rmdir search setattr write };
     class file { append create execute execute_no_trans getattr ioctl lock map open read rename setattr unlink write };
     class lnk_file { getattr read };
+    class tcp_socket name_connect;
 }
 
 type zynervox_runtime_t;
@@ -16,6 +18,8 @@ type zynervox_conf_t;
 typeattribute zynervox_conf_t file_type;
 type zynervox_agi_exec_t;
 typeattribute zynervox_agi_exec_t file_type;
+type zynervox_audiosocket_port_t;
+typeattribute zynervox_audiosocket_port_t port_type;
 
 allow { httpd_t asterisk_t } zynervox_runtime_t:dir { add_name create getattr open read remove_name rmdir search setattr write };
 allow { httpd_t asterisk_t } zynervox_runtime_t:file { append create getattr ioctl lock map open read rename setattr unlink write };
@@ -27,3 +31,4 @@ allow asterisk_t httpd_sys_content_t:file { getattr ioctl map open read };
 allow asterisk_t httpd_sys_content_t:lnk_file { getattr read };
 allow { httpd_t asterisk_t } zynervox_agi_exec_t:file { getattr ioctl map open read };
 allow asterisk_t zynervox_agi_exec_t:file { execute execute_no_trans };
+allow asterisk_t zynervox_audiosocket_port_t:tcp_socket name_connect;
