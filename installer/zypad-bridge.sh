@@ -16,10 +16,7 @@ install -o root -g "$service_user" -m 0640 "$secret_file" /etc/zypad/bridge.env
 install -d -o "$service_user" -g "$service_user" -m 0700 "$state" "$state/logs"
 restorecon -RF "$state"
 
-# Retencion de logs: 14 dias.
-printf 'e %s/logs - - - 14d\n' "$state" > /etc/tmpfiles.d/zypad-bridge.conf
-chmod 0644 /etc/tmpfiles.d/zypad-bridge.conf
-
+# Sin limpieza por edad: logs y grabaciones los conserva el usuario para el STT; su borrado es decision suya.
 install -m 0644 -o root -g root "$source_root/src/features/zypad/zypad-bridge.service" /etc/systemd/system/zypad-bridge.service
 # Catalogo real: programa de MarcadorBuilder (lee zynervox_bot_zypad_words); el servicio guarda su copia en catalog.json.
 install -d -m 0755 /etc/systemd/system/zypad-bridge.service.d
