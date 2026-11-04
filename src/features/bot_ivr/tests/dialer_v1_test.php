@@ -431,5 +431,11 @@ $dm = bot_cfg_dialmode_report($repo, ['campaign_id'=>$zc, 'include_invalid_amd'=
 $row = $dm['rows'][0] ?? [];
 check('reporte por tipo de marcación: N, casilla de voz y coincidencia zypad/AMD', count($dm['rows']) === 1 && $row['dial_mode'] === 'ZYPAD_SOMBRA' && $row['calls'] === 3 && $row['preanswer_audio'] === 2 && $row['both_casilla'] === 1 && $row['only_zypad'] === 1 && $row['only_zypad_amd_human'] === 1 && $row['only_amd'] === 0 && $row['small_sample'] === true);
 check('reporte por tipo de marcación: tiempo que el corte habría ahorrado', $row['saved_n'] === 1 && $row['saved_seconds_total'] === 6.6 && $row['saved_seconds_avg'] === 6.6 && throws(fn() => bot_cfg_dialmode_report($repo, ['dial_mode'=>'X'])) !== '');
+$cat1 = marcador_zypad_catalog($repo);
+bot_cfg_zypad_word_save($repo, 'buzon de voz', 'tester');
+$cat2 = marcador_zypad_catalog($repo);
+$cid2 = $repo->zypadWords()[1]['word_id'];
+bot_cfg_zypad_word_delete($repo, (int)$cid2);
+check('catálogo para el puente: la versión cambia al añadir y al borrar, y vuelve igual con el mismo contenido', $cat1['version'] !== $cat2['version'] && marcador_zypad_catalog($repo)['version'] === $cat1['version'] && $cat1['words'] === [['word'=>'mensaje', 'category'=>'casilla_voz', 'active'=>true]]);
 echo $fail ? "$fail FALLOS\n" : "TODO OK\n";
 exit($fail ? 1 : 0);

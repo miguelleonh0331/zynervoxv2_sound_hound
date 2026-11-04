@@ -31,3 +31,9 @@ function marcador_zypad_apply(\ZynervoxQueries\BotIvrRepository $repo, array $ar
     $n = $repo->recordZypad($callId, $d);
     return ['call_id'=>$callId, 'updated'=>$n] + $d;
 }
+
+/** Catalog for the zypad bridge: {"version": hash of the content (changes on add, edit, deactivate and delete), "words":[{word,category,active}]}. */
+function marcador_zypad_catalog(\ZynervoxQueries\BotIvrRepository $repo): array {
+    $words = array_map(fn($w) => ['word'=>$w['word'], 'category'=>$w['category'], 'active'=>(bool)$w['active']], $repo->zypadWords());
+    return ['version'=>substr(sha1(json_encode($words, JSON_UNESCAPED_UNICODE)), 0, 16), 'words'=>$words];
+}
