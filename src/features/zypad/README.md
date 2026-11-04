@@ -18,7 +18,7 @@ Recibe el audio de la llamada desde Asterisk (AudioSocket, 127.0.0.1:8765), lo m
 Fichero `ZYPAD_CONFIG` (por defecto `/etc/zypad/bridge.env`, modo 640, dueño root, grupo del servicio) con `ZYPAD_URL` y `ZYPAD_API_KEY`; el resto por entorno (ver `lib/config.mjs`): `BRIDGE_HOST` (127.0.0.1), `BRIDGE_PORT` (8765), `BRIDGE_LOG_DIR` (`/var/lib/zypad-bridge/logs`), `CATALOG_*`, `CUT_CMD`, `ANNOTATE_CMD`, `CUT_UUID_RE`. La clave nunca se imprime ni se registra.
 
 ## Logs y retención
-`BRIDGE_LOG_DIR/<uuid>.jsonl`, directorio 700 y ficheros 600: **contienen transcripciones** (datos personales). Eventos: `start`, `ws_open`, `first_audio` (UTC con ms), `text` (cada cambio de texto), `word_pre`/`word_post`, `cut_*`/`annotate_*`, `closed` (segundo del answer), `final`, `summary`. Retención sugerida: 14 días (`systemd-tmpfiles`).
+`BRIDGE_LOG_DIR/<uuid>.jsonl`, directorio 700 y ficheros 600: **contienen transcripciones** (datos personales). Eventos: `start`, `ws_open`, `first_audio` (UTC con ms), `text` (cada cambio de texto), `word_pre`/`word_post`, `cut_*`/`annotate_*`, `closed` (segundo del answer), `final`, `summary`. Sin retención automática: los logs se conservan y su gestión la decide el usuario (no se borra nada).
 
 ## Servicio
 `zypad-bridge.service` (plantilla en este directorio; la instala Instalador). Arranca con el sistema y se reinicia solo. Recargar el catálogo no reinicia nada.
