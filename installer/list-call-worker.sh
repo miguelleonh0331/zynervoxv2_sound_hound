@@ -31,4 +31,7 @@ SQL
 install -d -o root -g "${WEB_GROUP:-www}" -m 2770 "$runtime_root/bot_ivr/call_jobs"
 install -d -o root -g "${WEB_GROUP:-www}" -m 0750 "$runtime_root/modules/bot_ivr"
 install -o root -g "${WEB_GROUP:-www}" -m 0640 "$source_root/asterisk/synervox/modules/bot_ivr/list_call_launcher.py" "$runtime_root/modules/bot_ivr/list_call_launcher.py"
+# Grabaciones de llamadas contestadas del marcador: Asterisk escribe, el STT por lotes (grupo web) lee. SELinux lo cubre la regla de $runtime_root.
+install -d -o asterisk -g "${WEB_GROUP:-www}" -m 2770 "$runtime_root/recordings/marcador"
+setfacl -m u:asterisk:rwx,g:"${WEB_GROUP:-www}":rwx,d:u::rwx,d:u:asterisk:rwx,d:g::rwx,d:g:"${WEB_GROUP:-www}":rw,d:m::rwx,d:o::- "$runtime_root/recordings/marcador"
 echo LIST_CALL_WORKER_READY
