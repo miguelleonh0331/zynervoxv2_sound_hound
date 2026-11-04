@@ -79,4 +79,11 @@ interface BotIvrRepository {
     public function listIdsWithoutSummary(): array;
     public function listHasNoPendingWork(int $campaignId, int $listId, string $order): bool;
     public function deactivateList(int $campaignId, int $listId): void;
+    public function zypadWords(): array;
+    public function zypadWordSave(string $word, string $category, bool $active, string $actor): int;
+    public function zypadWordDelete(int $wordId): bool;
+    public function zypadCatalogVersion(): string;
+    public function recordZypad(string $callId, array $d): int;
+    public function stampDialModes(array $map): int;
+    public function dialModeReport(array $f): array;
 }
