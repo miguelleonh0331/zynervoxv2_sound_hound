@@ -186,7 +186,7 @@ $pdo->exec("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phon
 $rep = bot_cfg_report($repo, ['campaign_id'=>$id], 1, 5);
 marcador_list_summary_backfill($repo); $rep = bot_cfg_report($repo, ['campaign_id'=>$id], 1, 5);
 check('reporte: excluye TEST-% por defecto y marca la lista eliminada', count(array_filter($rep['by_list'], fn($l) => $l['list_deleted'])) >= 1);
-check('reporte: teléfono enmascarado y AMD inválido marcado', (bool)array_filter($rep['detail']['rows'], fn($r) => str_starts_with($r['phone'], '*')) && (bool)array_filter($rep['detail']['rows'], fn($r) => $r['amd_valid'] === false));
+check('reporte: teléfono completo en pantalla y AMD inválido marcado', !array_filter($rep['detail']['rows'], fn($r) => str_contains($r['phone'], '*')) && (bool)array_filter($rep['detail']['rows'], fn($r) => $r['amd_valid'] === false));
 foreach ($pdo->query('SELECT list_id,state FROM zynervox_bot_list_summary')->fetchAll() as $su) marcador_list_summary_refresh($repo, (int)$su['list_id'], $su['state']);
 $rep = bot_cfg_report($repo, ['campaign_id'=>$id], 1, 5);
 $repAll = bot_cfg_report($repo, ['campaign_id'=>$id, 'include_test'=>1, 'include_invalid_amd'=>1], 1, 500);
@@ -533,5 +533,16 @@ check('mini aguja: las últimas de la ventana (primeros intentos y reintentos), 
 $ba = bot_cfg_report_extra($repo, ['list_id'=>$dl, 'from'=>'2000-01-01'])['by_attempt'];
 check('report_extra.by_attempt: intentos por número de intento, con contestadas y humanas', $ba !== [] && $ba[0]['attempt_no'] === 1 && $ba[0]['calls'] > $ba[count($ba) - 1]['calls'] - 1 && array_sum(array_column($ba, 'calls')) === (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_call_attempts WHERE list_id=$dl AND finished_at IS NOT NULL AND call_id NOT LIKE 'TEST-%'")->fetchColumn()
     && ($ba[1]['attempt_no'] ?? 2) === 2);
+// Detalle de intentos: Estado filter on the server, full phone on screen, masked in the CSV
+$rp = bot_cfg_report($repo, ['list_id'=>$dl, 'from'=>'2000-01-01'], 1, 5);
+$sumE = array_sum($rp['detail']['estados']);
+check('detalle: la suma de los Estados es el total y hay etiquetas en español', $sumE === $rp['detail']['total'] && $rp['detail']['total'] > 5 && $rp['detail']['pages'] === (int)ceil($rp['detail']['total'] / 5) && count($rp['detail']['estado_list']) === count(MARCADOR_ATTEMPT_STATES));
+$ok = true; foreach ($rp['detail']['estados'] as $est=>$n) { $q2 = bot_cfg_report($repo, ['list_id'=>$dl, 'from'=>'2000-01-01', 'estado'=>$est], 1, 3); $ok = $ok && $q2['detail']['total'] === $n && array_unique(array_column($q2['detail']['rows'], 'estado')) === [$est] && count($q2['detail']['rows']) === min(3, $n); }
+check('detalle: cada Estado filtra en servidor con su total y su paginación', $ok && count($rp['detail']['estados']) >= 5);
+check('detalle: 480 y 408 = No disponible, 486 y 600 = Ocupado, 487 y NOANSWER = Sin respuesta, XFER_OK = Transferida', ($rp['detail']['estados']['no_disponible'] ?? 0) === 2 && ($rp['detail']['estados']['ocupado'] ?? 0) === 2 && ($rp['detail']['estados']['transferida'] ?? 0) === 2 && ($rp['detail']['estados']['casilla_voz'] ?? 0) === 1);
+check('detalle: Estado inválido se rechaza y las tarjetas no cambian con el filtro', throws(fn() => bot_cfg_report($repo, ['estado'=>"x' OR 1=1 --"])) !== '' && bot_cfg_report($repo, ['list_id'=>$dl, 'from'=>'2000-01-01', 'estado'=>'ocupado'])['kpi']['calls'] === bot_cfg_report($repo, ['list_id'=>$dl, 'from'=>'2000-01-01'])['kpi']['calls']);
+$full = $rp['detail']['rows'][0]['phone'];
+check('detalle en pantalla: teléfono completo; CSV: enmascarado', !str_contains($full, '*') && strlen($full) >= 9 && !str_contains(bot_cfg_report_csv($repo, ['list_id'=>$dl, 'from'=>'2000-01-01']), $full)
+    && str_contains(bot_cfg_report_csv($repo, ['list_id'=>$dl, 'from'=>'2000-01-01', 'estado'=>'ocupado']), '*') && substr_count(trim(bot_cfg_report_csv($repo, ['list_id'=>$dl, 'from'=>'2000-01-01', 'estado'=>'ocupado'])), "\n") === 2);
 echo $fail ? "$fail FALLOS\n" : "TODO OK\n";
 exit($fail ? 1 : 0);

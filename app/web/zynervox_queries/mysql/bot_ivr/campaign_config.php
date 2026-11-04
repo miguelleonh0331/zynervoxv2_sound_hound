@@ -309,13 +309,19 @@ trait CampaignConfigQueries {
     }
     public function reportDetail(array $f, int $limit, int $offset): array {
         [$where, $params] = $this->reportWhere($f); $off = (int)$f['offset_seconds'];
+        $stateSql = marcador_attempt_state_sql();
+        $fromAll = "FROM zynervox_bot_call_attempts a LEFT JOIN zynervox_bot_lists p ON p.list_id=a.list_id LEFT JOIN zynervox_bot_campaigns c ON c.campaign_id=a.campaign_id WHERE $where";
+        // Counts per Estado with every other filter (not the Estado one): the page can show them and they add up to the total.
+        $g = $this->db->prepare("SELECT $stateSql estado, COUNT(*) n $fromAll GROUP BY estado"); $g->execute($params);
+        $estados = []; foreach ($g->fetchAll(\PDO::FETCH_ASSOC) as $r) $estados[$r['estado']] = (int)$r['n'];
+        if (!empty($f['estado'])) { $where .= " AND $stateSql=?"; $params[] = $f['estado']; }
         $from = "FROM zynervox_bot_call_attempts a LEFT JOIN zynervox_bot_lists p ON p.list_id=a.list_id LEFT JOIN zynervox_bot_campaigns c ON c.campaign_id=a.campaign_id WHERE $where";
         $t = $this->db->prepare("SELECT COUNT(*) $from"); $t->execute($params);
-        $s = $this->db->prepare("SELECT a.attempt_id, DATE_FORMAT(DATE_ADD(a.started_at, INTERVAL $off SECOND), '%Y-%m-%d %H:%i:%s') started_at_local, a.started_at>='".$f['invalid_before_utc']."' amd_valid,
+        $s = $this->db->prepare("SELECT $stateSql estado, a.attempt_id, DATE_FORMAT(DATE_ADD(a.started_at, INTERVAL $off SECOND), '%Y-%m-%d %H:%i:%s') started_at_local, a.started_at>='".$f['invalid_before_utc']."' amd_valid,
                 a.campaign_id, COALESCE(c.name,'campaña eliminada') campaign, a.list_id, COALESCE(p.name,'lista eliminada') list, a.lead_id, a.phone, a.status, a.disposition, a.amd_status, a.amd_cause,
                 a.sip_cause, a.hangup_cause q850, a.billsec, a.cause_source, IF(a.dial_mode='','AMD',a.dial_mode) dial_mode, a.detectado_por, a.momento, a.palabra, a.segundo, a.corte_por, a.preanswer_audio, a.result_final $from ORDER BY a.attempt_id DESC LIMIT ".(int)$limit." OFFSET ".(int)$offset);
         $s->execute($params);
-        return ['total'=>(int)$t->fetchColumn(), 'rows'=>$s->fetchAll(\PDO::FETCH_ASSOC)];
+        return ['total'=>(int)$t->fetchColumn(), 'rows'=>$s->fetchAll(\PDO::FETCH_ASSOC), 'estados'=>$estados];
     }
     // --- AMD parameters per campaign and AMD audit (migration 018). Logic and the STT batch live in app/web/marcador/. ---
     private const AMD_PARAM_COLUMNS = ['initial_silence','greeting','after_greeting_silence','total_analysis_time','minimum_word_length','between_words_silence','maximum_number_of_words','silence_threshold','maximum_word_length'];

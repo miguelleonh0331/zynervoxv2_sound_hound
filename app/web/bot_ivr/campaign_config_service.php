@@ -392,7 +392,9 @@ function bot_cfg_report_filters(array $in): array {
     $id = fn($v, string $label) => ($v === null || $v === '' || $v === 0 || $v === '0') ? null : bot_cfg_int($v, 1, PHP_INT_MAX, $label);
     $from = bot_cfg_report_time($in['from'] ?? null, false, $tz); $to = bot_cfg_report_time($in['to'] ?? null, true, $tz);
     if ($from !== null && $to !== null && $from >= $to) throw new RuntimeException('El rango de fechas es inválido: "desde" debe ser anterior a "hasta".');
-    return ['from_utc'=>$from, 'to_utc'=>$to, 'campaign_id'=>$id($in['campaign_id'] ?? null, 'Campaña'), 'list_id'=>$id($in['list_id'] ?? null, 'Lista'),
+    $estado = trim((string)($in['estado'] ?? ''));
+    if ($estado !== '' && !isset(MARCADOR_ATTEMPT_STATES[$estado])) throw new RuntimeException('Estado no válido. Valores: '.implode(', ', array_keys(MARCADOR_ATTEMPT_STATES)).'.');
+    return ['from_utc'=>$from, 'to_utc'=>$to, 'campaign_id'=>$id($in['campaign_id'] ?? null, 'Campaña'), 'list_id'=>$id($in['list_id'] ?? null, 'Lista'), 'estado'=>$estado === '' ? null : $estado,
         'include_test'=>!empty($in['include_test']), 'include_invalid_amd'=>!empty($in['include_invalid_amd']),
         'invalid_before_utc'=>(new DateTimeImmutable(BOT_AMD_VALID_FROM_LIMA, $tz))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s'),
         'offset_seconds'=>$tz->getOffset(new DateTimeImmutable('now', $tz))];
@@ -403,7 +405,8 @@ function bot_cfg_report_mask_phone(string $phone): string { return strlen($phone
  * Report data: kpi, by_hour, by_list, by_amd, by_cause, transfers and a paginated detail. Hours in America/Lima (started_at is UTC).
  * Deleted lists/campaigns stay in the history as "lista eliminada"/"campaña eliminada". TEST-% attempts are excluded unless include_test.
  * AMD results before 03/11/2026 15:31:54 Lima are flagged amd_valid=false and left out of the AMD figures unless include_invalid_amd.
- * Phones are masked (last 3 digits).
+ * The detail on screen shows the FULL phone (the user dials by hand to test); the CSV export keeps it masked (last 3 digits). Optional filter «estado» (closed list MARCADOR_ATTEMPT_STATES)
+ * applies to the detail and the CSV only: detail.estados has the count per Estado with the other filters and detail.estado_list the keys and labels.
  */
 function bot_cfg_report(\ZynervoxQueries\BotIvrRepository $db, array $filters = [], int $page = 1, int $perPage = 50): array {
     $f = bot_cfg_report_filters($filters);
@@ -412,7 +415,7 @@ function bot_cfg_report(\ZynervoxQueries\BotIvrRepository $db, array $filters = 
     $sum = ($f['from_utc'] === null && $f['to_utc'] === null && !$f['include_test'] && !$f['include_invalid_amd']) ? $db->listSummaries($f['campaign_id'], $f['list_id']) : [];
     $agg = $db->reportAggregates($f + ['skip_totals'=>(bool)$sum]);
     $detail = $db->reportDetail($f, $perPage, ($page - 1) * $perPage);
-    foreach ($detail['rows'] as &$r) { $r['phone'] = bot_cfg_report_mask_phone((string)$r['phone']); $r['amd_valid'] = (bool)$r['amd_valid']; }
+    foreach ($detail['rows'] as &$r) { $r['amd_valid'] = (bool)$r['amd_valid']; $r['estado_label'] = MARCADOR_ATTEMPT_STATES[$r['estado']] ?? $r['estado']; }
     unset($r);
     $kpi = $agg['kpi'] ?? []; $byList = $agg['by_list'] ?? [];
     {
@@ -431,10 +434,10 @@ function bot_cfg_report(\ZynervoxQueries\BotIvrRepository $db, array $filters = 
     }
     $calls = (int)$kpi['calls'];
     $kpi['contact_pct'] = $calls > 0 ? round(100 * (int)$kpi['answered'] / $calls, 1) : 0.0;
-    return ['filters'=>['from_utc'=>$f['from_utc'], 'to_utc'=>$f['to_utc'], 'campaign_id'=>$f['campaign_id'], 'list_id'=>$f['list_id'], 'include_test'=>$f['include_test'], 'include_invalid_amd'=>$f['include_invalid_amd'], 'timezone'=>'America/Lima', 'amd_valid_from_local'=>BOT_AMD_VALID_FROM_LIMA],
+    return ['filters'=>['from_utc'=>$f['from_utc'], 'to_utc'=>$f['to_utc'], 'campaign_id'=>$f['campaign_id'], 'list_id'=>$f['list_id'], 'estado'=>$f['estado'], 'include_test'=>$f['include_test'], 'include_invalid_amd'=>$f['include_invalid_amd'], 'timezone'=>'America/Lima', 'amd_valid_from_local'=>BOT_AMD_VALID_FROM_LIMA],
         'kpi'=>$kpi, 'by_hour'=>$agg['by_hour'], 'by_list'=>$byList, 'by_amd'=>$agg['by_amd'], 'by_cause'=>$agg['by_cause'],
         'transfers'=>['ok'=>(int)$kpi['xfer_ok'], 'failed'=>(int)$kpi['xfer_fail']],
-        'detail'=>['page'=>$page, 'per_page'=>$perPage, 'total'=>$detail['total'], 'rows'=>$detail['rows']]];
+        'detail'=>['page'=>$page, 'per_page'=>$perPage, 'total'=>$detail['total'], 'pages'=>max(1, (int)ceil($detail['total'] / $perPage)), 'estados'=>$detail['estados'], 'estado_list'=>array_map(fn($k, $l) => ['key'=>$k, 'label'=>$l], array_keys(MARCADOR_ATTEMPT_STATES), MARCADOR_ATTEMPT_STATES), 'rows'=>$detail['rows']]];
 }
 
 /** CSV (UTF-8 with BOM) of the whole filtered detail, local Lima times, masked phones; cells that start like a formula are neutralized. */

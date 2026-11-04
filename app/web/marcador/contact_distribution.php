@@ -68,3 +68,17 @@ function marcador_contact_block(array $counts): array {
     $c = marcador_contact_counts($counts);
     return ['contacts'=>array_sum($c), 'counts'=>$c, 'pct'=>marcador_contact_pct($c), 'needle'=>marcador_contact_needle($c)];
 }
+
+/** Estado of one attempt (column «Estado» of Detalle de intentos): key => label. Single source for the report column, its filter and the CSV. */
+const MARCADOR_ATTEMPT_STATES = [
+    'casilla_voz'=>'Casilla de voz', 'transferida'=>'Transferida a tu destino', 'sin_respuesta'=>'Sin respuesta', 'no_disponible'=>'No disponible', 'ocupado'=>'Ocupado',
+    'contesto_sin_amd'=>'Contestó y se cortó sin AMD', 'transferencia_fallida'=>'Contestó pero falló la transferencia', 'contesto'=>'Contestó', 'fallo'=>'Falló'];
+
+/** SQL CASE over an attempt `a`, same order as the contract: 480/408 No disponible, 486/600 Ocupado, 487 Sin respuesta, 200 or answered dispositions, NOANSWER Sin respuesta, anything else Falló. */
+function marcador_attempt_state_sql(): string {
+    $sip = MARCADOR_SIP_SQL;
+    return "(CASE WHEN $sip IN (480,408) THEN 'no_disponible' WHEN $sip IN (486,600) THEN 'ocupado' WHEN $sip=487 THEN 'sin_respuesta'
+        WHEN $sip=200 OR a.disposition IN ('AMD_MACHINE','XFER_OK','ANSWER_HUMAN','XFER_FAIL') THEN
+            (CASE a.disposition WHEN 'AMD_MACHINE' THEN 'casilla_voz' WHEN 'XFER_OK' THEN 'transferida' WHEN 'XFER_FAIL' THEN 'transferencia_fallida' WHEN 'ANSWER_HUMAN' THEN 'contesto_sin_amd' ELSE 'contesto' END)
+        WHEN a.disposition='NOANSWER' THEN 'sin_respuesta' ELSE 'fallo' END)";
+}
