@@ -3,6 +3,7 @@ module zynervox 1.0;
 require {
     type httpd_t;
     type asterisk_t;
+    type hugetlbfs_t;
     type httpd_sys_content_t;
     attribute file_type;
     attribute port_type;
@@ -32,3 +33,5 @@ allow asterisk_t httpd_sys_content_t:lnk_file { getattr read };
 allow { httpd_t asterisk_t } zynervox_agi_exec_t:file { getattr ioctl map open read };
 allow asterisk_t zynervox_agi_exec_t:file { execute execute_no_trans };
 allow asterisk_t zynervox_audiosocket_port_t:tcp_socket name_connect;
+# PHP-CLI (AGI) prueba un mmap con MAP_HUGETLB para opcache y cae a memoria normal: se silencia el aviso sin conceder el permiso.
+dontaudit asterisk_t hugetlbfs_t:file map;
