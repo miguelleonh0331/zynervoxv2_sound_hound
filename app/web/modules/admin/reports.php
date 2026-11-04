@@ -150,7 +150,7 @@ Auth::checkAccess(9);
 
             <h2 class="sec">Detalle de intentos</h2>
             <section class="panels">
-                <div class="panel wide"><div class="scroll" id="detail"></div>
+                <div class="panel wide"><div class="filters" style="margin-bottom: 0.5rem;"><label>Estado <select id="f_estado"><option value="">Todos</option></select></label></div><div class="scroll" id="detail"></div>
                     <div class="pager"><button type="button" class="btn-action" id="prev">Anterior</button><span id="pageinfo"></span><button type="button" class="btn-action" id="next">Siguiente</button></div></div>
             </section>
         </details>
@@ -166,6 +166,7 @@ Auth::checkAccess(9);
         var SVGNS = 'http://www.w3.org/2000/svg';
         var form = document.getElementById('filters');
         // Enlace desde Listas: ?campaign_id=N&list_id=M (enteros). Se aplica en la primera carga; si la lista no existe o no es de esa campaña, la página se comporta como siempre.
+        var detailEstado = ''; // filtro «Estado» del detalle de intentos (clave de MarcadorBuilder); recarga solo el detalle
         var qs = new URLSearchParams(location.search), pending = null;
         (function () { var c = /^[1-9][0-9]*$/.test(qs.get('campaign_id') || '') ? qs.get('campaign_id') : '', l = /^[1-9][0-9]*$/.test(qs.get('list_id') || '') ? qs.get('list_id') : ''; if (c && l) pending = { campaign_id: c, list_id: l }; })();
         document.getElementById('minn').textContent = MIN;
@@ -179,6 +180,7 @@ Auth::checkAccess(9);
         function query(extra) {
             var p = new URLSearchParams(new FormData(form));
             Array.from(p.keys()).forEach(function (k) { if (!p.get(k)) p.delete(k); });
+            if (detailEstado) p.set('estado', detailEstado);
             if (pending) { p.set('campaign_id', pending.campaign_id); p.set('list_id', pending.list_id); }
             Object.keys(extra || {}).forEach(function (k) { p.set(k, extra[k]); });
             return p.toString();
@@ -432,9 +434,15 @@ Auth::checkAccess(9);
             var box = document.getElementById('detail'); box.textContent = '';
             var DM = { AMD: 'Solo AMD', ZYPAD_SOMBRA: 'Zypad sombra', ZYPAD_CORTE: 'Zypad corte' };
             box.appendChild(table(['Inicio (Lima)', 'Campaña', 'Lista', 'Teléfono', 'Tipo', 'Estado', 'AMD', 'Zypad', 'SIP', 'Q.850', 'Seg.'],
-                d.rows.map(function (r) { return [r.started_at_local, r.campaign, r.list, r.phone, DM[r.dial_mode] || r.dial_mode || 'Solo AMD', attemptLabel((String(r.sip_cause || '').match(/[0-9]{3}/) || [''])[0], r.disposition || r.result_final), r.amd_valid ? (r.amd_status || '') : (r.amd_status ? r.amd_status + ' (no válido)' : ''), (r.palabra ? '«' + r.palabra + '» ' + (r.momento || '') + (r.segundo != null && r.segundo !== '' ? ' ' + r.segundo + ' s' : '') + (r.preanswer_audio === 'SI' ? ' · audio previo' : '') : (r.preanswer_audio === 'SI' ? 'audio previo' : '')), r.sip_cause, r.q850, r.billsec]; })));
-            lastPages = Math.max(1, Math.ceil(d.total / d.per_page));
-            document.getElementById('pageinfo').textContent = 'Página ' + d.page + ' de ' + lastPages + ' · ' + d.total + ' llamadas';
+                d.rows.map(function (r) { return [r.started_at_local, r.campaign, r.list, r.phone, DM[r.dial_mode] || r.dial_mode || 'Solo AMD', r.estado_label || '', r.amd_valid ? (r.amd_status || '') : (r.amd_status ? r.amd_status + ' (no válido)' : ''), (r.palabra ? '«' + r.palabra + '» ' + (r.momento || '') + (r.segundo != null && r.segundo !== '' ? ' ' + r.segundo + ' s' : '') + (r.preanswer_audio === 'SI' ? ' · audio previo' : '') : (r.preanswer_audio === 'SI' ? 'audio previo' : '')), r.sip_cause, r.q850, r.billsec]; })));
+            // El teléfono completo se pinta en una sola línea y se selecciona de un clic para copiarlo.
+            Array.from(box.querySelectorAll('tbody tr')).forEach(function (tr) { var td = tr.children[3]; if (td) { td.style.whiteSpace = 'nowrap'; td.style.userSelect = 'all'; td.style.fontVariantNumeric = 'tabular-nums'; } });
+            var sel = document.getElementById('f_estado'), est = d.estados || {}, sum = Object.keys(est).reduce(function (a, k) { return a + n(est[k]); }, 0);
+            sel.textContent = ''; var o0 = el('option', '', 'Todos (' + sum + ')'); o0.value = ''; sel.appendChild(o0);
+            (d.estado_list || []).forEach(function (e) { var o = el('option', '', e.label + ' (' + n(est[e.key]) + ')'); o.value = e.key; sel.appendChild(o); });
+            sel.value = detailEstado;
+            lastPages = Math.max(1, n(d.pages) || Math.ceil(d.total / d.per_page));
+            document.getElementById('pageinfo').textContent = 'Página ' + d.page + ' de ' + lastPages + ' · ' + d.total + ' llamadas' + (detailEstado ? ' con ese estado' : '');
             document.getElementById('prev').disabled = d.page <= 1; document.getElementById('next').disabled = d.page >= lastPages;
         }
 
@@ -472,6 +480,14 @@ Auth::checkAccess(9);
         [['Hoy', 0, 0], ['Ayer', -1, -1], ['Últimos 7 días', -6, 0], ['Últimos 30 días', -29, 0]].forEach(function (x) { var b = el('button', 'btn-action', x[0]); b.type = 'button'; b.addEventListener('click', function () { quick(limaDate(x[1]), limaDate(x[2])); }); q.appendChild(b); });
         var all = el('button', 'btn-action', 'Todo el historial'); all.type = 'button'; all.addEventListener('click', function () { quick('', ''); }); q.appendChild(all);
 
+        // Recarga solo el detalle de intentos (cambio de Estado o de página); las demás secciones no se tocan.
+        function loadDetail() {
+            document.getElementById('csv').href = API + '?' + query({ export: 'csv' });
+            fetch(API + '?' + query({ page: page }), { credentials: 'same-origin', cache: 'no-store' })
+                .then(function (r) { return r.json().then(function (j) { if (!r.ok || !j.ok) throw new Error(j.error || 'Error'); return j; }); })
+                .then(function (j) { document.getElementById('error').textContent = ''; detail(j.report.detail); })
+                .catch(function (e) { var b = document.getElementById('error'); b.textContent = ''; b.appendChild(el('p', 'rep-error', 'No se pudo cargar el detalle: ' + e.message)); });
+        }
         function load() {
             document.getElementById('csv').href = API + '?' + query({ export: 'csv' });
             fetch(API + '?' + query({ page: page }), { credentials: 'same-origin', cache: 'no-store' })
@@ -497,8 +513,9 @@ Auth::checkAccess(9);
         }
         form.addEventListener('submit', function (e) { e.preventDefault(); document.getElementById('scope').textContent = ''; page = 1; load(); });
         document.getElementById('f_campaign').addEventListener('change', fillLists);
-        document.getElementById('prev').addEventListener('click', function () { if (page > 1) { page--; load(); } });
-        document.getElementById('next').addEventListener('click', function () { if (page < lastPages) { page++; load(); } });
+        document.getElementById('prev').addEventListener('click', function () { if (page > 1) { page--; loadDetail(); } });
+        document.getElementById('next').addEventListener('click', function () { if (page < lastPages) { page++; loadDetail(); } });
+        document.getElementById('f_estado').addEventListener('change', function () { detailEstado = this.value; page = 1; loadDetail(); });
         load();
     })();
     </script>

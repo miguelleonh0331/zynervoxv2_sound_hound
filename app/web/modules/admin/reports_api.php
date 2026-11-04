@@ -16,7 +16,7 @@ if (empty($_SESSION['user']) || (int)($_SESSION['user_level'] ?? 0) !== 9) rep_j
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') rep_json(405, ['ok' => false, 'error' => 'Método no permitido.']);
 
 $filters = [];
-foreach (['from', 'to', 'campaign_id', 'list_id'] as $k) $filters[$k] = isset($_GET[$k]) && is_string($_GET[$k]) ? trim($_GET[$k]) : '';
+foreach (['from', 'to', 'campaign_id', 'list_id', 'estado'] as $k) $filters[$k] = isset($_GET[$k]) && is_string($_GET[$k]) ? trim($_GET[$k]) : '';
 $filters['include_test'] = !empty($_GET['include_test']);
 $filters['include_invalid_amd'] = !empty($_GET['include_invalid_amd']);
 try {
