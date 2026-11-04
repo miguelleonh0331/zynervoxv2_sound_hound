@@ -29,12 +29,14 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         .svc { display: flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.7rem; border: 1px solid var(--border); border-radius: 2px; background: var(--bg-card); font-size: 0.8rem; }
         .dot { width: 9px; height: 9px; border-radius: 50%; background: #9ca3af; }
         .dot.on { background: #10b981; } .dot.off { background: #ef4444; }
-        .camp { margin-bottom: 1rem; }
+        #campaigns { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 0.75rem; align-items: start; }
+        #campaigns > p { grid-column: 1 / -1; }
+        .camp { margin: 0; min-width: 0; }
         .camp h2 { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: baseline; }
         .tag { font-size: 0.65rem; padding: 1px 6px; border-radius: 2px; background: var(--glass); color: var(--text-muted); text-transform: uppercase; }
         .tag.run { background: #064e3b; color: #6ee7b7; }
-        .lists { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 0.75rem; }
-        .list-card { border: 1px solid var(--border); border-left: 5px solid #6b7280; border-radius: 2px; padding: 0.75rem; background: var(--bg-card); }
+        .lists { display: flex; flex-direction: column; gap: 0.75rem; }
+        .list-card { min-width: 0; border: 1px solid var(--border); border-left: 5px solid #6b7280; border-radius: 2px; padding: 0.75rem; background: var(--bg-card); }
         .list-card.live { border-left-color: #10b981; }
         .list-head { display: flex; justify-content: space-between; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
         .list-name { font-weight: 700; display: flex; align-items: center; gap: 0.5rem; }
@@ -62,7 +64,6 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         .actions button:disabled { opacity: 0.45; cursor: not-allowed; }
         .foot { font-size: 0.68rem; color: var(--text-muted); margin-top: 0.8rem; }
         .dash-error { color: #fca5a5; margin-bottom: 1rem; }
-        @media (max-width: 600px) { .lists { grid-template-columns: 1fr; } }
         @media (prefers-reduced-motion: reduce) { .live .pulse, .live .bar.progress > span { animation: none; } }
     </style>
 </head>
