@@ -45,7 +45,7 @@ interface BotIvrRepository {
     public function importLeads(int $listId, int $campaignId, array $parsed): array;
     public function campaignAmdParams(int $id): array;
     public function setCampaignAmdParams(int $id, array $params): void;
-    public function openAmdAudit(array $call, int $campaignId, array $params): void;
+    public function openAmdAudit(array $call, int $campaignId, array $params, ?int $versionId = null): void;
     public function recordAmdAudit(string $callId, array $data): void;
     public function syncAmdAudit(): array;
     public function pendingSttAudits(int $limit): array;
@@ -67,4 +67,16 @@ interface BotIvrRepository {
     public function setDialerMaxTotalChannels(int $n): void;
     public function setListChannels(int $campaignId, int $listId, int $n): void;
     public function openCallsTotal(): int;
+    public function amdGlobalCurrent(): ?array;
+    public function amdGlobalVersions(int $limit): array;
+    public function amdGlobalVersion(int $id): ?array;
+    public function amdGlobalAddVersion(array $params, string $author, string $note, ?int $fromVersion): int;
+    public function refreshListSummary(int $listId, string $state, string $amdValidFromUtc): void;
+    public function listSummary(int $listId): ?array;
+    public function listSummaries(?int $campaignId = null, ?int $listId = null): array;
+    public function listsToMaintain(): array;
+    public function summariesOfDeletedLists(): array;
+    public function listIdsWithoutSummary(): array;
+    public function listHasNoPendingWork(int $campaignId, int $listId, string $order): bool;
+    public function deactivateList(int $campaignId, int $listId): void;
 }
