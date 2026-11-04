@@ -23,7 +23,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         .tile .t-value.warn { color: #f59e0b; } .tile .t-value.crit { color: #ef4444; }
         .tile .t-sub { font-size: 0.74rem; color: var(--text-muted); }
         .g-sub { font-size: 0.72rem; color: var(--text-muted); }
-        .needle { width: 100%; max-width: 220px; height: auto; display: block; margin: 0.3rem auto 0; }
+        .needle-wrap { flex-basis: 100%; text-align: center; margin-top: 0.3rem; } .needle-wrap canvas { max-width: 100%; height: auto !important; }
         .needle-text { text-align: center; font-size: 0.8rem; font-weight: 600; }
         .services { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
         .svc { display: flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.7rem; border: 1px solid var(--border); border-radius: 2px; background: var(--bg-card); font-size: 0.8rem; }
@@ -81,6 +81,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         <section class="services" id="services" aria-label="Servicios"></section>
         <section id="campaigns" aria-label="Campañas y listas"></section>
     </main>
+    <script src="vendor/gauge.min.js"></script>
     <script>
     (function () {
         var CSRF = <?php echo json_encode($_SESSION['dashboard_csrf']); ?>;
@@ -103,36 +104,42 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             if (sub) box.appendChild(el('div', 't-sub', sub)); return box;
         }
 
-        // Medidor con aguja del % de humanos de la lista. Zonas desde insight.thresholds: Fría 0..warm, Tibia warm..hot, Caliente hot..2×hot.
-        function needleGauge(ins, totals) {
-            var th = ins.thresholds || {}, hot = n0(th.hot_human_pct), warm = n0(th.warm_human_pct), max = 2 * hot, calls = n0(totals.calls);
-            var noData = ins.temperature === 'Sin datos' || !max;
-            var wrap = el('div', 'needle-wrap'), s = document.createElementNS(SVGNS, 'svg');
-            s.setAttribute('class', 'needle'); s.setAttribute('viewBox', '0 0 120 72'); s.setAttribute('role', 'img');
-            function pt(f, r) { var a = Math.PI * (1 - f); return [60 + r * Math.cos(a), 62 - r * Math.sin(a)]; }
-            function zone(f1, f2, color, title) {
-                var p1 = pt(f1, 50), p2 = pt(f2, 50), p = document.createElementNS(SVGNS, 'path');
-                p.setAttribute('d', 'M' + p1[0].toFixed(2) + ' ' + p1[1].toFixed(2) + ' A50 50 0 0 1 ' + p2[0].toFixed(2) + ' ' + p2[1].toFixed(2));
-                p.setAttribute('fill', 'none'); p.setAttribute('stroke', color); p.setAttribute('stroke-width', '10');
-                var t = document.createElementNS(SVGNS, 'title'); t.textContent = title; p.appendChild(t); s.appendChild(p);
-            }
-            if (noData) zone(0, 0.999, '#4b5563', 'Sin datos suficientes');
+        // Medidor profesional (canvas-gauges, MIT, local) del % de humanos de la lista.
+        // Zonas desde insight.thresholds: 0..warm azul, warm..hot ámbar, hot..2×hot verde (la derecha es mejor).
+        // La instancia se conserva por list_id: en cada refresco solo se actualiza el valor, la aguja no vuelve a cero.
+        var GAUGES = {};
+        function gaugeOptions(ins, noData) {
+            var th = ins.thresholds || {}, hot = n0(th.hot_human_pct), warm = n0(th.warm_human_pct), max = 2 * hot;
+            var ticks = [0, warm, hot, (hot + max) / 2, max].filter(function (v, i, a) { return a.indexOf(v) === i; }).map(String);
+            var hl = noData ? [{ from: 0, to: max, color: '#9ca3af' }] : [{ from: 0, to: warm, color: '#3b82f6' }, { from: warm, to: hot, color: '#f59e0b' }, { from: hot, to: max, color: '#16a34a' }];
+            return { max: max, ticks: ticks, hl: hl };
+        }
+        function needleGauge(listId, ins, totals) {
+            var th = ins.thresholds || {}, calls = n0(totals.calls), noData = ins.temperature === 'Sin datos' || !n0(th.hot_human_pct);
+            var o = gaugeOptions(ins, noData), key = JSON.stringify([o.max, o.ticks, o.hl, noData]), value = noData ? 0 : n0(ins.rates_pct && ins.rates_pct.human);
+            var wrap = el('div', 'needle-wrap'), ent = GAUGES[listId];
+            if (typeof RadialGauge === 'undefined') { wrap.appendChild(el('div', 'needle-text', 'No se pudo cargar el medidor.')); }
             else {
-                zone(0, warm / max, '#2563eb', 'Fría: 0 a ' + warm + ' % de humanos');
-                zone(warm / max, hot / max, '#d97706', 'Tibia: ' + warm + ' a ' + hot + ' % de humanos');
-                zone(hot / max, 0.999, '#dc2626', 'Caliente: ' + hot + ' a ' + max + ' % de humanos');
-                var f = Math.min(1, Math.max(0, n0(ins.rates_pct && ins.rates_pct.human) / max)), tip = pt(f, 40), l = document.createElementNS(SVGNS, 'line');
-                l.setAttribute('x1', 60); l.setAttribute('y1', 62); l.setAttribute('x2', tip[0].toFixed(2)); l.setAttribute('y2', tip[1].toFixed(2));
-                l.setAttribute('stroke', '#ffffff'); l.setAttribute('stroke-width', '3'); l.setAttribute('stroke-linecap', 'round'); s.appendChild(l);
-                var hub = document.createElementNS(SVGNS, 'circle'); hub.setAttribute('cx', 60); hub.setAttribute('cy', 62); hub.setAttribute('r', 4); hub.setAttribute('fill', '#ffffff'); s.appendChild(hub);
-                [[0, '0'], [warm / max, String(warm)], [hot / max, String(hot)], [1, String(max)]].forEach(function (x) { var p = pt(x[0], 60), t = document.createElementNS(SVGNS, 'text'); t.setAttribute('x', p[0].toFixed(1)); t.setAttribute('y', Math.min(70, p[1] + 3).toFixed(1)); t.setAttribute('font-size', '7'); t.setAttribute('fill', '#9ca3af'); t.setAttribute('text-anchor', 'middle'); t.textContent = x[1]; s.appendChild(t); });
+                if (ent && ent.key !== key) { try { ent.g.destroy(); } catch (e) {} ent = null; }
+                if (!ent) {
+                    var canvas = document.createElement('canvas');
+                    var g = new RadialGauge({
+                        renderTo: canvas, width: 206, height: 206, units: '% humanos', minValue: 0, maxValue: o.max, value: value, majorTicks: o.ticks, minorTicks: 5, strokeTicks: true,
+                        highlights: o.hl, highlightsWidth: 12, startAngle: 60, ticksAngle: 240, valueBox: false, needle: !noData,
+                        colorPlate: '#fdfdfd', colorPlateEnd: '#e6e8ec', colorMajorTicks: '#1f2937', colorMinorTicks: '#4b5563', colorNumbers: '#1f2937', colorUnits: '#4b5563',
+                        borders: true, borderShadowWidth: 0, borderOuterWidth: 6, borderMiddleWidth: 3, borderInnerWidth: 2, colorBorderOuter: '#c9ced6', colorBorderOuterEnd: '#59616e', colorBorderMiddle: '#eef0f3', colorBorderMiddleEnd: '#8b93a0', colorBorderInner: '#fafafa', colorBorderInnerEnd: '#d7dbe1',
+                        needleType: 'arrow', needleWidth: 3, needleStart: 0, needleEnd: 82, needleCircleSize: 9, needleCircleOuter: true, needleCircleInner: false, needleShadow: true, colorNeedle: '#dc2626', colorNeedleEnd: '#7f1d1d', colorNeedleShadowDown: 'rgba(0,0,0,.45)', colorNeedleCircleOuter: '#d1d5db', colorNeedleCircleOuterEnd: '#374151',
+                        fontNumbersSize: 24, fontUnitsSize: 20, animation: true, animationDuration: 600, animationRule: 'linear'
+                    });
+                    g.draw(); ent = GAUGES[listId] = { g: g, key: key, canvas: canvas, value: value };
+                } else if (ent.value !== value) { ent.g.value = value; ent.value = value; }
+                ent.seen = true; wrap.appendChild(ent.canvas);
             }
-            s.setAttribute('aria-label', noData ? 'Medidor de humanos: sin datos' : 'Medidor de humanos: ' + ((ins.rates_pct && ins.rates_pct.human) || 0) + ' %, ' + ins.temperature);
-            wrap.appendChild(s);
             var txt = noData ? 'Sin datos: ' + calls + ' de ' + n0(th.min_calls) + ' llamadas mínimas'
                 : String(n0(ins.rates_pct && ins.rates_pct.human)).replace('.', ',') + ' % humanos, ' + n0(totals.human) + ' de ' + calls;
             wrap.appendChild(el('div', 'needle-text', txt)); return wrap;
         }
+        function sweepGauges() { Object.keys(GAUGES).forEach(function (k) { if (!GAUGES[k].seen) { try { GAUGES[k].g.destroy(); } catch (e) {} delete GAUGES[k]; } else GAUGES[k].seen = false; }); }
         function n0(v) { return Number(v) || 0; }
 
         function post(action, c, l) {
@@ -162,7 +169,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
 
             var temp = el('div', 'temp ' + (TEMP[ins.temperature] || ''));
             temp.appendChild(el('span', 't-name', ins.temperature || 'Sin datos')); temp.appendChild(el('span', 't-advice', ins.recommendation || 'Seguir'));
-            var ng = needleGauge(ins, l.totals); ng.style.flexBasis = '100%'; temp.appendChild(ng); card.appendChild(temp);
+            var ng = needleGauge(l.list_id, ins, l.totals); ng.style.flexBasis = '100%'; temp.appendChild(ng); card.appendChild(temp);
 
             var why = l.reason || (l.started ? 'Marcando' : '');
             if (why) card.appendChild(el('div', 'reason' + (l.reason ? '' : ' ok'), why));
@@ -215,6 +222,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
                 if (!act.length) box.appendChild(el('p', 'g-sub', 'Sin listas activas. Actívalas en Listas.')); else box.appendChild(ls);
                 cs.appendChild(box);
             });
+            sweepGauges();
             document.getElementById('updated').textContent = '· ' + new Date().toLocaleTimeString();
         }
 
