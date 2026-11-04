@@ -205,7 +205,7 @@ trait CampaignConfigQueries {
     }
     /** Extra facts that arrive with the call (decided_ms, audio_path, audio_seconds). Only the given keys change. */
     public function recordAmdAudit(string $callId, array $data): void {
-        $allowed = array_merge(['decided_ms','audio_path','audio_seconds','reviewed_class'], self::AMD_PARAM_COLUMNS);
+        $allowed = array_merge(['decided_ms','audio_path','contact_path','audio_seconds','reviewed_class'], self::AMD_PARAM_COLUMNS);
         $set = []; $vals = [];
         foreach ($allowed as $k) if (array_key_exists($k, $data)) { $set[] = "$k=?"; $vals[] = $data[$k]; }
         if (!$set) return;

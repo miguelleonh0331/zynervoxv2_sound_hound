@@ -77,6 +77,7 @@ function marcador_amd_audit_record(\ZynervoxQueries\BotIvrRepository $repo, stri
     $clean = [];
     if (isset($data['decided_ms'])) $clean['decided_ms'] = max(0, min(600000, (int)$data['decided_ms']));
     if (isset($data['audio_path']) && is_string($data['audio_path']) && $data['audio_path'] !== '' && !str_contains($data['audio_path'], '..') && strlen($data['audio_path']) <= 512) $clean['audio_path'] = $data['audio_path'];
+    if (isset($data['contact_path']) && is_string($data['contact_path']) && $data['contact_path'] !== '' && !str_contains($data['contact_path'], '..') && strlen($data['contact_path']) <= 512) $clean['contact_path'] = $data['contact_path'];
     if (isset($data['audio_seconds'])) $clean['audio_seconds'] = max(0.0, min(86400.0, (float)$data['audio_seconds']));
     foreach (array_keys(MARCADOR_AMD_DEFAULTS) as $k) if (isset($data['params'][$k]) && ctype_digit((string)$data['params'][$k])) $clean[$k] = (int)$data['params'][$k];
     if (isset($data['reviewed_class'])) $clean['reviewed_class'] = substr(preg_replace('/[^A-Za-z_]/', '', (string)$data['reviewed_class']) ?? '', 0, 20);
@@ -87,7 +88,7 @@ function marcador_amd_audit_record(\ZynervoxQueries\BotIvrRepository $repo, stri
 function marcador_amd_audit_sync(\ZynervoxQueries\BotIvrRepository $repo): array { return $repo->syncAmdAudit(); }
 
 /**
- * Delivery from the dialplan: argv = [audit, call_id, amd_ms, audio_path, audio_ms, initial, greeting, after, total, minword, between, maxwords, silthr, maxwordlen]
+ * Delivery from the dialplan: argv = [audit, call_id, amd_ms, audio_path, audio_ms, initial, greeting, after, total, minword, between, maxwords, silthr, maxwordlen, contact_path]
  * (the 9 values are the ones AMD() really used). Returns what was stored. Validates everything: it never trusts the channel.
  */
 function marcador_amd_audit_agi_apply(\ZynervoxQueries\BotIvrRepository $repo, array $args): array {
@@ -100,6 +101,11 @@ function marcador_amd_audit_agi_apply(\ZynervoxQueries\BotIvrRepository $repo, a
         if (!str_starts_with($path, MARCADOR_RECORDINGS_DIR) || !preg_match('/^[0-9A-Za-z._\/-]+\.wav$/D', $path) || str_contains($path, '..')) throw new InvalidArgumentException('Ruta de audio fuera de la carpeta del marcador.');
         $data['audio_path'] = $path;
         if (preg_match('/^[0-9]{1,9}$/D', (string)($args[4] ?? '')) && (int)$args[4] > 0) $data['audio_seconds'] = round((int)$args[4] / 1000, 2);
+    }
+    $contact = (string)($args[14] ?? ''); // audio received from the contact only (dialplan v7), kept to rerun AMD without calling
+    if ($contact !== '') {
+        if (!str_starts_with($contact, MARCADOR_RECORDINGS_DIR) || !preg_match('/^[0-9A-Za-z._\/-]+\.wav$/D', $contact) || str_contains($contact, '..')) throw new InvalidArgumentException('Ruta de audio del contacto fuera de la carpeta del marcador.');
+        $data['contact_path'] = $contact;
     }
     $keys = array_keys(MARCADOR_AMD_DEFAULTS); $params = [];
     foreach ($keys as $i=>$k) if (preg_match('/^[0-9]{1,6}$/D', (string)($args[5 + $i] ?? ''))) $params[$k] = (int)$args[5 + $i];
