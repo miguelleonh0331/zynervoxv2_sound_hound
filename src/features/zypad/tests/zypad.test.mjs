@@ -47,6 +47,14 @@ test('catalogo: usa la copia si no hay fuente, y nunca falla', async () => {
   assert.equal(c1.find('un mensaje').word, 'mensaje');                    // JSON roto: conserva el anterior
 });
 
+test('catalogo: si el programa falla usa el fichero de respaldo', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zf-'));
+  const src = path.join(dir, 's.json');
+  fs.writeFileSync(src, JSON.stringify({ version: 'r', words: [{ word: 'mensaje', active: true }] }));
+  const c = createCatalog({ cmd: '/no/existe', file: src }); await c.refresh();
+  assert.equal(c.find('un mensaje').word, 'mensaje');
+});
+
 test('config: lee fichero de claves', () => {
   assert.deepEqual(parseEnvFile('# c\nA=1\nB="x=y"\n'), { A: '1', B: 'x=y' });
 });

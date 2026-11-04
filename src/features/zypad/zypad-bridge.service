@@ -10,7 +10,8 @@ Environment=BRIDGE_HOST=127.0.0.1 BRIDGE_PORT=8765
 Environment=BRIDGE_LOG_DIR=/var/lib/zypad-bridge/logs CATALOG_CACHE=/var/lib/zypad-bridge/catalog.json
 Environment=CUT_CMD=/var/lib/codex-web-v4/agents/agent-10d8193a-fe77-4099-b54a-61f2636e9be7/workspace/herramientas/cortar_llamada.sh
 Environment=ANNOTATE_CMD=/var/lib/codex-web-v4/agents/agent-10d8193a-fe77-4099-b54a-61f2636e9be7/workspace/herramientas/anotar_palabra.sh
-# Environment=CATALOG_CMD=<programa de MarcadorBuilder que imprime el catalogo en JSON>
+# Tras el despliegue de la migracion 021 (el programa sale con 1 y sin salida mientras la tabla no exista; entonces rige CATALOG_FILE):
+# Environment="CATALOG_CMD=sudo -n -u apache php /var/www/html/zynervoxv2/marcador/zypad_catalog.php"
 StateDirectory=zypad-bridge
 StateDirectoryMode=0700
 UMask=0077

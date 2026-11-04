@@ -26,7 +26,8 @@ export function createCatalog({ cmd = '', file = '', cache = '', everyMs = 10000
   const set = (j, source) => { current = { version: j.version ?? null, source, words: j.words }; match = buildMatcher(j.words); };
 
   async function refresh() {
-    let j = cmd ? await fetchCmd(cmd) : file ? readJson(file) : null;
+    let j = cmd ? await fetchCmd(cmd) : null;
+    if (!j && file) j = readJson(file);   // CATALOG_FILE sirve de respaldo si el programa no responde
     if (j) {
       if (j.version === current.version && current.source === 'live') return;
       set(j, 'live'); log({ ev: 'catalog', source: 'live', version: j.version ?? null, words: j.words.filter(w => w.active !== false).length });

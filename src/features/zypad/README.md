@@ -12,7 +12,7 @@ Recibe el audio de la llamada desde Asterisk (AudioSocket, 127.0.0.1:8765), lo m
 - Si zypad, el catálogo, el disco o los programas fallan, el puente solo lo registra: la llamada nunca se entera.
 
 ## Catálogo
-`CATALOG_CMD` (programa que imprime `{"version":…,"words":[{"word","category","active"}]}`) o `CATALOG_FILE` (mismo JSON). Se relee cada `CATALOG_EVERY_MS` (10 s) con límite de 3 s; si `version` cambia, se aplica a las llamadas siguientes y a las en curso (sin reiniciar). Última copia buena en `CATALOG_CACHE`. Sin fuente ni copia, no detecta. Comparación sin mayúsculas ni acentos, palabra o frase completa.
+`CATALOG_CMD` (en producción `sudo -n -u apache php /var/www/html/zynervoxv2/marcador/zypad_catalog.php`, de MarcadorBuilder; programa que imprime `{"version":…,"words":[{"word","category","active"}]}`) o `CATALOG_FILE` (mismo JSON; también es respaldo si el programa falla). Se relee cada `CATALOG_EVERY_MS` (10 s) con límite de 3 s; si `version` cambia, se aplica a las llamadas siguientes y a las en curso (sin reiniciar). Última copia buena en `CATALOG_CACHE`. Sin fuente ni copia, no detecta. Comparación sin mayúsculas ni acentos, palabra o frase completa.
 
 ## Configuración
 Fichero `ZYPAD_CONFIG` (por defecto `/etc/zypad/bridge.env`, modo 640, dueño root, grupo del servicio) con `ZYPAD_URL` y `ZYPAD_API_KEY`; el resto por entorno (ver `lib/config.mjs`): `BRIDGE_HOST` (127.0.0.1), `BRIDGE_PORT` (8765), `BRIDGE_LOG_DIR` (`/var/lib/zypad-bridge/logs`), `CATALOG_*`, `CUT_CMD`, `ANNOTATE_CMD`, `CUT_UUID_RE`. La clave nunca se imprime ni se registra.
