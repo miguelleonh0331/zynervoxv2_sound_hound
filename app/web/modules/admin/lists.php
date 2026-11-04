@@ -22,7 +22,9 @@ $campaigns = [];
 $lists = [];
 $origins = [];
 $maxTotal = null;
-$filterCampaign = null;
+// Filtro por campaña: sale de la query (validado como entero) y se conserva en acciones, errores y redirecciones. Sin filtro, sigue sin filtro.
+$filterCampaign = filter_var($_GET['campaign_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]) ?: null;
+$listsUrl = 'lists.php' . ($filterCampaign !== null ? '?campaign_id=' . $filterCampaign : '');
 $allLists = [];
 $startedMap = [];
 $limits = null;
@@ -36,7 +38,7 @@ try {
             if ($action === 'set_server_max') {
                 bot_cfg_set_max_total_channels($db, $_POST['max_total'] ?? null);
                 $_SESSION['lists_message'] = 'Máximo de canales del servidor actualizado.';
-                header('Location: lists.php');
+                header('Location: ' . $listsUrl);
                 exit;
             }
             $campaignId = filter_var($_POST['campaign_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
@@ -85,7 +87,7 @@ try {
             } else {
                 throw new RuntimeException('Acción inválida.');
             }
-            header('Location: lists.php');
+            header('Location: ' . $listsUrl);
             exit;
         } catch (Throwable $e) { $error = $e->getMessage(); }
     }
@@ -95,7 +97,6 @@ try {
     $lists = bot_cfg_lists_channels($db);
     $allLists = $lists;
     try { foreach (bot_cfg_dashboard($db)['campaigns'] as $dc) foreach ($dc['lists'] as $dl) $startedMap[(int)$dl['list_id']] = (bool)$dl['started']; } catch (Throwable $e) { $startedMap = []; }
-    $filterCampaign = filter_var($_GET['campaign_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]) ?: null;
     if ($filterCampaign !== null) $lists = array_values(array_filter($lists, fn($l) => (int)$l['campaign_id'] === $filterCampaign));
     try { $limits = bot_cfg_server_limits($db); $maxTotal = $limits['max_channels_server']; } catch (Throwable $e) { $error = $error ?: 'No se pudo leer el máximo de canales del servidor: ' . $e->getMessage(); }
     try { $origins = array_column(\Includes\Carriers::dialOrigins(), 'name', 'dial_prefix'); } catch (Throwable $e) { $origins = []; }
@@ -132,7 +133,7 @@ try {
         <?php if ($message !== ''): ?><p class="msg-ok"><?php echo h($message); ?></p><?php endif; ?>
         <?php if ($error !== ''): ?><p class="msg-err"><?php echo h($error); ?></p><?php endif; ?>
 
-        <form method="POST" action="lists.php" class="card">
+        <form method="POST" action="<?php echo h($listsUrl); ?>" class="card">
             <h2>Límite del servidor</h2>
             <input type="hidden" name="csrf" value="<?php echo h($_SESSION['lists_csrf']); ?>">
             <input type="hidden" name="action" value="set_server_max">
@@ -161,7 +162,7 @@ try {
                         <td><?php echo (int)$l['leads_count']; ?></td>
                         <td><?php echo ($l['dial_prefix'] ?? '') === '' ? '—' : h(($origins[$l['dial_prefix']] ?? '') . ' (' . $l['dial_prefix'] . ')'); ?></td>
                         <td>
-                            <form method="POST" action="lists.php" class="inline-form" style="display: inline;">
+                            <form method="POST" action="<?php echo h($listsUrl); ?>" class="inline-form" style="display: inline;">
                                 <input type="hidden" name="csrf" value="<?php echo h($_SESSION['lists_csrf']); ?>">
                                 <input type="hidden" name="action" value="set_channels">
                                 <input type="hidden" name="campaign_id" value="<?php echo $cid; ?>">
@@ -173,7 +174,7 @@ try {
                         <td><?php echo (int)($l['open_calls'] ?? 0); ?></td>
                         <td>
                             <?php $isOn = (int)$l['active'] === 1; $isRunning = !empty($startedMap[(int)$l['list_id']]); ?>
-                            <form method="POST" action="lists.php" class="inline-form" style="display: inline;"<?php if ($isOn && $isRunning): ?> onsubmit="return confirm(this.getAttribute('data-confirm'));" data-confirm="<?php echo h('La lista «' . $l['name'] . '» está marcando. Al desactivarla se detendrá (las llamadas en curso terminan solas). ¿Continuar?'); ?>"<?php endif; ?>>
+                            <form method="POST" action="<?php echo h($listsUrl); ?>" class="inline-form" style="display: inline;"<?php if ($isOn && $isRunning): ?> onsubmit="return confirm(this.getAttribute('data-confirm'));" data-confirm="<?php echo h('La lista «' . $l['name'] . '» está marcando. Al desactivarla se detendrá (las llamadas en curso terminan solas). ¿Continuar?'); ?>"<?php endif; ?>>
                                 <input type="hidden" name="csrf" value="<?php echo h($_SESSION['lists_csrf']); ?>">
                                 <input type="hidden" name="action" value="toggle_active">
                                 <input type="hidden" name="campaign_id" value="<?php echo $cid; ?>">
@@ -184,7 +185,7 @@ try {
                             </form>
                         </td>
                         <td>
-                            <form method="POST" action="lists.php" class="inline-form" style="display: inline;" onsubmit="return confirm(this.getAttribute('data-confirm'));" data-confirm="<?php echo h('Se eliminará la lista «' . $l['name'] . '» (#' . (int)$l['list_id'] . ') y sus ' . (int)$l['leads_count'] . ' contactos. El historial de llamadas se conserva. No se puede deshacer.'); ?>">
+                            <form method="POST" action="<?php echo h($listsUrl); ?>" class="inline-form" style="display: inline;" onsubmit="return confirm(this.getAttribute('data-confirm'));" data-confirm="<?php echo h('Se eliminará la lista «' . $l['name'] . '» (#' . (int)$l['list_id'] . ') y sus ' . (int)$l['leads_count'] . ' contactos. El historial de llamadas se conserva. No se puede deshacer.'); ?>">
                                 <input type="hidden" name="csrf" value="<?php echo h($_SESSION['lists_csrf']); ?>">
                                 <input type="hidden" name="action" value="delete_list">
                                 <input type="hidden" name="campaign_id" value="<?php echo $cid; ?>">
@@ -199,7 +200,7 @@ try {
             </table>
         </div>
 
-        <form method="POST" action="lists.php" enctype="multipart/form-data" class="card" id="load-form">
+        <form method="POST" action="<?php echo h($listsUrl); ?>" enctype="multipart/form-data" class="card" id="load-form">
             <h2>Cargar base</h2>
             <input type="hidden" name="csrf" value="<?php echo h($_SESSION['lists_csrf']); ?>">
             <input type="hidden" name="action" value="load_base">
