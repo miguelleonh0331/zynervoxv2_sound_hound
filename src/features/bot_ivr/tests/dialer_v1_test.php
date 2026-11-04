@@ -460,5 +460,49 @@ check('motivo de lista: sin reintentos, o con contactos sin llamar, texto veraz'
     && bot_cfg_list_reason($rowR, $cR, true, true, 3, 5, fn() => 99) === '');
 $rid = (int)$pdo->query("SELECT MAX(list_id) FROM zynervox_bot_lists WHERE campaign_id=$zc")->fetchColumn();
 check('conteo de reintentos pendientes de una lista sin reintentos configurados = 0', $repo->listRetryPendingCount($zc, $rid, 'UP') === 0);
+// --- Distribution by contact (022): one category per contact, by its last attempt; the sum is always the number of contacts ---
+$dc = bot_cfg_save($repo, null, ['name'=>'DISTRIB', 'active'=>'1', 'call_origin'=>'7308', 'max_channels'=>'1', 'lead_order'=>'UP', 'amd_enabled'=>'1', 'transfer_carrier_id'=>'', 'transfer_destination'=>'', 'rules'=>[], 'schedules'=>[['weekday'=>1, 'start_time'=>'00:00', 'end_time'=>'23:59']]]);
+$pdo->exec("INSERT INTO zynervox_bot_lists (campaign_id,name,active,max_channels,dialer_state) VALUES ($dc,'D',1,3,'stopped')");
+$dl = (int)$pdo->lastInsertId();
+// category => [amd_status, corte_por, dial_status, disposition, sip_cause, open?]
+$cases = ['humano'=>['HUMAN','', 'ANSWER', 'XFER_OK', 'SIP 200 OK', 0], 'casilla_voz'=>['MACHINE','', 'ANSWER', 'AMD_MACHINE', 'SIP 200 OK', 0], 'casilla_voz2'=>['','ZYPAD', '', 'NOANSWER', 'SIP 487 Request Terminated', 0],
+    'no_seguro'=>['NOTSURE','', 'ANSWER', 'ANSWER_HUMAN', 'SIP 200 OK', 0], 'contestada_sin_amd'=>['','', 'ANSWER', 'ANSWER_HUMAN', 'SIP 200 OK', 0], 'no_disponible'=>['','', 'BUSY', 'BUSY', 'SIP 480 Temporarily Unavailable', 0],
+    'no_disponible2'=>['','', '', 'NOANSWER', 'SIP 408 Request Timeout', 0], 'sin_respuesta'=>['','', '', 'NOANSWER', 'SIP 487 Request Terminated', 0], 'sin_respuesta2'=>['','', '', 'NOANSWER', 'SIP 183 Session Progress', 0],
+    'sin_respuesta3'=>['','', '', 'NOANSWER', '', 0], 'ocupado'=>['','', 'BUSY', 'BUSY', 'SIP 486 Busy Here', 0], 'ocupado2'=>['','', 'BUSY', 'BUSY', 'SIP 600 Busy Everywhere', 0],
+    'errores'=>['','', '', 'CONGESTION', 'SIP 503 Service Unavailable', 0], 'errores2'=>['','', '', 'FAILED', 'SIP 403 Forbidden', 0], 'errores3'=>['','', '', 'FAILED', 'SIP 999 Raro', 0], 'en_llamada'=>['','', '', '', '', 1]];
+$i = 0; $expect = [];
+foreach ($cases as $name=>$c) {
+    $i++; $pdo->exec("INSERT INTO zynervox_bot_list (list_id,phone,status,called_count) VALUES ($dl,'95500".str_pad((string)$i, 4, '0', STR_PAD_LEFT)."','X',1)");
+    $lead = (int)$pdo->lastInsertId();
+    $pdo->prepare("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,campaign_id,started_at,finished_at,status,dial_status,amd_status,corte_por,disposition,sip_cause) VALUES (?,?,?,'955000000',?,UTC_TIMESTAMP(),".($c[5] ? 'NULL' : 'UTC_TIMESTAMP()').",?,?,?,?,?,?)")
+        ->execute(["zv2-d$i", $dl, $lead, $dc, $c[5] ? 'CALL' : 'X', $c[2], $c[0], $c[1], $c[3], $c[4]]);
+    $k = rtrim($name, '23'); $expect[$k] = ($expect[$k] ?? 0) + 1;
+}
+// a retried contact: first a Humano, then a Sin respuesta => counts only as Sin respuesta (last result)
+$pdo->exec("INSERT INTO zynervox_bot_list (list_id,phone,status,called_count) VALUES ($dl,'955009999','X',2)");
+$lead2 = (int)$pdo->lastInsertId();
+$ins = $pdo->prepare("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,campaign_id,started_at,finished_at,status,dial_status,amd_status,disposition,sip_cause) VALUES (?,?,?,'955009999',?,UTC_TIMESTAMP() - INTERVAL ? MINUTE,UTC_TIMESTAMP() - INTERVAL ? MINUTE,'X',?,?,?,?)");
+$ins->execute(['zv2-dr1', $dl, $lead2, $dc, 30, 30, 'ANSWER', 'HUMAN', 'XFER_OK', 'SIP 200 OK']); $ins->execute(['zv2-dr2', $dl, $lead2, $dc, 5, 5, '', '', 'NOANSWER', 'SIP 487 Request Terminated']);
+$expect['sin_respuesta']++;
+$pdo->exec("INSERT INTO zynervox_bot_list (list_id,phone,status,called_count) VALUES ($dl,'955008888','NEW',0),($dl,'955008887','NEW',0)"); $expect['sin_llamar'] = 2;
+$repo->refreshListSummary($dl, 'stopped', marcador_amd_valid_from_utc());
+$dist = bot_cfg_contact_distribution($repo, ['list_id'=>$dl]);
+$lst = $dist['lists'][0] ?? [];
+$nContacts = (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_list WHERE list_id=$dl")->fetchColumn();
+check('distribución por contacto: cada categoría cuenta lo esperado (último resultado) y los códigos raros caen en Errores', ($lst['counts'] ?? []) === marcador_contact_counts($expect));
+check('distribución por contacto: la suma de las categorías es exactamente el total de contactos', array_sum($lst['counts']) === $nContacts && $lst['contacts'] === $nContacts && abs(array_sum($lst['pct']) - 100.0) < 0.0001);
+check('distribución por contacto: la campaña y el total suman lo mismo y los porcentajes dan 100', $dist['total']['contacts'] === $nContacts && abs(array_sum($dist['total']['pct']) - 100.0) < 0.0001 && array_sum(array_column($dist['campaigns'], 'contacts')) === $nContacts);
+check('aguja: Humano ÷ contactos llamados y Sin datos bajo 20 llamados', $lst['needle']['called'] === $nContacts - 2 && $lst['needle']['human'] === 1 && $lst['needle']['no_data'] === true && $lst['needle']['label'] === 'Sin datos'
+    && marcador_contact_needle(marcador_contact_counts(['humano'=>12, 'errores'=>8, 'sin_llamar'=>80]))['label'] === '12 de 20 contactos llamados' && marcador_contact_needle(marcador_contact_counts(['humano'=>12, 'errores'=>7, 'sin_llamar'=>81]))['no_data'] === true);
+check('porcentajes con decimales suman 100,0 exactos', abs(array_sum(marcador_contact_pct([1, 1, 1])) - 100.0) < 0.0001 && abs(array_sum(marcador_contact_pct([7, 13, 29, 51, 0, 3])) - 100.0) < 0.0001 && array_sum(marcador_contact_pct([0, 0])) === 0.0);
+$rg = bot_cfg_contact_distribution($repo, ['list_id'=>$dl, 'from'=>'2000-01-01']);
+check('distribución con fechas: usa el último intento dentro del rango y no cuenta «Sin llamar»', $rg['source'] === 'attempts' && $rg['lists'][0]['counts']['sin_llamar'] === 0 && $rg['lists'][0]['contacts'] === $nContacts - 2 && $rg['lists'][0]['counts']['sin_respuesta'] === $expect['sin_respuesta']);
+$rg2 = bot_cfg_contact_distribution($repo, ['list_id'=>$dl, 'from'=>gmdate('Y-m-d', time() - 400 * 86400), 'to'=>gmdate('Y-m-d', time() - 399 * 86400)]);
+check('distribución con un rango sin llamadas: vacía y sin error', $rg2['lists'] === [] && $rg2['total']['contacts'] === 0);
+$ds = bot_cfg_dashboard($repo);
+$dl1 = null; foreach ($ds['campaigns'] as $cc) foreach ($cc['lists'] as $ll) if ($ll['list_id'] === $dl) $dl1 = [$cc, $ll];
+check('dashboard: la lista trae su distribución por contacto y la campaña la suma', $dl1 !== null && $dl1[1]['distribution']['contacts'] === $nContacts && $dl1[0]['distribution']['contacts'] === $nContacts && $dl1[1]['insight']['basis'] === 'contactos');
+$za = bot_cfg_contact_zypad_amd($repo, []);
+check('zypad vs AMD por contacto: devuelve filas con su N (o vacío) sin error', is_array($za['rows']));
 echo $fail ? "$fail FALLOS\n" : "TODO OK\n";
 exit($fail ? 1 : 0);

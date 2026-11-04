@@ -248,6 +248,44 @@ trait CampaignConfigQueries {
         $s = $this->db->prepare($sql); $s->execute($params);
         return $s->fetchAll(\PDO::FETCH_ASSOC);
     }
+    // --- Distribution by contact (migration 022). The category rules are marcador_contact_category_sql(). ---
+    /** Contacts of one list by category of their last attempt (only contacts with attempts; TEST-% excluded). */
+    public function contactDistributionOfList(int $listId): array {
+        $cat = marcador_contact_category_sql();
+        $s = $this->db->prepare("SELECT t.cat, COUNT(*) n FROM (SELECT $cat cat FROM zynervox_bot_call_attempts a JOIN (SELECT MAX(attempt_id) id FROM zynervox_bot_call_attempts WHERE list_id=? AND call_id NOT LIKE 'TEST-%' GROUP BY lead_id) m ON m.id=a.attempt_id) t GROUP BY t.cat");
+        $s->execute([$listId]);
+        $o = []; foreach ($s->fetchAll(\PDO::FETCH_ASSOC) as $r) $o[$r['cat']] = (int)$r['n'];
+        return $o;
+    }
+    private function contactWhere(array $f): array {
+        $w = ["a.call_id NOT LIKE 'TEST-%'"]; $p = [];
+        if ($f['from_utc'] !== null) { $w[] = 'a.started_at>=?'; $p[] = $f['from_utc']; }
+        if ($f['to_utc'] !== null) { $w[] = 'a.started_at<?'; $p[] = $f['to_utc']; }
+        if ($f['campaign_id'] !== null) { $w[] = 'a.campaign_id=?'; $p[] = $f['campaign_id']; }
+        if ($f['list_id'] !== null) { $w[] = 'a.list_id=?'; $p[] = $f['list_id']; }
+        return [implode(' AND ', $w), $p];
+    }
+    /** With a date range: per list, contacts by category of their last attempt INSIDE the range. Rows: list_id, cat, n. */
+    public function contactDistributionRange(array $f): array {
+        [$w, $p] = $this->contactWhere($f);
+        $cat = marcador_contact_category_sql();
+        $s = $this->db->prepare("SELECT t.list_id, t.cat, COUNT(*) n FROM (SELECT a.list_id, $cat cat FROM zynervox_bot_call_attempts a JOIN (SELECT MAX(a.attempt_id) id FROM zynervox_bot_call_attempts a WHERE $w GROUP BY a.list_id, a.lead_id) m ON m.id=a.attempt_id) t GROUP BY t.list_id, t.cat");
+        $s->execute($p);
+        return $s->fetchAll(\PDO::FETCH_ASSOC);
+    }
+    /**
+     * Zypad vs AMD per CONTACT (last attempt in range, zypad dial modes only): casilla by zypad only, AMD only or both, plus zypad hits with AMD HUMAN (possible false cut).
+     * Rows per dial_mode: contacts (N), casilla_zypad, casilla_amd, ambos, solo_zypad, solo_amd, solo_zypad_amd_humano.
+     */
+    public function zypadAmdByContact(array $f): array {
+        [$w, $p] = $this->contactWhere($f);
+        $zy = "(a.detectado_por='ZYPAD' OR a.corte_por='ZYPAD')"; $am = "a.amd_status='MACHINE'";
+        $s = $this->db->prepare("SELECT a.dial_mode, COUNT(*) contacts, COALESCE(SUM($zy),0) casilla_zypad, COALESCE(SUM($am),0) casilla_amd, COALESCE(SUM($zy AND $am),0) ambos,
+                COALESCE(SUM($zy AND NOT $am),0) solo_zypad, COALESCE(SUM(NOT $zy AND $am),0) solo_amd, COALESCE(SUM($zy AND a.amd_status='HUMAN'),0) solo_zypad_amd_humano
+            FROM zynervox_bot_call_attempts a JOIN (SELECT MAX(a.attempt_id) id FROM zynervox_bot_call_attempts a WHERE $w AND a.dial_mode LIKE 'ZYPAD%' GROUP BY a.list_id, a.lead_id) m ON m.id=a.attempt_id GROUP BY a.dial_mode ORDER BY a.dial_mode");
+        $s->execute($p);
+        return $s->fetchAll(\PDO::FETCH_ASSOC);
+    }
     public function reportDetail(array $f, int $limit, int $offset): array {
         [$where, $params] = $this->reportWhere($f); $off = (int)$f['offset_seconds'];
         $from = "FROM zynervox_bot_call_attempts a LEFT JOIN zynervox_bot_lists p ON p.list_id=a.list_id LEFT JOIN zynervox_bot_campaigns c ON c.campaign_id=a.campaign_id WHERE $where";
@@ -396,6 +434,16 @@ trait CampaignConfigQueries {
                 ->execute([$exists ? $i['campaign_id'] : $u['campaign_id'], $exists ? ($i['campaign_name'] ?? 'campaña eliminada') : $u['campaign_name'], $exists ? $i['list_name'] : ($u['list_name'] ?: 'lista eliminada'), $state, $contacts, $notCalled,
                     $t['calls'], $t['answered'], $t['human'], $t['machine'], $t['not_sure'], $t['unavailable'], $t['no_answer'], $t['failed'], $t['xfer_ok'], $t['xfer_fail'], $t['amd_invalid_calls'],
                     $pct($t['answered']), $pct($t['human']), $pct($t['machine']), $pct($t['unavailable']), $pct($t['no_answer']), $first, $last, $dur, $finishedAt, $deletedAt, $mark, $listId]);
+            // Distribution by contact (migration 022): last attempt of each contact; never-dialed ones are contacts - dialed. Survives deleting the list.
+            try {
+                $cnt = $this->contactDistributionOfList($listId);
+                $dialed = array_sum($cnt); $total = max($contacts, $dialed);
+                $cnt['sin_llamar'] = $total - $dialed;
+                $sets = []; $vals = [];
+                foreach (['humano','casilla_voz','no_seguro','contestada_sin_amd','no_disponible','sin_respuesta','ocupado','errores','en_llamada','sin_llamar'] as $k) { $sets[] = "dist_$k=?"; $vals[] = (int)($cnt[$k] ?? 0); }
+                $vals[] = $total; $vals[] = $listId;
+                $this->db->prepare('UPDATE zynervox_bot_list_summary SET '.implode(',', $sets).',dist_at=UTC_TIMESTAMP(),contacts=? WHERE list_id=?')->execute($vals);
+            } catch (\PDOException $e) { error_log('ZV2 distribución por contacto (migración 022 pendiente?): '.$e->getMessage()); } // never stops the dialing
         });
     }
     public function listSummary(int $listId): ?array {

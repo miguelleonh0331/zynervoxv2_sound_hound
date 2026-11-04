@@ -8,6 +8,7 @@ require_once __DIR__.'/../ivr_builder/forwarding.php';
 require_once __DIR__.'/../marcador/amd_audit.php';
 require_once __DIR__.'/../marcador/list_summary.php';
 require_once __DIR__.'/../marcador/zypad.php';
+require_once __DIR__.'/../marcador/contact_distribution.php';
 
 const BOT_CFG_MAX_HEADERS = 16;
 
@@ -270,14 +271,23 @@ const BOT_TEMP_HOT_HUMAN = 10;    // human % >= this: Caliente -> Seguir
 const BOT_TEMP_WARM_HUMAN = 5;    // human % >= this: Tibia -> Vigilar; below: Fría -> Revisar lista
 
 /** Rates in % of calls and the 15-minute pace, plus the temperature (by human rate) and its recommendation. */
-function bot_cfg_list_temperature(array $totals, int $calls15): array {
+function bot_cfg_list_temperature(array $totals, int $calls15, ?array $needle = null): array {
     $calls = (int)$totals['calls'];
     $pct = fn(int $n) => $calls > 0 ? round(100 * $n / $calls, 1) : 0.0;
     $rates = ['contact'=>$pct((int)$totals['answered']), 'human'=>$pct((int)$totals['human']), 'machine'=>$pct((int)$totals['machine']),
-        'unavailable'=>$pct((int)$totals['unavailable']), 'no_answer'=>$pct((int)$totals['no_answer'])];
-    [$temp, $advice] = $calls < BOT_TEMP_MIN_CALLS ? ['Sin datos', 'Seguir'] : ($rates['human'] >= BOT_TEMP_HOT_HUMAN ? ['Caliente', 'Seguir'] : ($rates['human'] >= BOT_TEMP_WARM_HUMAN ? ['Tibia', 'Vigilar'] : ['Fría', 'Revisar lista']));
-    return ['rates_pct'=>$rates, 'pace'=>['calls_last_15min'=>$calls15, 'calls_per_min'=>round($calls15 / 15, 2)], 'temperature'=>$temp, 'recommendation'=>$advice, 'basis'=>'human',
-        'thresholds_provisional'=>true, 'thresholds'=>['min_calls'=>BOT_TEMP_MIN_CALLS, 'hot_human_pct'=>BOT_TEMP_HOT_HUMAN, 'warm_human_pct'=>BOT_TEMP_WARM_HUMAN]];
+        'unavailable'=>$pct((int)$totals['unavailable']), 'no_answer'=>$pct((int)$totals['no_answer'])]; // % of ATTEMPTS (secondary data)
+    // Contract «Distribución por contacto»: the needle is Humano ÷ contacts already called, «Sin datos» under 20 called contacts. Same thresholds as before.
+    $human = $needle !== null ? (float)$needle['pct'] : $rates['human'];
+    $enough = $needle !== null ? !$needle['no_data'] : $calls >= BOT_TEMP_MIN_CALLS;
+    [$temp, $advice] = !$enough ? ['Sin datos', 'Seguir'] : ($human >= BOT_TEMP_HOT_HUMAN ? ['Caliente', 'Seguir'] : ($human >= BOT_TEMP_WARM_HUMAN ? ['Tibia', 'Vigilar'] : ['Fría', 'Revisar lista']));
+    return ['rates_pct'=>$rates, 'rates_basis'=>'intentos', 'needle'=>$needle, 'pace'=>['calls_last_15min'=>$calls15, 'calls_per_min'=>round($calls15 / 15, 2)], 'temperature'=>$temp, 'recommendation'=>$advice, 'basis'=>$needle !== null ? 'contactos' : 'human',
+        'thresholds_provisional'=>true, 'thresholds'=>['min_called_contacts'=>BOT_TEMP_MIN_CALLS, 'hot_human_pct'=>BOT_TEMP_HOT_HUMAN, 'warm_human_pct'=>BOT_TEMP_WARM_HUMAN]];
+}
+
+/** Counts by category from a summary row (columns dist_*). */
+function bot_cfg_summary_counts(array $u): array {
+    $c = []; foreach (array_keys(MARCADOR_CONTACT_CATEGORIES) as $k) $c[$k] = (int)($u['dist_'.$k] ?? 0);
+    return $c;
 }
 
 function bot_cfg_dashboard(\ZynervoxQueries\BotIvrRepository $db, ?DateTimeInterface $now = null): array {
@@ -287,6 +297,7 @@ function bot_cfg_dashboard(\ZynervoxQueries\BotIvrRepository $db, ?DateTimeInter
     $max = $db->dialerMaxTotalChannels(); $openTotal = $db->openCallsTotal();
     $out = ['server'=>['max_channels'=>$max, 'open_calls'=>$openTotal, 'engine_alive'=>$alive], 'campaigns'=>[]];
     $schedules = []; $calls15 = [];
+    $sumByList = []; foreach ($db->listSummaries() as $u) $sumByList[(int)$u['list_id']] = $u; // cached by the engine (<= 10 s old): the dashboard stays light
     foreach ($db->dashboardRows() as $r) {
         $cid = (int)$r['campaign_id'];
         if (!isset($out['campaigns'][$cid])) {
@@ -304,12 +315,21 @@ function bot_cfg_dashboard(\ZynervoxQueries\BotIvrRepository $db, ?DateTimeInter
             'open_calls'=>(int)($A['open_calls'] ?? 0),
             'totals'=>['contacts'=>$total, 'not_called'=>(int)$L['pending'], 'calls'=>(int)($A['calls'] ?? 0), 'answered'=>(int)($A['answered'] ?? 0), 'human'=>(int)($A['human'] ?? 0), 'machine'=>(int)($A['machine'] ?? 0), 'not_sure'=>(int)($A['notsure'] ?? 0),
                 'unavailable'=>(int)($A['unavailable'] ?? 0), 'no_answer'=>(int)($A['noanswer'] ?? 0), 'failed'=>(int)($A['failed'] ?? 0)],
+            'distribution'=>isset($sumByList[(int)$r['list_id']]) && $sumByList[(int)$r['list_id']]['dist_at'] !== null ? marcador_contact_block(bot_cfg_summary_counts($sumByList[(int)$r['list_id']])) + ['as_of_utc'=>$sumByList[(int)$r['list_id']]['dist_at']] : null,
             'insight'=>null,
             'progress_pct'=>$total > 0 ? (int)round(100 * (int)$L['called'] / $total) : 0,
             'reason'=>bot_cfg_list_reason($r + ['att'=>$A], $c + ['campaign_active'=>$r['campaign_active']], $alive, $inWindow, $eligible, $max - $openTotal, fn() => $db->listRetryPendingCount($cid, (int)$r['list_id'], (string)$r['lead_order']))];
     }
-    foreach ($out['campaigns'] as &$camp) foreach ($camp['lists'] as &$l) $l['insight'] = bot_cfg_list_temperature($l['totals'], $calls15[$l['list_id']] ?? 0);
-    unset($camp, $l);
+    foreach ($out['campaigns'] as &$camp) {
+        $sum = array_fill_keys(array_keys(MARCADOR_CONTACT_CATEGORIES), 0); $any = false;
+        foreach ($camp['lists'] as &$l) {
+            $l['insight'] = bot_cfg_list_temperature($l['totals'], $calls15[$l['list_id']] ?? 0, $l['distribution']['needle'] ?? null);
+            if ($l['distribution'] !== null) { $any = true; foreach ($sum as $k=>$_) $sum[$k] += $l['distribution']['counts'][$k]; }
+        }
+        unset($l);
+        $camp['distribution'] = $any ? marcador_contact_block($sum) : null; // campaign = sum of its lists (contacts are distinct per list)
+    }
+    unset($camp);
     $out['campaigns'] = array_values($out['campaigns']);
     return $out;
 }
@@ -608,4 +628,62 @@ function bot_cfg_dialmode_report(\ZynervoxQueries\BotIvrRepository $db, array $f
         $rows[] = $row;
     }
     return ['filters'=>['from_utc'=>$f['from_utc'], 'to_utc'=>$f['to_utc'], 'campaign_id'=>$f['campaign_id'], 'list_id'=>$f['list_id'], 'dial_mode'=>$mode, 'timezone'=>'America/Lima'], 'rows'=>$rows];
+}
+
+// --- Distribution by contact for the reports (contract «Distribución por contacto») ---
+
+/**
+ * Contacts by category, one block per list, per campaign and total, for comparing lists (finished and deleted ones included).
+ * Filters as bot_cfg_report (from, to, campaign_id, list_id). Without dates it reads the per-list summary (fast, includes «Sin llamar»); with dates it counts the contacts
+ * dialed inside the range, by their last attempt inside it (no «Sin llamar»: it has no meaning in a range). Every block: contacts, counts, pct (sums 100.0), needle.
+ * Intentos stay apart: lists[].attempts. Source = summary | attempts.
+ */
+function bot_cfg_contact_distribution(\ZynervoxQueries\BotIvrRepository $db, array $filters = []): array {
+    $f = bot_cfg_report_filters($filters);
+    $lima = new DateTimeZone('America/Lima');
+    $local = fn($v) => $v === null ? null : (new DateTimeImmutable($v, new DateTimeZone('UTC')))->setTimezone($lima)->format('Y-m-d H:i:s');
+    $label = ['running'=>'en curso', 'stopped'=>'detenida', 'finished'=>'terminada', 'deleted'=>'eliminada'];
+    $ranged = $f['from_utc'] !== null || $f['to_utc'] !== null;
+    $sums = []; foreach ($db->listSummaries($f['campaign_id'], $f['list_id']) as $u) $sums[(int)$u['list_id']] = $u;
+    $counts = [];
+    if ($ranged) {
+        foreach ($db->contactDistributionRange($f) as $r) $counts[(int)$r['list_id']][$r['cat']] = (int)$r['n'];
+    } else {
+        foreach ($sums as $id=>$u) if ($u['dist_at'] !== null) $counts[$id] = bot_cfg_summary_counts($u);
+    }
+    $lists = []; $byCamp = []; $total = array_fill_keys(array_keys(MARCADOR_CONTACT_CATEGORIES), 0);
+    foreach ($counts as $lid=>$c) {
+        $u = $sums[$lid] ?? null;
+        if ($u === null) continue; // attempts of a list without summary row (the engine writes it within seconds)
+        $block = marcador_contact_block($c);
+        if ($block['contacts'] < 1) continue;
+        $lists[] = ['campaign_id'=>$u['campaign_id'] === null ? null : (int)$u['campaign_id'], 'campaign'=>$u['campaign_name'] ?: 'campaña eliminada', 'list_id'=>$lid, 'list'=>$u['list_name'] ?: 'lista eliminada',
+            'list_deleted'=>$u['state'] === 'deleted', 'state'=>$u['state'], 'state_label'=>$label[$u['state']] ?? $u['state'], 'first_call'=>$local($u['first_call_at']), 'last_call'=>$local($u['last_call_at']),
+            'attempts'=>['label'=>'intentos', 'attempts'=>(int)$u['calls'], 'answered_attempts'=>(int)$u['answered'], 'transfers_ok'=>(int)$u['xfer_ok']]] + $block;
+        $cid = (int)($u['campaign_id'] ?? 0);
+        $byCamp[$cid] ??= ['campaign_id'=>$u['campaign_id'] === null ? null : (int)$u['campaign_id'], 'campaign'=>$u['campaign_name'] ?: 'campaña eliminada', 'lists'=>0, 'counts'=>array_fill_keys(array_keys(MARCADOR_CONTACT_CATEGORIES), 0)];
+        $byCamp[$cid]['lists']++;
+        foreach ($c as $k=>$n) { $byCamp[$cid]['counts'][$k] += $n; $total[$k] += $n; }
+    }
+    usort($lists, fn($a, $b) => [$a['campaign_id'], $a['list_id']] <=> [$b['campaign_id'], $b['list_id']]);
+    $campaigns = array_map(fn($x) => ['campaign_id'=>$x['campaign_id'], 'campaign'=>$x['campaign'], 'lists'=>$x['lists']] + marcador_contact_block($x['counts']), array_values($byCamp));
+    return ['filters'=>['from_utc'=>$f['from_utc'], 'to_utc'=>$f['to_utc'], 'campaign_id'=>$f['campaign_id'], 'list_id'=>$f['list_id'], 'timezone'=>'America/Lima'],
+        'source'=>$ranged ? 'attempts' : 'summary', 'note'=>$ranged ? 'Con fechas: contactos marcados dentro del rango, por su último intento dentro del rango.' : 'Contactos de cada lista por su último resultado.',
+        'categories'=>marcador_contact_categories(), 'total'=>marcador_contact_block($total), 'campaigns'=>$campaigns, 'lists'=>$lists];
+}
+
+/**
+ * Zypad vs AMD per contact (last attempt in the range), only for the zypad dial modes. Rows per dial mode with its N (contacts):
+ * casilla_zypad, casilla_amd, ambos, solo_zypad, solo_amd and solo_zypad_amd_humano (possible false cut: review with the recording).
+ */
+function bot_cfg_contact_zypad_amd(\ZynervoxQueries\BotIvrRepository $db, array $filters = []): array {
+    $f = bot_cfg_report_filters($filters);
+    $rows = [];
+    foreach ($db->zypadAmdByContact($f) as $r) {
+        $n = (int)$r['contacts'];
+        $row = ['dial_mode'=>$r['dial_mode'], 'label'=>MARCADOR_DIAL_MODE_LABELS[$r['dial_mode']] ?? $r['dial_mode'], 'contacts'=>$n, 'small_sample'=>$n < BOT_TEMP_MIN_CALLS];
+        foreach (['casilla_zypad', 'casilla_amd', 'ambos', 'solo_zypad', 'solo_amd', 'solo_zypad_amd_humano'] as $k) $row[$k] = (int)$r[$k];
+        $rows[] = $row;
+    }
+    return ['filters'=>['from_utc'=>$f['from_utc'], 'to_utc'=>$f['to_utc'], 'campaign_id'=>$f['campaign_id'], 'list_id'=>$f['list_id']], 'rows'=>$rows];
 }

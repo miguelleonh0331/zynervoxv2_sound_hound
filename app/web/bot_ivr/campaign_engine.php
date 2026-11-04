@@ -7,6 +7,7 @@ require_once __DIR__.'/campaign_config_service.php';
 require_once __DIR__.'/../includes/AmiClient.php';
 require_once __DIR__.'/../marcador/amd_audit.php';
 require_once __DIR__.'/../marcador/zypad.php';
+require_once __DIR__.'/../marcador/contact_distribution.php';
 
 const BOT_ENGINE_BURST = 50;
 const BOT_ENGINE_AMI_GRACE = 10;
