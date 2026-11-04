@@ -298,9 +298,10 @@ Auth::checkAccess(9);
             function b(v) { return el('strong', '', String(v)); }
             var det = [['humano', 'humanos'], ['casilla_voz', 'casillas de voz'], ['no_seguro', 'no seguros'], ['contestada_sin_amd', 'contestadas sin AMD']].filter(function (d) { return n(c[d[0]]) > 0; }).map(function (d) { return n(c[d[0]]) + ' ' + d[1]; });
             li(['Contestaron ', b(ans + ' de ' + t.contacts), ' contactos' + (det.length ? ': ' + det.slice(0, -1).join(', ') + (det.length > 1 ? ' y ' : '') + det[det.length - 1] : '') + '.']);
-            var xok = rep && rep.transfers ? n(rep.transfers.ok) : 0;
-            if (xok) li(['Transferidas a tu destino: ', b(xok), ' (cuenta intentos con humano o no seguro).']);
-            li(['Pasos: llamados ', b(called), ' → contestaron ', b(ans), ' → humanos ', b(n(c.humano)), xok ? ' → transferidas ' : '', xok ? b(xok) : '', '.']);
+            var xok = rep && rep.transfers ? n(rep.transfers.ok) : 0, hns = n(c.humano) + n(c.no_seguro), xshow = xok > 0 && xok <= hns;
+            if (xshow) li(['Transferidas a tu destino: ', b(xok), ' de esos ' + hns + ' humanos y no seguros.']);
+            else if (xok) li(['Transferidas a tu destino: ', b(xok), ' (cuenta intentos).']);
+            li(['Pasos: llamados ', b(called), ' → contestaron ', b(ans), ' → humanos y no seguros ', b(hns), xshow ? ' → transferidas ' : '', xshow ? b(xok) : '', '.']);
         }
 
         // Etiqueta en español llano de un resultado de intento. Sigue el contrato de categorías: 480 y 408 = No disponible, 486 y 600 = Ocupado, 487 = Sin respuesta.
@@ -330,12 +331,14 @@ Auth::checkAccess(9);
             box.appendChild(t); box.appendChild(el('p', 'muted', 'Total: ' + tot + ' intentos.'));
         }
 
-        function kpis(k) {
+        // Intentos en que el AMD dijo HUMANO (la misma cifra que «Resultado del AMD»). No usar kpi.human: suma también las contestadas sin AMD.
+        function amdHuman(x) { return ((x && x.amd_by_cause) || []).reduce(function (a, r) { return a + (r.amd_status === 'HUMAN' ? n(r.calls) : 0); }, 0); }
+        function kpis(k, x) {
             var box = document.getElementById('kpis'); box.textContent = ''; var calls = n(k.calls);
             [['Intentos', calls, 'llamadas hechas, reintentos incluidos', '#3b82f6'],
              ['Contestados', n(k.answered), 'intentos en que alguien contestó', '#3b82f6'],
              ['Casilla de voz', n(k.machine), 'intentos que cayeron en una casilla', '#3b82f6'],
-             ['Atendidos por una persona', n(k.human), 'intentos en que el AMD detectó una persona', '#10b981'],
+             ['Atendidos por una persona', amdHuman(x), 'intentos en que el AMD detectó una persona', '#10b981'],
              ['No disponible u ocupado', n(k.unavailable), 'intentos sin conexión con el cliente', '#f59e0b'],
              ['Sin respuesta', n(k.no_answer), 'intentos que nadie contestó', '#9ca3af'],
              ['Fallaron', n(k.failed), 'intentos con error', '#ef4444'],
@@ -343,14 +346,14 @@ Auth::checkAccess(9);
             .forEach(function (x) { var c = el('div', 'kpi'); c.style.setProperty('--kc', x[3]); c.appendChild(el('div', 'l', x[0])); c.appendChild(el('div', 'v', String(x[1]))); c.appendChild(el('div', 'b', (calls > 0 && x[0] !== 'Intentos' ? rp(x[1], calls) + ' % de los intentos · ' : '') + x[2])); box.appendChild(c); });
         }
 
-        function trend(days) {
+        function trend(days, humans) {
             var box = document.getElementById('trend'); box.textContent = '';
             if (!days || !days.length) { empty(box); return; }
-            if (days.length < 2) { var d0 = days[0]; box.appendChild(el('p', '', 'Todo ocurrió el ' + d0.day_local + ': ' + n(d0.calls) + ' intentos, ' + n(d0.answered) + ' contestados y ' + n(d0.human) + ' atendidos por una persona.')); return; }
+            if (days.length < 2) { var d0 = days[0]; box.appendChild(el('p', '', 'Todo ocurrió el ' + d0.day_local + ': ' + n(d0.calls) + ' intentos, ' + n(d0.answered) + ' contestados y ' + humans + ' atendidos por una persona (según el AMD).')); return; }
             var W = Math.max(640, days.length * 60), H = 170, L = 38, R = 24, T = 10, B = 24, pw = W - L - R, ph = H - T - B;
             var s = svg(W, H); s.setAttribute('aria-label', 'Intentos por día');
-            var series = [['answered', C.answered, 'Contestados'], ['human', C.human, 'Atendidos por una persona']];
-            var vals = days.map(function (d) { return { a: pct(n(d.answered), n(d.calls)), h: pct(n(d.human), n(d.calls)), calls: n(d.calls) }; });
+            var series = [['answered', C.answered, 'Contestados']];
+            var vals = days.map(function (d) { return { a: pct(n(d.answered), n(d.calls)), h: null, calls: n(d.calls) }; });
             var maxp = Math.max(10, Math.ceil(Math.max.apply(null, vals.map(function (v) { return Math.max(v.a || 0, v.h || 0); })) / 10) * 10);
             [0, 0.5, 1].forEach(function (f) { var y = T + ph - f * ph; se(s, 'line', { x1: L, x2: W - R, y1: y, y2: y, stroke: '#374151', 'stroke-width': 1 }); se(s, 'text', { x: 2, y: y + 4, 'font-size': 10, fill: '#6b7280' }, Math.round(f * maxp) + ' %'); });
             var step = pw / Math.max(1, days.length - 1);
@@ -402,7 +405,7 @@ Auth::checkAccess(9);
             var wrap = document.getElementById('carrierbox'); wrap.hidden = !(cr && cr.multiple);
             if (wrap.hidden) return;
             var box = document.getElementById('carrier'); box.textContent = '';
-            box.appendChild(table(['Troncal', 'Intentos', 'Contestados', 'Atendidos por una persona', 'Fallaron'], cr.rows.map(function (r) { var c = n(r.calls); return [r.carrier, c, fp(n(r.answered), c), fp(n(r.human), c), fp(n(r.failed), c)]; })));
+            box.appendChild(table(['Troncal', 'Intentos', 'Contestados', 'Humano (con o sin AMD)', 'Fallaron'], cr.rows.map(function (r) { var c = n(r.calls); return [r.carrier, c, fp(n(r.answered), c), fp(n(r.human), c), fp(n(r.failed), c)]; })));
         }
 
         function matrix(cells) {
@@ -486,7 +489,7 @@ Auth::checkAccess(9);
                         }
                     }
                     var r = j.report, x = j.extra;
-                    notes(j); contactsTotal(j.contacts); contactSays(j.contacts, r); compareLists(j.contacts); zypadVsAmd(j.zypad_amd); kpis(r.kpi); trend(x && x.by_day);
+                    notes(j); contactsTotal(j.contacts); contactSays(j.contacts, r); compareLists(j.contacts); zypadVsAmd(j.zypad_amd); kpis(r.kpi, x); trend(x && x.by_day, amdHuman(x));
                     dialmodes(j.dialmodes); if (x) { sip(x.sip); amd(x.amd_by_cause); carriers(x.by_carrier); matrix(x.by_weekday_hour); } retries(x);
                     xfer(r.transfers); detail(r.detail);
                 })
