@@ -411,3 +411,83 @@ function bot_cfg_report_csv(\ZynervoxQueries\BotIvrRepository $db, array $filter
     rewind($h); $csv = (string)stream_get_contents($h); fclose($h);
     return $csv;
 }
+
+/** The 9 global AMD parameters for the menu page: key, label, help (plain language), unit, min, max, default and current value. */
+function bot_cfg_amd_params(\ZynervoxQueries\BotIvrRepository $db): array {
+    $help = [
+        'initial_silence'=>'Cuánto espera sin oír nada al principio antes de darlo por silencio.',
+        'greeting'=>'Duración máxima de un saludo para considerarlo de persona; más largo se toma como contestadora.',
+        'after_greeting_silence'=>'Silencio tras el saludo que indica que la persona espera respuesta.',
+        'total_analysis_time'=>'Tiempo máximo que escucha antes de decidir. Si se agota, el resultado es dudoso (NOTSURE).',
+        'minimum_word_length'=>'Un sonido más corto que esto no cuenta como palabra.',
+        'between_words_silence'=>'Pausa que separa una palabra de la siguiente.',
+        'maximum_number_of_words'=>'Con más palabras que este número se considera contestadora.',
+        'silence_threshold'=>'Nivel de audio por debajo del cual se considera silencio.',
+        'maximum_word_length'=>'Una palabra más larga que esto se considera contestadora.'];
+    $unit = ['maximum_number_of_words'=>'palabras', 'silence_threshold'=>'nivel'];
+    $cur = marcador_amd_global($db);
+    $out = [];
+    foreach (MARCADOR_AMD_DEFAULTS as $key=>$default) {
+        [$min, $max] = ['maximum_number_of_words'=>[1, 50], 'silence_threshold'=>[0, 32767]][$key] ?? [0, 60000];
+        $out[] = ['key'=>$key, 'label'=>MARCADOR_AMD_LABELS[$key], 'help'=>$help[$key], 'unit'=>$unit[$key] ?? 'ms', 'min'=>$min, 'max'=>$max, 'default'=>$default, 'value'=>$cur[$key]];
+    }
+    return ['version_id'=>$cur['version_id'], 'created_at'=>$cur['created_at'] ?? null, 'created_by'=>$cur['created_by'] ?? null, 'params'=>$out];
+}
+
+/** Saves a NEW global AMD version. Throws RuntimeException with a Spanish message on invalid ranges or no changes. */
+function bot_cfg_amd_save(\ZynervoxQueries\BotIvrRepository $db, array $values, string $actor, string $note = ''): array {
+    return marcador_amd_global_save($db, $values, $actor, $note);
+}
+
+/** Version history, newest first: version_id, created_at (Lima), actor, note, from_version_id, values{}, active. */
+function bot_cfg_amd_versions(\ZynervoxQueries\BotIvrRepository $db, int $limit = 50): array {
+    $lima = new DateTimeZone('America/Lima');
+    return array_map(function ($v) use ($lima) {
+        $values = []; foreach (MARCADOR_AMD_DEFAULTS as $k=>$_) $values[$k] = (int)$v[$k];
+        return ['version_id'=>(int)$v['version_id'], 'created_at'=>(new DateTimeImmutable($v['created_at'], new DateTimeZone('UTC')))->setTimezone($lima)->format('Y-m-d H:i:s'),
+            'actor'=>$v['created_by'], 'note'=>$v['note'], 'from_version_id'=>$v['from_version_id'] === null ? null : (int)$v['from_version_id'], 'values'=>$values, 'active'=>(bool)$v['is_current']];
+    }, marcador_amd_global_history($db, $limit));
+}
+
+/** Goes back to an older version by creating a new one with its values. */
+function bot_cfg_amd_restore(\ZynervoxQueries\BotIvrRepository $db, int $versionId, string $actor): array {
+    return marcador_amd_global_rollback($db, $versionId, $actor);
+}
+
+/**
+ * Historic summary per list (from zynervox_bot_list_summary, deleted lists included) plus a total per campaign.
+ * Filters: campaign_id, list_id, status (running|stopped|finished|deleted; "en curso"=running, "terminada"=finished).
+ * No date range: the summary is cumulative; for a date range use bot_cfg_report.
+ */
+function bot_cfg_summary(\ZynervoxQueries\BotIvrRepository $db, array $filters = []): array {
+    $cid = isset($filters['campaign_id']) && $filters['campaign_id'] !== '' ? (int)$filters['campaign_id'] : null;
+    $lid = isset($filters['list_id']) && $filters['list_id'] !== '' ? (int)$filters['list_id'] : null;
+    $state = (string)($filters['status'] ?? '');
+    if ($state !== '' && !in_array($state, ['running', 'stopped', 'finished', 'deleted'], true)) throw new RuntimeException('Estado no válido.');
+    $lima = new DateTimeZone('America/Lima');
+    $local = fn($v) => $v === null ? null : (new DateTimeImmutable($v, new DateTimeZone('UTC')))->setTimezone($lima)->format('Y-m-d H:i:s');
+    $label = ['running'=>'en curso', 'stopped'=>'detenida', 'finished'=>'terminada', 'deleted'=>'eliminada'];
+    $keys = ['contacts', 'calls', 'answered', 'human', 'machine', 'not_sure', 'unavailable', 'no_answer', 'failed', 'xfer_ok', 'xfer_fail', 'duration_seconds'];
+    $lists = []; $campaigns = [];
+    foreach ($db->listSummaries($cid, $lid) as $u) {
+        if ($state !== '' && $u['state'] !== $state) continue;
+        $row = ['campaign_id'=>$u['campaign_id'] === null ? null : (int)$u['campaign_id'], 'campaign'=>$u['campaign_name'] ?: 'campaña eliminada', 'list_id'=>(int)$u['list_id'], 'list'=>$u['list_name'] ?: 'lista eliminada',
+            'list_deleted'=>$u['state'] === 'deleted', 'state'=>$u['state'], 'state_label'=>$label[$u['state']] ?? $u['state']];
+        foreach ($keys as $k) $row[$k] = (int)$u[$k];
+        $row += ['contact_pct'=>(float)$u['contact_pct'], 'human_pct'=>(float)$u['human_pct'], 'machine_pct'=>(float)$u['machine_pct'],
+            'avg_duration_seconds'=>$row['calls'] > 0 ? round($row['duration_seconds'] / $row['calls'], 1) : null,
+            'first_call'=>$local($u['first_call_at']), 'last_call'=>$local($u['last_call_at']), 'finished_at'=>$local($u['finished_at'])];
+        $lists[] = $row;
+        $c = &$campaigns[$row['campaign_id'] ?? 0];
+        $c ??= ['campaign_id'=>$row['campaign_id'], 'campaign'=>$row['campaign'], 'lists'=>0] + array_fill_keys($keys, 0);
+        $c['lists']++; foreach ($keys as $k) $c[$k] += $row[$k];
+        unset($c);
+    }
+    foreach ($campaigns as &$c) {
+        $c['contact_pct'] = $c['calls'] > 0 ? round(100 * $c['answered'] / $c['calls'], 1) : 0.0;
+        $c['human_pct'] = $c['calls'] > 0 ? round(100 * $c['human'] / $c['calls'], 1) : 0.0;
+        $c['avg_duration_seconds'] = $c['calls'] > 0 ? round($c['duration_seconds'] / $c['calls'], 1) : null;
+    }
+    unset($c);
+    return ['lists'=>$lists, 'campaigns'=>array_values($campaigns)];
+}

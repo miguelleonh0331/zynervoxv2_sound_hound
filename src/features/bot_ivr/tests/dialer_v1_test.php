@@ -375,5 +375,14 @@ $repo->saveCampaignConfig($det, ['name'=>'Solo detectar','active'=>1,'call_origi
 check('troncal sin destino no inicia', str_contains(throws(fn() => bot_cfg_start($repo, $det, 'test', ['7307'])), 'ambos vacíos'));
 $rep = bot_cfg_attempts_report($repo, $det, 10);
 check('reporte: intentos con las columnas de AMD y causas', count($rep) === 2 && array_key_exists('amd_status', $rep[0]) && array_key_exists('sip_cause', $rep[0]) && array_key_exists('q850', $rep[0]));
+$ap = bot_cfg_amd_params($repo);
+check('bot_cfg_amd_params: 9 parámetros con rango, ayuda y valor', count($ap['params']) === 9 && $ap['params'][0]['help'] !== '' && $ap['params'][0]['min'] === 0 && $ap['params'][6]['max'] === 50);
+$bv = bot_cfg_amd_save($repo, ['total_analysis_time'=>7000], 'tester', 'prueba');
+$vs = bot_cfg_amd_versions($repo);
+check('bot_cfg_amd_save/versions: versión nueva activa con values', $vs[0]['version_id'] === $bv['version_id'] && $vs[0]['active'] === true && $vs[0]['values']['total_analysis_time'] === 7000 && $vs[0]['actor'] === 'tester');
+$rs = bot_cfg_amd_restore($repo, $vs[1]['version_id'], 'tester');
+check('bot_cfg_amd_restore: copia la anterior como versión nueva', $rs['version_id'] > $bv['version_id'] && $rs['total_analysis_time'] === $vs[1]['values']['total_analysis_time']);
+$sm = bot_cfg_summary($repo, []);
+check('bot_cfg_summary: listas y totales por campaña', isset($sm['lists'], $sm['campaigns']) && throws(fn() => bot_cfg_summary($repo, ['status'=>'x'])) !== '');
 echo $fail ? "$fail FALLOS\n" : "TODO OK\n";
 exit($fail ? 1 : 0);
