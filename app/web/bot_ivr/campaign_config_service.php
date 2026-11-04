@@ -5,6 +5,8 @@ declare(strict_types=1);
 require_once __DIR__.'/db.php';
 require_once __DIR__.'/campaigns_service.php';
 require_once __DIR__.'/../ivr_builder/forwarding.php';
+require_once __DIR__.'/../marcador/amd_audit.php';
+require_once __DIR__.'/../marcador/list_summary.php';
 
 const BOT_CFG_MAX_HEADERS = 16;
 
@@ -52,7 +54,7 @@ function bot_cfg_amd_results(): array {
 }
 function bot_cfg_amd_defaults(): array {
     return ['HUMAN'=>['action'=>'transfer', 'max_attempts'=>0, 'retry_delay_min'=>0], 'NOTSURE'=>['action'=>'transfer', 'max_attempts'=>0, 'retry_delay_min'=>0],
-        'MACHINE'=>['action'=>'hangup', 'max_attempts'=>0, 'retry_delay_min'=>0]];
+        'MACHINE'=>['action'=>'retry', 'max_attempts'=>2, 'retry_delay_min'=>240]]; // contestadora: 1 reintento a los 240 min
 }
 /** Final SIP codes with a retry rule. group: codes the page may show together (rows are still saved per exact code). 200 is decided by AMD. */
 function bot_cfg_sip_codes(): array {
@@ -61,6 +63,25 @@ function bot_cfg_sip_codes(): array {
         [500,'Error del servidor','trunk','Congestión o fallo de troncal'], [502,'Pasarela inválida','trunk','Congestión o fallo de troncal'], [503,'Servicio no disponible','trunk','Congestión o fallo de troncal'], [504,'Timeout de pasarela','trunk','Congestión o fallo de troncal'],
         [603,'Rechazado','declined','Rechazado'], [487,'Cancelado por timeout propio','cancelled','Cancelado por timeout'], [0,'Sin respuesta del proveedor','noresp','Sin respuesta del proveedor']];
     return array_map(fn($r) => ['sip_code'=>$r[0], 'label'=>$r[1], 'group'=>$r[2], 'group_label'=>$r[3]], $rows);
+}
+
+/**
+ * Default retries (contract 04/11/2026): 486/600 four attempts every 15 min; 480/408 four every 60; 487 and no provider answer (0) four every 120;
+ * 500/502/503/504 four every 10; 404/484/603 no retry. max_attempts is the total cap of attempts of the lead (first call included).
+ */
+function bot_cfg_default_rules(): array {
+    $rows = [];
+    foreach ([[[486, 600], 15], [[480, 408], 60], [[487, 0], 120], [[500, 502, 503, 504], 10]] as [$codes, $delay]) foreach ($codes as $code) $rows[] = ['sip_code'=>$code, 'max_attempts'=>4, 'retry_delay_min'=>$delay, 'active'=>1];
+    usort($rows, fn($a, $b) => $a['sip_code'] <=> $b['sip_code']);
+    return $rows;
+}
+/** Puts the default retries (SIP rules and answering-machine retry) on an existing campaign; the rest of its configuration is untouched. */
+function bot_cfg_apply_default_retries(\ZynervoxQueries\BotIvrRepository $db, int $campaignId): void {
+    $c = bot_cfg_get($db, $campaignId); $k = $c['campaign'];
+    $amd = array_map(fn($a) => $a['result'] === 'MACHINE' ? ['result'=>'MACHINE'] + bot_cfg_amd_defaults()['MACHINE'] : $a, $c['amd_actions']);
+    bot_cfg_save($db, $campaignId, ['name'=>$k['name'], 'active'=>$k['active'], 'call_origin'=>$k['call_origin'], 'max_channels'=>$k['max_channels'], 'amd_enabled'=>$k['amd_enabled'],
+        'transfer_carrier_id'=>$k['transfer_carrier_id'], 'transfer_destination'=>$k['transfer_destination'], 'timezone'=>$k['timezone'], 'lead_order'=>$k['lead_order'], 'dial_timeout'=>$k['dial_timeout'], 'campaign_cid'=>$k['campaign_cid'],
+        'headers'=>array_map(fn($h) => ['name'=>$h['header_name'], 'field'=>$h['lead_field']], $c['headers']), 'schedules'=>$c['schedules'], 'rules'=>bot_cfg_default_rules(), 'amd_actions'=>$amd]);
 }
 
 /** Rules by exact SIP code (0 = no provider answer). Unknown codes and 200 are rejected. */
@@ -138,7 +159,7 @@ function bot_cfg_save(\ZynervoxQueries\BotIvrRepository $db, ?int $id, array $in
         'transfer_carrier_id'=>$carrier, 'transfer_destination'=>$destination, 'timezone'=>$timezone, 'lead_order'=>$order,
         'dial_timeout'=>bot_cfg_int($input['dial_timeout'] ?? $old['dial_timeout'], 1, 255, 'Tiempo de llamada'),
         'campaign_cid'=>bot_campaign_field_value('campaign_cid', $input['campaign_cid'] ?? $old['campaign_cid'])];
-    return $db->saveCampaignConfig($id, $campaign, bot_cfg_headers($input['headers'] ?? []), ['sip'=>bot_cfg_rules($input['rules'] ?? []), 'amd'=>bot_cfg_amd_actions($input['amd_actions'] ?? [])], bot_cfg_schedules($input['schedules'] ?? []));
+    return $db->saveCampaignConfig($id, $campaign, bot_cfg_headers($input['headers'] ?? []), ['sip'=>bot_cfg_rules($input['rules'] ?? ($id === null ? bot_cfg_default_rules() : [])), 'amd'=>bot_cfg_amd_actions($input['amd_actions'] ?? [])], bot_cfg_schedules($input['schedules'] ?? []));
 }
 
 /** Channels of one list (1..server max). Safe while the campaign runs: the engine re-reads it on every pass. */
@@ -191,6 +212,7 @@ function bot_cfg_start(\ZynervoxQueries\BotIvrRepository $db, int $id, string $a
 function bot_cfg_stop(\ZynervoxQueries\BotIvrRepository $db, int $id, string $actor): void {
     $db->setDialerState($id, 'stopped', $actor);
     $db->setCampaignListsState($id, 'stopped', $actor);
+    foreach ($db->listsChannels() as $l) if ((int)$l['campaign_id'] === $id) marcador_list_summary_refresh($db, (int)$l['list_id'], 'stopped');
 }
 /** Starts ONE list (it must be active) and puts its campaign in motion if it was not. */
 function bot_cfg_list_start(\ZynervoxQueries\BotIvrRepository $db, int $campaignId, int $listId, string $actor, ?array $origins = null): void {
@@ -206,6 +228,7 @@ function bot_cfg_list_start(\ZynervoxQueries\BotIvrRepository $db, int $campaign
 function bot_cfg_list_stop(\ZynervoxQueries\BotIvrRepository $db, int $campaignId, int $listId, string $actor): void {
     $db->setListDialerState($campaignId, $listId, 'stopped', $actor);
     if ($db->runningListsCount($campaignId) < 1) $db->setDialerState($campaignId, 'stopped', $actor);
+    marcador_list_summary_refresh($db, $listId, 'stopped'); // final figures of what was dialed; calls still open are added by the engine's next pass
 }
 /** Enables or disables a list. Disabling stops it (and the campaign when it was the last one running). */
 function bot_cfg_list_set_active(\ZynervoxQueries\BotIvrRepository $db, int $campaignId, int $listId, bool $active, string $actor): void {
@@ -347,14 +370,31 @@ function bot_cfg_report_mask_phone(string $phone): string { return strlen($phone
 function bot_cfg_report(\ZynervoxQueries\BotIvrRepository $db, array $filters = [], int $page = 1, int $perPage = 50): array {
     $f = bot_cfg_report_filters($filters);
     $perPage = max(1, min(500, $perPage)); $page = max(1, $page);
-    $agg = $db->reportAggregates($f);
+    // Whole history with the default options: the incremental per-list summary answers (finished and deleted lists included) without scanning every attempt.
+    $sum = ($f['from_utc'] === null && $f['to_utc'] === null && !$f['include_test'] && !$f['include_invalid_amd']) ? $db->listSummaries($f['campaign_id'], $f['list_id']) : [];
+    $agg = $db->reportAggregates($f + ['skip_totals'=>(bool)$sum]);
     $detail = $db->reportDetail($f, $perPage, ($page - 1) * $perPage);
     foreach ($detail['rows'] as &$r) { $r['phone'] = bot_cfg_report_mask_phone((string)$r['phone']); $r['amd_valid'] = (bool)$r['amd_valid']; }
     unset($r);
-    $kpi = $agg['kpi']; $calls = (int)$kpi['calls'];
+    $kpi = $agg['kpi'] ?? []; $byList = $agg['by_list'] ?? [];
+    {
+        if ($sum) {
+            $lima = new DateTimeZone('America/Lima');
+            $local = fn($v) => $v === null ? null : (new DateTimeImmutable($v, new DateTimeZone('UTC')))->setTimezone($lima)->format('Y-m-d H:i:s');
+            $byList = array_map(fn($u) => ['campaign_id'=>$u['campaign_id'], 'campaign'=>$u['campaign_name'] ?: 'campaña eliminada', 'list_id'=>(int)$u['list_id'], 'list'=>$u['list_name'] ?: 'lista eliminada',
+                'list_deleted'=>$u['state'] === 'deleted', 'state'=>$u['state'], 'source'=>'summary', 'calls'=>(int)$u['calls'], 'answered'=>(int)$u['answered'], 'human'=>(int)$u['human'], 'machine'=>(int)$u['machine'], 'not_sure'=>(int)$u['not_sure'],
+                'unavailable'=>(int)$u['unavailable'], 'no_answer'=>(int)$u['no_answer'], 'failed'=>(int)$u['failed'], 'xfer_ok'=>(int)$u['xfer_ok'], 'xfer_fail'=>(int)$u['xfer_fail'], 'contacts'=>(int)$u['contacts'],
+                'contact_pct'=>(float)$u['contact_pct'], 'human_pct'=>(float)$u['human_pct'], 'machine_pct'=>(float)$u['machine_pct'], 'first_call'=>$local($u['first_call_at']), 'last_call'=>$local($u['last_call_at']),
+                'duration_seconds'=>(int)$u['duration_seconds'], 'finished_at'=>$local($u['finished_at'])], $sum);
+            $tot = ['calls'=>0, 'answered'=>0, 'human'=>0, 'machine'=>0, 'not_sure'=>0, 'unavailable'=>0, 'no_answer'=>0, 'failed'=>0, 'xfer_ok'=>0, 'xfer_fail'=>0];
+            foreach ($byList as $l) foreach ($tot as $k=>$_) $tot[$k] += $l[$k];
+            $kpi = $tot + ['avg_billsec'=>null, 'first_call'=>min(array_filter(array_column($byList, 'first_call')) ?: [null]), 'last_call'=>max(array_filter(array_column($byList, 'last_call')) ?: [null])];
+        }
+    }
+    $calls = (int)$kpi['calls'];
     $kpi['contact_pct'] = $calls > 0 ? round(100 * (int)$kpi['answered'] / $calls, 1) : 0.0;
     return ['filters'=>['from_utc'=>$f['from_utc'], 'to_utc'=>$f['to_utc'], 'campaign_id'=>$f['campaign_id'], 'list_id'=>$f['list_id'], 'include_test'=>$f['include_test'], 'include_invalid_amd'=>$f['include_invalid_amd'], 'timezone'=>'America/Lima', 'amd_valid_from_local'=>BOT_AMD_VALID_FROM_LIMA],
-        'kpi'=>$kpi, 'by_hour'=>$agg['by_hour'], 'by_list'=>$agg['by_list'], 'by_amd'=>$agg['by_amd'], 'by_cause'=>$agg['by_cause'],
+        'kpi'=>$kpi, 'by_hour'=>$agg['by_hour'], 'by_list'=>$byList, 'by_amd'=>$agg['by_amd'], 'by_cause'=>$agg['by_cause'],
         'transfers'=>['ok'=>(int)$kpi['xfer_ok'], 'failed'=>(int)$kpi['xfer_fail']],
         'detail'=>['page'=>$page, 'per_page'=>$perPage, 'total'=>$detail['total'], 'rows'=>$detail['rows']]];
 }

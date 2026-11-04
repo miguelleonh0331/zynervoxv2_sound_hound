@@ -108,22 +108,33 @@ trait CampaignConfigQueries {
         $v = $this->db->query("SELECT UNIX_TIMESTAMP()-value FROM zynervox_bot_dialer_settings WHERE name='engine_heartbeat'")->fetchColumn();
         return $v === false ? null : (int)$v;
     }
-    /** One row per list with leads and attempt counters, grouped in SQL (light enough for a 5 s refresh). */
+    /**
+     * Dashboard rows: ACTIVE lists only, one per list, from the incremental summary plus the calls open right now (indexed, tiny) and the last 15 minutes.
+     * Lists that have no summary row yet get their totals from the leads table.
+     */
     public function dashboardRows(): array {
         $rows = $this->db->query("SELECT c.campaign_id,c.name campaign_name,c.active campaign_active,c.dialer_state campaign_state,c.timezone,c.scheduled,c.start_time,c.end_time,c.lead_order,
-                p.list_id,p.name list_name,p.active list_active,p.dialer_state list_state,p.max_channels
-            FROM zynervox_bot_campaigns c LEFT JOIN zynervox_bot_lists p ON p.campaign_id=c.campaign_id ORDER BY c.campaign_id,p.list_id")->fetchAll(\PDO::FETCH_ASSOC);
-        $leads = []; foreach ($this->db->query("SELECT list_id,COUNT(*) total,SUM(status='NEW') pending,SUM(called_count>0) called FROM zynervox_bot_list GROUP BY list_id")->fetchAll(\PDO::FETCH_ASSOC) as $r) $leads[$r['list_id']] = $r;
-        $att = []; foreach ($this->db->query("SELECT list_id,COUNT(*) calls,
-                SUM(finished_at IS NULL AND end_source<>'RECOVERY' AND status<>'LOST') open_calls,
-                SUM(finished_at IS NOT NULL AND (amd_status='HUMAN' OR (amd_status='' AND disposition IN ('ANSWER_HUMAN','XFER_OK','XFER_FAIL')))) human,
-                SUM(amd_status='MACHINE') machine, SUM(amd_status='NOTSURE') notsure,
-                SUM(amd_status IN ('HUMAN','MACHINE','NOTSURE') OR disposition IN ('ANSWER_HUMAN','XFER_OK','XFER_FAIL')) answered,
-                SUM(started_at>=UTC_TIMESTAMP()-INTERVAL 15 MINUTE) calls15,
-                SUM(disposition='BUSY') unavailable, SUM(disposition='NOANSWER') noanswer,
-                SUM(disposition IN ('FAILED','CONGESTION','CANCELLED')) failed
-            FROM zynervox_bot_call_attempts WHERE list_id IS NOT NULL GROUP BY list_id")->fetchAll(\PDO::FETCH_ASSOC) as $r) $att[$r['list_id']] = $r;
-        foreach ($rows as &$r) { $r['leads'] = $leads[$r['list_id']] ?? null; $r['att'] = $att[$r['list_id']] ?? null; }
+                p.list_id,p.name list_name,p.active list_active,p.dialer_state list_state,p.max_channels,
+                u.contacts,u.not_called,u.calls,u.answered,u.human,u.machine,u.not_sure,u.unavailable,u.no_answer,u.failed,u.xfer_ok,u.xfer_fail,u.counted_attempt_id,u.updated_at summary_at
+            FROM zynervox_bot_campaigns c JOIN zynervox_bot_lists p ON p.campaign_id=c.campaign_id AND p.active=1
+            LEFT JOIN zynervox_bot_list_summary u ON u.list_id=p.list_id ORDER BY c.campaign_id,p.list_id")->fetchAll(\PDO::FETCH_ASSOC);
+        $open = []; foreach ($this->db->query("SELECT list_id,COUNT(*) n FROM zynervox_bot_call_attempts WHERE finished_at IS NULL AND end_source<>'RECOVERY' AND status<>'LOST' GROUP BY list_id")->fetchAll(\PDO::FETCH_ASSOC) as $r) $open[$r['list_id']] = (int)$r['n'];
+        $recent = []; foreach ($this->db->query("SELECT list_id,COUNT(*) n FROM zynervox_bot_call_attempts WHERE started_at>=UTC_TIMESTAMP()-INTERVAL 15 MINUTE GROUP BY list_id")->fetchAll(\PDO::FETCH_ASSOC) as $r) $recent[$r['list_id']] = (int)$r['n'];
+        $missing = array_values(array_unique(array_map(fn($r) => (int)$r['list_id'], array_filter($rows, fn($r) => $r['contacts'] === null))));
+        $counts = [];
+        if ($missing) {
+            $in = implode(',', $missing);
+            foreach ($this->db->query("SELECT list_id,COUNT(*) total,SUM(status='NEW') pending FROM zynervox_bot_list WHERE list_id IN ($in) GROUP BY list_id")->fetchAll(\PDO::FETCH_ASSOC) as $r) $counts[$r['list_id']] = $r;
+        }
+        foreach ($rows as &$r) {
+            $id = $r['list_id'];
+            $total = $r['contacts'] !== null ? (int)$r['contacts'] : (int)($counts[$id]['total'] ?? 0);
+            $pending = $r['contacts'] !== null ? (int)$r['not_called'] : (int)($counts[$id]['pending'] ?? 0);
+            $r['leads'] = ['total'=>$total, 'pending'=>$pending, 'called'=>$total - $pending];
+            $r['att'] = ['calls'=>(int)$r['calls'], 'open_calls'=>$open[$id] ?? 0, 'human'=>(int)$r['human'], 'machine'=>(int)$r['machine'], 'notsure'=>(int)$r['not_sure'], 'answered'=>(int)$r['answered'],
+                'unavailable'=>(int)$r['unavailable'], 'noanswer'=>(int)$r['no_answer'], 'failed'=>(int)$r['failed'], 'calls15'=>$recent[$id] ?? 0];
+        }
+        unset($r);
         return $rows;
     }
     private const REPORT_ANSWERED = "(a.amd_status IN ('HUMAN','MACHINE','NOTSURE') OR a.disposition IN ('ANSWER_HUMAN','XFER_OK','XFER_FAIL'))";
@@ -151,9 +162,9 @@ trait CampaignConfigQueries {
         $from = "FROM zynervox_bot_call_attempts a LEFT JOIN zynervox_bot_lists p ON p.list_id=a.list_id LEFT JOIN zynervox_bot_campaigns c ON c.campaign_id=a.campaign_id WHERE $where";
         $q = function(string $sql, array $extra = []) use($params) { $s = $this->db->prepare($sql); $s->execute(array_merge($params, $extra)); return $s->fetchAll(\PDO::FETCH_ASSOC); };
         $out = [];
-        $out['kpi'] = $q("SELECT $C, COALESCE(ROUND(AVG(a.billsec)),0) avg_billsec, MIN(DATE_ADD(a.started_at, INTERVAL $off SECOND)) first_call, MAX(DATE_ADD(a.started_at, INTERVAL $off SECOND)) last_call $from")[0];
+        if (empty($f['skip_totals'])) $out['kpi'] = $q("SELECT $C, COALESCE(ROUND(AVG(a.billsec)),0) avg_billsec, MIN(DATE_ADD(a.started_at, INTERVAL $off SECOND)) first_call, MAX(DATE_ADD(a.started_at, INTERVAL $off SECOND)) last_call $from")[0];
         $out['by_hour'] = $q("SELECT DATE_FORMAT(DATE_ADD(a.started_at, INTERVAL $off SECOND), '%Y-%m-%d %H:00') hour_local, $C $from GROUP BY hour_local ORDER BY hour_local");
-        $out['by_list'] = $q("SELECT a.campaign_id, COALESCE(c.name,'campaña eliminada') campaign, a.list_id, COALESCE(p.name,'lista eliminada') list, p.list_id IS NULL list_deleted, $C $from GROUP BY a.campaign_id, c.name, a.list_id, p.name, p.list_id ORDER BY a.campaign_id, a.list_id");
+        if (empty($f['skip_totals'])) $out['by_list'] = $q("SELECT a.campaign_id, COALESCE(c.name,'campaña eliminada') campaign, a.list_id, COALESCE(p.name,'lista eliminada') list, p.list_id IS NULL list_deleted, $C $from GROUP BY a.campaign_id, c.name, a.list_id, p.name, p.list_id ORDER BY a.campaign_id, a.list_id");
         $valid = $f['include_invalid_amd'] ? '' : " AND a.started_at>='".$f['invalid_before_utc']."'";
         $out['by_amd'] = $q("SELECT IF(a.amd_cause IN ('TOOLONG','LONGGREETING','INITIALSILENCE','MAXWORDS','MAXWORDLENGTH'), a.amd_cause, a.amd_status) result, a.amd_status, a.amd_cause, COUNT(*) calls $from AND a.amd_status<>''$valid GROUP BY result, a.amd_status, a.amd_cause ORDER BY calls DESC");
         $out['by_cause'] = $q("SELECT a.sip_cause, a.hangup_cause q850, a.disposition, COUNT(*) calls $from GROUP BY a.sip_cause, a.hangup_cause, a.disposition ORDER BY calls DESC");
@@ -187,10 +198,10 @@ trait CampaignConfigQueries {
         $this->db->prepare($sql)->execute(array_merge([$id], array_map(fn($c) => $params[$c], $cols)));
     }
     /** Creates the audit row of a launched call with the parameter snapshot. Idempotent per call_id. */
-    public function openAmdAudit(array $call, int $campaignId, array $params): void {
+    public function openAmdAudit(array $call, int $campaignId, array $params, ?int $versionId = null): void {
         $cols = self::AMD_PARAM_COLUMNS;
-        $sql = 'INSERT IGNORE INTO zynervox_bot_amd_audit (call_id,campaign_id,list_id,lead_id,'.implode(',', $cols).') VALUES (?,?,?,?'.str_repeat(',?', count($cols)).')';
-        $this->db->prepare($sql)->execute(array_merge([$call['call_id'], $campaignId, $call['list_id'], $call['lead_id']], array_map(fn($c) => $params[$c], $cols)));
+        $sql = 'INSERT IGNORE INTO zynervox_bot_amd_audit (call_id,campaign_id,list_id,lead_id,amd_version_id,'.implode(',', $cols).') VALUES (?,?,?,?,?'.str_repeat(',?', count($cols)).')';
+        $this->db->prepare($sql)->execute(array_merge([$call['call_id'], $campaignId, $call['list_id'], $call['lead_id'], $versionId], array_map(fn($c) => $params[$c], $cols)));
     }
     /** Extra facts that arrive with the call (decided_ms, audio_path, audio_seconds). Only the given keys change. */
     public function recordAmdAudit(string $callId, array $data): void {
@@ -226,6 +237,123 @@ trait CampaignConfigQueries {
         if (!in_array($status, ['done','error','no_audio'], true)) throw new \RuntimeException('Estado STT inválido.');
         $this->db->prepare('UPDATE zynervox_bot_amd_audit SET stt_status=?,stt_text=?,stt_engine=?,stt_error=?,audio_seconds=COALESCE(?,audio_seconds),stt_at=UTC_TIMESTAMP() WHERE audit_id=?')
             ->execute([$status, $status === 'done' ? $text : null, substr($engine, 0, 60), substr($error, 0, 255), $seconds, $auditId]);
+    }
+    // --- Global AMD parameters with versions (migration 019) ---
+    /** Current global version (version_id + the 9 parameters + date and author), or null when migration 019 is not applied. */
+    public function amdGlobalCurrent(): ?array {
+        try {
+            $s = $this->db->query("SELECT v.* FROM zynervox_bot_amd_global_versions v JOIN zynervox_bot_dialer_settings d ON d.name='amd_global_version' AND d.value=v.version_id");
+            $row = $s ? $s->fetch(\PDO::FETCH_ASSOC) : false;
+            return $row ?: null;
+        } catch (\PDOException $e) { error_log('ZV2 amd_global (migración 019 pendiente?): '.$e->getMessage()); return null; } // never stops the dialing
+    }
+    public function amdGlobalVersions(int $limit): array {
+        $s = $this->db->query('SELECT * FROM zynervox_bot_amd_global_versions ORDER BY version_id DESC LIMIT '.max(1, min(200, $limit)));
+        return $s->fetchAll(\PDO::FETCH_ASSOC);
+    }
+    public function amdGlobalVersion(int $id): ?array {
+        $s = $this->db->prepare('SELECT * FROM zynervox_bot_amd_global_versions WHERE version_id=?'); $s->execute([$id]);
+        return $s->fetch(\PDO::FETCH_ASSOC) ?: null;
+    }
+    /** Inserts a new version and makes it the current one, atomically. Returns its id. */
+    public function amdGlobalAddVersion(array $params, string $author, string $note, ?int $fromVersion): int {
+        return $this->callAtomic(function() use($params, $author, $note, $fromVersion) {
+            $cols = self::AMD_PARAM_COLUMNS;
+            $this->db->prepare('INSERT INTO zynervox_bot_amd_global_versions (created_by,note,from_version_id,'.implode(',', $cols).') VALUES (?,?,?'.str_repeat(',?', count($cols)).')')
+                ->execute(array_merge([substr($author, 0, 80), substr($note, 0, 255), $fromVersion], array_map(fn($c) => $params[$c], $cols)));
+            $id = (int)$this->db->lastInsertId();
+            $this->db->prepare("INSERT INTO zynervox_bot_dialer_settings (name,value) VALUES ('amd_global_version',?) ON DUPLICATE KEY UPDATE value=VALUES(value)")->execute([$id]);
+            return $id;
+        });
+    }
+
+    // --- Summary per list (migration 019): incremental counters, survives deleting the list ---
+    /**
+     * Adds to the summary the attempts finished since the last pass (watermark counted_attempt_id) and refreshes contacts and rates.
+     * $state: running | stopped | finished | deleted. TEST-% attempts are not counted; AMD figures count only attempts from $amdValidFromUtc.
+     */
+    public function refreshListSummary(int $listId, string $state, string $amdValidFromUtc): void {
+        if (!in_array($state, ['running','stopped','finished','deleted'], true)) throw new \RuntimeException('Estado de resumen inválido.');
+        $this->callAtomic(function() use($listId, $state, $amdValidFromUtc) {
+            $this->db->prepare('INSERT IGNORE INTO zynervox_bot_list_summary (list_id) VALUES (?)')->execute([$listId]);
+            $cur = $this->db->prepare('SELECT * FROM zynervox_bot_list_summary WHERE list_id=? FOR UPDATE'); $cur->execute([$listId]);
+            $u = $cur->fetch(\PDO::FETCH_ASSOC);
+            $info = $this->db->prepare('SELECT p.list_id,p.campaign_id,p.name list_name,c.name campaign_name FROM zynervox_bot_lists p LEFT JOIN zynervox_bot_campaigns c ON c.campaign_id=p.campaign_id WHERE p.list_id=?'); $info->execute([$listId]);
+            $i = $info->fetch(\PDO::FETCH_ASSOC) ?: null;
+            if ($i === null && ($u['campaign_id'] === null || $u['campaign_name'] === '')) { // deleted list: campaign and name come from the attempts and the campaign, if any
+                $ci = $this->db->prepare('SELECT a.campaign_id,c.name FROM zynervox_bot_call_attempts a LEFT JOIN zynervox_bot_campaigns c ON c.campaign_id=a.campaign_id WHERE a.list_id=? AND a.campaign_id IS NOT NULL ORDER BY a.attempt_id DESC LIMIT 1');
+                $ci->execute([$listId]);
+                if ($row = $ci->fetch(\PDO::FETCH_ASSOC)) { $u['campaign_id'] = $row['campaign_id']; $u['campaign_name'] = $row['name'] ?? 'campaña eliminada'; }
+            }
+            $openMin = $this->db->prepare("SELECT MIN(attempt_id) FROM zynervox_bot_call_attempts WHERE list_id=? AND finished_at IS NULL AND end_source<>'RECOVERY' AND status<>'LOST'"); $openMin->execute([$listId]);
+            $om = $openMin->fetchColumn();
+            $maxId = $this->db->prepare('SELECT MAX(attempt_id) FROM zynervox_bot_call_attempts WHERE list_id=?'); $maxId->execute([$listId]);
+            $mark = $om !== null && $om !== false ? (int)$om - 1 : (int)$maxId->fetchColumn();
+            $from = (int)$u['counted_attempt_id']; $mark = max($mark, $from);
+            $A = "(amd_status IN ('HUMAN','MACHINE','NOTSURE') OR disposition IN ('ANSWER_HUMAN','XFER_OK','XFER_FAIL'))";
+            $v = 'started_at>=?';
+            $agg = $this->db->prepare("SELECT COUNT(*) calls, COALESCE(SUM($A),0) answered,
+                    COALESCE(SUM((amd_status='HUMAN' OR (amd_status='' AND disposition IN ('ANSWER_HUMAN','XFER_OK','XFER_FAIL'))) AND $v),0) human,
+                    COALESCE(SUM(amd_status='MACHINE' AND $v),0) machine, COALESCE(SUM(amd_status='NOTSURE' AND $v),0) not_sure,
+                    COALESCE(SUM(disposition='BUSY'),0) unavailable, COALESCE(SUM(disposition='NOANSWER'),0) no_answer,
+                    COALESCE(SUM(disposition IN ('FAILED','CONGESTION','CANCELLED')),0) failed, COALESCE(SUM(disposition='XFER_OK'),0) xfer_ok, COALESCE(SUM(disposition='XFER_FAIL'),0) xfer_fail,
+                    COALESCE(SUM(NOT $v AND amd_status<>''),0) amd_invalid, MIN(started_at) first_at, MAX(started_at) last_at
+                FROM zynervox_bot_call_attempts WHERE list_id=? AND attempt_id>? AND attempt_id<=? AND finished_at IS NOT NULL AND call_id NOT LIKE 'TEST-%'");
+            $agg->execute([$amdValidFromUtc, $amdValidFromUtc, $amdValidFromUtc, $amdValidFromUtc, $listId, $from, $mark]);
+            $n = $agg->fetch(\PDO::FETCH_ASSOC);
+            $leads = $this->db->prepare("SELECT COUNT(*) total, COALESCE(SUM(status='NEW'),0) pending FROM zynervox_bot_list WHERE list_id=?"); $leads->execute([$listId]);
+            $l = $leads->fetch(\PDO::FETCH_ASSOC);
+            $exists = $i !== null;
+            $contacts = $exists ? (int)$l['total'] : (int)$u['contacts']; $notCalled = $exists ? (int)$l['pending'] : (int)$u['not_called'];
+            $t = []; foreach (['calls','answered','human','machine','not_sure','unavailable','no_answer','failed','xfer_ok','xfer_fail'] as $k) $t[$k] = (int)$u[$k] + (int)$n[$k === 'not_sure' ? 'not_sure' : $k];
+            $t['amd_invalid_calls'] = (int)$u['amd_invalid_calls'] + (int)$n['amd_invalid'];
+            $pct = fn(int $x) => $t['calls'] > 0 ? round(100 * $x / $t['calls'], 1) : 0;
+            $first = $u['first_call_at'] === null ? $n['first_at'] : ($n['first_at'] === null ? $u['first_call_at'] : min($u['first_call_at'], $n['first_at']));
+            $last = $u['last_call_at'] === null ? $n['last_at'] : ($n['last_at'] === null ? $u['last_call_at'] : max($u['last_call_at'], $n['last_at']));
+            $dur = ($first !== null && $last !== null) ? max(0, strtotime($last.' UTC') - strtotime($first.' UTC')) : 0;
+            $finishedAt = $state === 'finished' ? ($u['state'] === 'finished' && $u['finished_at'] ? $u['finished_at'] : gmdate('Y-m-d H:i:s')) : null;
+            $deletedAt = $state === 'deleted' ? ($u['deleted_at'] ?: gmdate('Y-m-d H:i:s')) : null;
+            $this->db->prepare('UPDATE zynervox_bot_list_summary SET campaign_id=?,campaign_name=?,list_name=?,state=?,contacts=?,not_called=?,calls=?,answered=?,human=?,machine=?,not_sure=?,unavailable=?,no_answer=?,failed=?,xfer_ok=?,xfer_fail=?,amd_invalid_calls=?,
+                    contact_pct=?,human_pct=?,machine_pct=?,unavailable_pct=?,no_answer_pct=?,first_call_at=?,last_call_at=?,duration_seconds=?,finished_at=?,deleted_at=?,counted_attempt_id=? WHERE list_id=?')
+                ->execute([$exists ? $i['campaign_id'] : $u['campaign_id'], $exists ? ($i['campaign_name'] ?? 'campaña eliminada') : $u['campaign_name'], $exists ? $i['list_name'] : ($u['list_name'] ?: 'lista eliminada'), $state, $contacts, $notCalled,
+                    $t['calls'], $t['answered'], $t['human'], $t['machine'], $t['not_sure'], $t['unavailable'], $t['no_answer'], $t['failed'], $t['xfer_ok'], $t['xfer_fail'], $t['amd_invalid_calls'],
+                    $pct($t['answered']), $pct($t['human']), $pct($t['machine']), $pct($t['unavailable']), $pct($t['no_answer']), $first, $last, $dur, $finishedAt, $deletedAt, $mark, $listId]);
+        });
+    }
+    public function listSummary(int $listId): ?array {
+        $s = $this->db->prepare('SELECT * FROM zynervox_bot_list_summary WHERE list_id=?'); $s->execute([$listId]);
+        return $s->fetch(\PDO::FETCH_ASSOC) ?: null;
+    }
+    public function listSummaries(?int $campaignId = null, ?int $listId = null): array {
+        $w = []; $p = [];
+        if ($campaignId !== null) { $w[] = 'campaign_id=?'; $p[] = $campaignId; }
+        if ($listId !== null) { $w[] = 'list_id=?'; $p[] = $listId; }
+        $s = $this->db->prepare('SELECT * FROM zynervox_bot_list_summary'.($w ? ' WHERE '.implode(' AND ', $w) : '').' ORDER BY campaign_id,list_id'); $s->execute($p);
+        return $s->fetchAll(\PDO::FETCH_ASSOC);
+    }
+    /** Lists to keep fresh: started ones, ones with calls still open, and every list id seen in the attempts or lists but without a summary row. */
+    public function listsToMaintain(): array {
+        $rows = $this->db->query("SELECT p.list_id,p.campaign_id,p.dialer_state,p.active FROM zynervox_bot_lists p WHERE p.dialer_state='running' OR p.list_id IN (SELECT DISTINCT list_id FROM zynervox_bot_call_attempts WHERE finished_at IS NULL AND end_source<>'RECOVERY' AND status<>'LOST')")->fetchAll(\PDO::FETCH_ASSOC);
+        return $rows;
+    }
+    /** Summary rows whose list no longer exists and are not marked deleted yet. */
+    public function summariesOfDeletedLists(): array {
+        return array_map('intval', $this->db->query("SELECT u.list_id FROM zynervox_bot_list_summary u LEFT JOIN zynervox_bot_lists p ON p.list_id=u.list_id WHERE p.list_id IS NULL AND u.state<>'deleted'")->fetchAll(\PDO::FETCH_COLUMN));
+    }
+    /** Every list id that exists or has attempts but still has no summary row (for the backfill). */
+    public function listIdsWithoutSummary(): array {
+        return array_map('intval', $this->db->query("SELECT x.list_id FROM (SELECT list_id FROM zynervox_bot_lists UNION SELECT DISTINCT list_id FROM zynervox_bot_call_attempts WHERE list_id IS NOT NULL) x LEFT JOIN zynervox_bot_list_summary u ON u.list_id=x.list_id WHERE u.list_id IS NULL")->fetchAll(\PDO::FETCH_COLUMN));
+    }
+    /** True when the list has no open calls and nothing left to dial now or later (new contacts or retries pending). */
+    public function listHasNoPendingWork(int $campaignId, int $listId, string $order): bool {
+        $o = $this->db->prepare("SELECT 1 FROM zynervox_bot_call_attempts WHERE list_id=? AND finished_at IS NULL AND end_source<>'RECOVERY' AND status<>'LOST' LIMIT 1"); $o->execute([$listId]);
+        if ($o->fetchColumn()) return false;
+        $s = $this->db->prepare(preg_replace('/ORDER BY (RAND\(\)|l\.lead_id (DESC|ASC))\s*$/', '', $this->campaignCandidateSql($order, 'COUNT(*)', '', false, $listId, true)));
+        $s->execute([$campaignId]);
+        return (int)$s->fetchColumn() === 0;
+    }
+    public function deactivateList(int $campaignId, int $listId): void {
+        $this->db->prepare('UPDATE zynervox_bot_lists SET active=0 WHERE list_id=? AND campaign_id=?')->execute([$listId, $campaignId]);
     }
     public function setDialerState(int $id, string $state, string $actor): void {
         if (!in_array($state, ['running','stopped'], true)) throw new \RuntimeException('Estado de marcador inválido.');
@@ -268,26 +396,27 @@ trait CampaignConfigQueries {
     }
     /** Every list with its channel limit and the calls open right now. */
     public function listsChannels(): array {
-        return $this->db->query('SELECT p.list_id,p.campaign_id,p.name,p.active,p.dial_prefix,p.max_channels,
+        return $this->db->query("SELECT p.list_id,p.campaign_id,p.name,p.active,p.dial_prefix,p.max_channels,p.dialer_state,
             (SELECT COUNT(*) FROM zynervox_bot_list l WHERE l.list_id=p.list_id) leads_count,
-            (SELECT COUNT(*) FROM zynervox_bot_call_attempts a WHERE a.list_id=p.list_id AND a.'.str_replace(' AND ',' AND a.',self::OPEN_ATTEMPT).') open_calls
-            FROM zynervox_bot_lists p ORDER BY p.campaign_id,p.list_id')->fetchAll(\PDO::FETCH_ASSOC);
+            COALESCE(o.n,0) open_calls
+            FROM zynervox_bot_lists p LEFT JOIN (SELECT list_id,COUNT(*) n FROM zynervox_bot_call_attempts WHERE finished_at IS NULL AND end_source<>'RECOVERY' AND status<>'LOST' GROUP BY list_id) o ON o.list_id=p.list_id
+            ORDER BY p.campaign_id,p.list_id")->fetchAll(\PDO::FETCH_ASSOC);
     }
     public function openCallsTotal(): int {
         return (int)$this->db->query('SELECT COUNT(*) FROM zynervox_bot_call_attempts WHERE '.self::OPEN_ATTEMPT)->fetchColumn();
     }
-    private function campaignCandidateSql(string $order, string $select, string $tail, bool $onlyStarted = true, ?int $listId = null): string {
+    private function campaignCandidateSql(string $order, string $select, string $tail, bool $onlyStarted = true, ?int $listId = null, bool $ignoreTime = false): string {
         $orderBy = $order === 'RANDOM' ? 'RAND()' : 'l.lead_id '.($order === 'DOWN' ? 'DESC' : 'ASC');
         $OPEN = "a2.finished_at IS NULL AND a2.end_source<>'RECOVERY' AND a2.status<>'LOST'";
         return "SELECT $select FROM zynervox_bot_list l JOIN zynervox_bot_lists p ON p.list_id=l.list_id AND p.campaign_id=? AND p.active=1".($onlyStarted ? " AND p.dialer_state='running'" : '').($listId !== null ? ' AND p.list_id='.$listId : '')."
             LEFT JOIN zynervox_bot_campaign_sip_rules sr ON sr.campaign_id=p.campaign_id AND sr.active=1 AND l.status IN ('B','NA','UNAV','CONG','CANCEL','FAIL')
                 AND sr.sip_code=IF(l.last_sip_code BETWEEN 100 AND 199,487,l.last_sip_code)
-            LEFT JOIN zynervox_bot_campaign_amd_actions aa ON aa.campaign_id=p.campaign_id AND aa.action='retry' AND l.status IN ('AA','ANSWER') AND aa.result=(
-                SELECT IF(x.amd_cause IN ('TOOLONG','LONGGREETING','INITIALSILENCE','MAXWORDS','MAXWORDLENGTH'),x.amd_cause,x.amd_status)
-                FROM zynervox_bot_call_attempts x WHERE x.lead_id=l.lead_id AND x.finished_at IS NOT NULL ORDER BY x.attempt_id DESC LIMIT 1)
+            LEFT JOIN zynervox_bot_campaign_amd_actions aa ON aa.campaign_id=p.campaign_id AND aa.action='retry' AND l.status IN ('AA','ANSWER') AND aa.result IN (
+                (SELECT x.amd_status FROM zynervox_bot_call_attempts x WHERE x.lead_id=l.lead_id AND x.finished_at IS NOT NULL ORDER BY x.attempt_id DESC LIMIT 1),
+                (SELECT x.amd_cause FROM zynervox_bot_call_attempts x WHERE x.lead_id=l.lead_id AND x.finished_at IS NOT NULL ORDER BY x.attempt_id DESC LIMIT 1))
             WHERE (l.status='NEW'
-                OR (sr.sip_code IS NOT NULL AND l.called_count<sr.max_attempts AND l.last_call_at<=DATE_SUB(UTC_TIMESTAMP(),INTERVAL sr.retry_delay_min MINUTE))
-                OR (aa.result IS NOT NULL AND l.called_count<aa.max_attempts AND l.last_call_at<=DATE_SUB(UTC_TIMESTAMP(),INTERVAL aa.retry_delay_min MINUTE)))
+                OR (sr.sip_code IS NOT NULL AND l.called_count<sr.max_attempts".($ignoreTime ? '' : " AND l.last_call_at<=DATE_SUB(UTC_TIMESTAMP(),INTERVAL sr.retry_delay_min MINUTE)").")
+                OR (aa.result IS NOT NULL AND l.called_count<aa.max_attempts".($ignoreTime ? '' : " AND l.last_call_at<=DATE_SUB(UTC_TIMESTAMP(),INTERVAL aa.retry_delay_min MINUTE)")."))
               ".($listId === null ? "AND (SELECT COUNT(*) FROM zynervox_bot_call_attempts a2 WHERE a2.list_id=l.list_id AND $OPEN) < p.max_channels" : '')."
               AND NOT EXISTS (SELECT 1 FROM zynervox_bot_call_attempts a WHERE a.lead_id=l.lead_id AND a.finished_at IS NULL AND a.end_source<>'RECOVERY' AND a.status<>'LOST')
             ORDER BY $orderBy $tail";

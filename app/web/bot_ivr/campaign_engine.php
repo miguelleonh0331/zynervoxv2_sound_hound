@@ -115,7 +115,7 @@ function bot_engine_tick(\ZynervoxQueries\BotIvrRepository $repo, ?callable $ori
         $row = ['campaign_id'=>$id];
         try {
             $config = $repo->campaignConfig($id);
-            $c = $config['campaign'] + ['amd_actions'=>bot_cfg_amd_actions($config['amd_actions']), 'amd_params'=>marcador_amd_params($repo, $id)];
+            $c = $config['campaign'] + ['amd_actions'=>bot_cfg_amd_actions($config['amd_actions']), 'amd_params'=>marcador_amd_global($repo)];
             $row['state'] = $c['dialer_state'];
             if (!$dry && ($c['dialer_state'] !== 'running' || !(int)$c['active'])) { $row['skipped'] = 'detenida'; $report[] = $row; continue; }
             if (!bot_cfg_in_window($c, $config['schedules'], $now)) { $row['skipped'] = 'fuera de franja'; $report[] = $row; continue; }
@@ -177,7 +177,7 @@ try {
         $lease = fopen((string)($options['lock'] ?? '/run/zynervox-dialer/engine.lock'), 'c');
         if (!$lease || !flock($lease, LOCK_EX | LOCK_NB)) throw new RuntimeException('Motor duplicado o sin directorio de ejecución.');
     }
-    $lastPing = time(); $lastBeat = 0;
+    $lastPing = time(); $lastBeat = 0; $lastMaint = 0;
     do {
         $originate = null;
         if (!$dry) {
@@ -187,6 +187,7 @@ try {
             $originate = fn(array $c, array $call, array $headers) => bot_engine_originate($ami, $c, $call, $headers);
         }
         if (!$dry && time() - $lastBeat >= 5) { $repo->touchDialerHeartbeat(); $lastBeat = time(); }
+        if (!$dry && time() - $lastMaint >= 10) { try { marcador_list_summary_maintain($repo); } catch (Throwable $e) { error_log('ZV2 summary: '.$e->getMessage()); } $lastMaint = time(); } // summaries, finished lists; never stops the dialing
         $report = bot_engine_tick($repo, $originate, $only, new DateTimeImmutable('now', new DateTimeZone('UTC')));
         if ($dry) echo json_encode(['dry_run'=>true, 'campaigns'=>$report], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)."\n";
         elseif (array_filter($report, fn($r) => !empty($r['launched']) || !empty($r['error']))) echo json_encode($report, JSON_UNESCAPED_UNICODE)."\n";
