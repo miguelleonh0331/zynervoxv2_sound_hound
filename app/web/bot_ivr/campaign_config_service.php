@@ -404,11 +404,11 @@ function bot_cfg_report(\ZynervoxQueries\BotIvrRepository $db, array $filters = 
 function bot_cfg_report_csv(\ZynervoxQueries\BotIvrRepository $db, array $filters = [], int $maxRows = 50000): string {
     $f = bot_cfg_report_filters($filters);
     $rows = $db->reportDetail($f, max(1, min(100000, $maxRows)), 0)['rows'];
-    $head = ['attempt_id','inicio_lima','amd_valido','campana_id','campana','lista_id','lista','contacto_id','telefono','estado','disposicion','amd','amd_causa','sip','q850','billsec','origen_causa'];
+    $head = ['attempt_id','inicio_lima','amd_valido','campana_id','campana','lista_id','lista','contacto_id','telefono','estado','disposicion','amd','amd_causa','sip','q850','billsec','origen_causa','tipo_marcacion','detectado_por','momento','palabra','segundo','corte_por','audio_previo','resultado_final'];
     $h = fopen('php://temp', 'r+'); fwrite($h, "\xEF\xBB\xBF"); fputcsv($h, $head, ',', '"', '');
     $safe = fn($v) => (is_string($v) && $v !== '' && strpbrk($v[0], "=+-@\t\r") !== false) ? "'".$v : $v;
     foreach ($rows as $r) fputcsv($h, array_map($safe, [$r['attempt_id'], $r['started_at_local'], $r['amd_valid'] ? 'si' : 'no', $r['campaign_id'], $r['campaign'], $r['list_id'], $r['list'], $r['lead_id'],
-        bot_cfg_report_mask_phone((string)$r['phone']), $r['status'], $r['disposition'], $r['amd_status'], $r['amd_cause'], $r['sip_cause'], $r['q850'], $r['billsec'], $r['cause_source']]), ',', '"', '');
+        bot_cfg_report_mask_phone((string)$r['phone']), $r['status'], $r['disposition'], $r['amd_status'], $r['amd_cause'], $r['sip_cause'], $r['q850'], $r['billsec'], $r['cause_source'], $r['dial_mode'], $r['detectado_por'], $r['momento'], $r['palabra'], $r['segundo'], $r['corte_por'], $r['preanswer_audio'], $r['result_final']]), ',', '"', '');
     rewind($h); $csv = (string)stream_get_contents($h); fclose($h);
     return $csv;
 }

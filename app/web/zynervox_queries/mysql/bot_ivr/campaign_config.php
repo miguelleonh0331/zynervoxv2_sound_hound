@@ -253,7 +253,7 @@ trait CampaignConfigQueries {
         $t = $this->db->prepare("SELECT COUNT(*) $from"); $t->execute($params);
         $s = $this->db->prepare("SELECT a.attempt_id, DATE_FORMAT(DATE_ADD(a.started_at, INTERVAL $off SECOND), '%Y-%m-%d %H:%i:%s') started_at_local, a.started_at>='".$f['invalid_before_utc']."' amd_valid,
                 a.campaign_id, COALESCE(c.name,'campaña eliminada') campaign, a.list_id, COALESCE(p.name,'lista eliminada') list, a.lead_id, a.phone, a.status, a.disposition, a.amd_status, a.amd_cause,
-                a.sip_cause, a.hangup_cause q850, a.billsec, a.cause_source $from ORDER BY a.attempt_id DESC LIMIT ".(int)$limit." OFFSET ".(int)$offset);
+                a.sip_cause, a.hangup_cause q850, a.billsec, a.cause_source, IF(a.dial_mode='','AMD',a.dial_mode) dial_mode, a.detectado_por, a.momento, a.palabra, a.segundo, a.corte_por, a.preanswer_audio, a.result_final $from ORDER BY a.attempt_id DESC LIMIT ".(int)$limit." OFFSET ".(int)$offset);
         $s->execute($params);
         return ['total'=>(int)$t->fetchColumn(), 'rows'=>$s->fetchAll(\PDO::FETCH_ASSOC)];
     }
