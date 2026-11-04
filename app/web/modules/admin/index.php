@@ -23,6 +23,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         .tile .t-value.warn { color: #f59e0b; } .tile .t-value.crit { color: #ef4444; }
         .tile .t-sub { font-size: 0.74rem; color: var(--text-muted); }
         .g-sub { font-size: 0.72rem; color: var(--text-muted); }
+        .gauges { flex-basis: 100%; display: flex; justify-content: space-around; align-items: flex-end; gap: 0.5rem; } .gcol { text-align: center; min-width: 0; } .gcol .cap { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #4b5563; margin-bottom: 0.15rem; } .gcol.mini .needle-text { font-size: 0.72rem; }
         .needle-wrap { flex-basis: 100%; text-align: center; margin-top: 0.1rem; line-height: 0; } .needle-wrap .needle-text { line-height: 1.3; margin-top: 0.2rem; } .needle-wrap canvas { max-width: 100%; height: auto !important; }
         .needle-text { text-align: center; font-size: 0.8rem; font-weight: 600; }
         .services { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
@@ -122,9 +123,10 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             var hl = noData ? [{ from: 0, to: max, color: '#9ca3af' }] : [{ from: 0, to: warm, color: '#3b82f6' }, { from: warm, to: hot, color: '#f59e0b' }, { from: hot, to: max, color: '#16a34a' }];
             return { max: max, ticks: ticks, hl: hl };
         }
-        function needleGauge(listId, ins, nd) {
-            var th = ins.thresholds || {}, noData = !nd || nd.no_data || !n0(th.hot_human_pct);
-            var o = gaugeOptions(ins, noData), key = JSON.stringify([o.max, o.ticks, o.hl, noData]), value = noData ? 0 : n0(nd.pct);
+        // id = clave de la instancia (list_id o list_id + '_10'); size en px; text = texto bajo el medidor.
+        function needleGauge(id, ins, noData, value, size, text) {
+            noData = noData || !n0((ins.thresholds || {}).hot_human_pct); value = noData ? 0 : value;
+            var o = gaugeOptions(ins, noData), key = JSON.stringify([o.max, o.ticks, o.hl, noData, size]), listId = id;
             var wrap = el('div', 'needle-wrap'), ent = GAUGES[listId];
             if (typeof RadialGauge === 'undefined') { wrap.appendChild(el('div', 'needle-text', 'No se pudo cargar el medidor.')); }
             else {
@@ -132,7 +134,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
                 if (!ent) {
                     var canvas = document.createElement('canvas');
                     var g = new RadialGauge({
-                        renderTo: canvas, width: 124, height: 124, units: '% humanos', minValue: 0, maxValue: o.max, value: value, majorTicks: o.ticks, minorTicks: 5, strokeTicks: true,
+                        renderTo: canvas, width: size, height: size, units: '% humanos', minValue: 0, maxValue: o.max, value: value, majorTicks: o.ticks, minorTicks: 5, strokeTicks: true,
                         highlights: o.hl, highlightsWidth: 12, startAngle: 60, ticksAngle: 240, valueBox: false, needle: !noData,
                         colorPlate: '#fdfdfd', colorPlateEnd: '#e6e8ec', colorMajorTicks: '#1f2937', colorMinorTicks: '#4b5563', colorNumbers: '#1f2937', colorUnits: '#4b5563',
                         borders: true, borderShadowWidth: 0, borderOuterWidth: 6, borderMiddleWidth: 3, borderInnerWidth: 2, colorBorderOuter: '#c9ced6', colorBorderOuterEnd: '#59616e', colorBorderMiddle: '#eef0f3', colorBorderMiddleEnd: '#8b93a0', colorBorderInner: '#fafafa', colorBorderInnerEnd: '#d7dbe1',
@@ -143,9 +145,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
                 } else if (ent.value !== value) { ent.g.value = value; ent.value = value; }
                 ent.seen = true; wrap.appendChild(ent.canvas);
             }
-            var txt = !nd ? 'Calculando…' : noData ? 'Sin datos: ' + nd.called + ' de ' + nd.min_called + ' contactos llamados mínimos'
-                : String(n0(nd.pct)).replace('.', ',') + ' % humanos · ' + nd.label;
-            wrap.appendChild(el('div', 'needle-text', txt)); return wrap;
+            wrap.appendChild(el('div', 'needle-text', text)); return wrap;
         }
         function sweepGauges() { Object.keys(GAUGES).forEach(function (k) { if (!GAUGES[k].seen) { try { GAUGES[k].g.destroy(); } catch (e) {} delete GAUGES[k]; } else GAUGES[k].seen = false; }); }
         function n0(v) { return Number(v) || 0; }
@@ -184,7 +184,15 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
 
             var temp = el('div', 'temp ' + (TEMP[ins.temperature] || ''));
             temp.appendChild(el('span', 't-name', ins.temperature || 'Sin datos')); temp.appendChild(el('span', 't-advice', ins.recommendation || 'Seguir'));
-            var dist = l.distribution, ng = needleGauge(l.list_id, ins, dist && dist.needle); ng.style.flexBasis = '100%'; temp.appendChild(ng); card.appendChild(temp);
+            var dist = l.distribution, nd = dist && dist.needle, l10 = l.last10, gs = el('div', 'gauges');
+            var big = el('div', 'gcol'); big.appendChild(el('div', 'cap', 'Acumulado'));
+            big.appendChild(needleGauge(l.list_id, ins, !nd || nd.no_data, nd ? n0(nd.pct) : 0, 124,
+                !nd ? 'Calculando…' : nd.no_data ? 'Sin datos: ' + nd.called + ' de ' + nd.min_called + ' contactos llamados mínimos' : String(n0(nd.pct)).replace('.', ',') + ' % humanos · ' + nd.label)); gs.appendChild(big);
+            var mini = el('div', 'gcol mini'); mini.appendChild(el('div', 'cap', 'Últimas 10 llamadas'));
+            var nd10 = !l10 || l10.no_data, h10 = l10 ? n0(l10.human) : 0;
+            mini.appendChild(needleGauge(l.list_id + '_10', ins, nd10, l10 && l10.calls ? 100 * h10 / l10.calls : 0, 84,
+                nd10 ? 'Sin datos' : h10 + (h10 === 1 ? ' humano' : ' humanos') + ' en las últimas 10')); gs.appendChild(mini);
+            temp.appendChild(gs); card.appendChild(temp);
 
             var why = l.reason || (l.started ? 'Marcando' : '');
             if (why) card.appendChild(el('div', 'reason' + (l.reason ? '' : ' ok'), why));
