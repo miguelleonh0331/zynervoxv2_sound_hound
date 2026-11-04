@@ -239,7 +239,7 @@ Auth::checkAccess(9);
             });
             var cols = ct.categories.filter(function (c) { return ls.some(function (l) { return n(l.counts[c.key]) > 0; }); }).map(function (c) { return c.key; }), lab = {}; ct.categories.forEach(function (c) { lab[c.key] = c.label; });
             tb.appendChild(table(['Lista', 'Campaña'].concat(cols.map(function (k) { return lab[k]; })).concat(['Total']),
-                ls.map(function (l) { return [l.list, l.campaign].concat(cols.map(function (k) { return n(l.counts[k]) + ' (' + rp(n(l.counts[k]), l.contacts) + ' %)'; })).concat([l.contacts + ' contactos (100 %)']); })));
+                ls.map(function (l) { return [l.list, l.campaign].concat(cols.map(function (k) { return n(l.counts[k]) + ' (' + rp(n(l.counts[k]), l.contacts) + ' %)'; })).concat([l.contacts + ' (100 %)']); })));
         }
         function zypadVsAmd(z) {
             var box = document.getElementById('zypadbox'); box.textContent = '';
