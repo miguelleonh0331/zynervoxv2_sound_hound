@@ -172,7 +172,7 @@ Auth::checkAccess(9);
         function trend(days) {
             var box = document.getElementById('trend'); box.textContent = '';
             if (!days || !days.length) { empty(box); return; }
-            var W = Math.max(640, days.length * 60), H = 170, L = 38, R = 10, T = 10, B = 24, pw = W - L - R, ph = H - T - B;
+            var W = Math.max(640, days.length * 60), H = 170, L = 38, R = 24, T = 10, B = 24, pw = W - L - R, ph = H - T - B;
             var s = svg(W, H); s.setAttribute('aria-label', 'Tendencia diaria');
             var series = [['answered', C.answered, 'Contestadas'], ['human', C.human, 'Contacto humano']];
             var vals = days.map(function (d) { return { a: pct(n(d.answered), n(d.calls)), h: pct(n(d.human) + n(d.not_sure), n(d.calls)), calls: n(d.calls) }; });
@@ -185,7 +185,7 @@ Auth::checkAccess(9);
                 if (pts.length > 1) se(s, 'polyline', { points: pts.map(function (p) { return p[0] + ',' + p[1]; }).join(' '), fill: 'none', stroke: sr[1], 'stroke-width': 2 });
                 pts.forEach(function (p) { var small = vals[p[3]].calls < MIN; var c = se(s, 'circle', { cx: p[0], cy: p[1], r: 4, fill: small ? '#111827' : sr[1], stroke: sr[1], 'stroke-width': 2 }); var t = document.createElementNS(SVGNS, 'title'); t.textContent = days[p[3]].day_local + ' · ' + sr[2] + ': ' + p[2] + ' % de ' + vals[p[3]].calls + ' llamadas' + (small ? ' (muestra pequeña)' : ''); c.appendChild(t); });
             });
-            days.forEach(function (d, i) { if (i % Math.ceil(days.length / 10) === 0) se(s, 'text', { x: L + (days.length === 1 ? pw / 2 : i * step) - 16, y: H - 6, 'font-size': 10, fill: '#9ca3af' }, d.day_local.slice(5)); });
+            days.forEach(function (d, i) { if (i % Math.ceil(days.length / 10) === 0) se(s, 'text', { x: L + (days.length === 1 ? pw / 2 : i * step), y: H - 6, 'font-size': 10, fill: '#9ca3af', 'text-anchor': i === days.length - 1 && days.length > 1 ? 'end' : 'middle' }, d.day_local.slice(5)); });
             box.appendChild(s);
             // llamadas por día, columnas desde 0
             var H2 = 90, s2 = svg(W, H2), maxc = Math.max.apply(null, vals.map(function (v) { return v.calls; })) || 1, bw = Math.min(40, pw / days.length - 6);

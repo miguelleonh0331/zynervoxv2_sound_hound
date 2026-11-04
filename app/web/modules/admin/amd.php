@@ -80,6 +80,7 @@ require_once __DIR__ . '/sidebar.php';
         .scroll { overflow-x: auto; }
         td.diff { background: rgba(245, 158, 11, .22); font-weight: 700; }
         .cur { color: #10b981; font-weight: 700; }
+        button:disabled { opacity: 0.45; cursor: not-allowed; }
         .note { font-size: 0.78rem; color: var(--text-muted); }
         .actions { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; margin-top: 0.75rem; }
     </style>
