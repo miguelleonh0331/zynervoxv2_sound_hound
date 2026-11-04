@@ -195,9 +195,9 @@ $saved = marcador_amd_params_save($repo, $ap, ['total_analysis_time'=>'5000', 'm
 check('guardar parámetros AMD cambia solo lo enviado', $saved['total_analysis_time'] === 5000 && $saved['maximum_number_of_words'] === 3 && $saved['greeting'] === 1500 && marcador_amd_params($repo, $ap)['total_analysis_time'] === 5000);
 check('rechaza parámetros AMD fuera de rango', throws(fn() => marcador_amd_params_save($repo, $ap, ['maximum_number_of_words'=>0])) !== '' && throws(fn() => marcador_amd_params_save($repo, $ap, ['greeting'=>'abc'])) !== '');
 $vars = marcador_amd_variables(marcador_amd_params($repo, $ap));
-check('9 variables de canal con __ZV2_AMD_*', count($vars) === 9 && in_array('__ZV2_AMD_TOTAL_ANALYSIS_TIME=5000', $vars, true) && in_array('__ZV2_AMD_MAX_WORD_LENGTH=5000', $vars, true));
+check('9 variables de canal con __ZV2_AMD_*', count($vars) === 9 && in_array('__ZV2_AMD_TOTAL_TIME=5000', $vars, true) && in_array('__ZV2_AMD_MAX_WORD_LENGTH=5000', $vars, true) && in_array('__ZV2_AMD_AFTER_GREETING=800', $vars, true));
 $cOn = $repo->campaign($ap) + ['amd_params'=>marcador_amd_params($repo, $ap), 'amd_actions'=>[]];
-check('el motor envía las variables solo con AMD activo', in_array('__ZV2_AMD_TOTAL_ANALYSIS_TIME=5000', bot_engine_variables($cOn, ['call_id'=>'zv2-x', 'list_id'=>1, 'lead_id'=>1], []), true) && !preg_grep('/^__ZV2_AMD_/', bot_engine_variables(['amd_enabled'=>0] + $cOn, ['call_id'=>'zv2-x', 'list_id'=>1, 'lead_id'=>1], [])));
+check('el motor envía las variables solo con AMD activo', in_array('__ZV2_AMD_TOTAL_TIME=5000', bot_engine_variables($cOn, ['call_id'=>'zv2-x', 'list_id'=>1, 'lead_id'=>1], []), true) && !preg_grep('/^__ZV2_AMD_/', bot_engine_variables(['amd_enabled'=>0] + $cOn, ['call_id'=>'zv2-x', 'list_id'=>1, 'lead_id'=>1], [])));
 // audit: open, record, sync. Three calls: answered with recording, answered without audio, unanswered
 $mk = function(string $cid, string $disp, string $amd, string $cause, ?string $rec) use($pdo, $ap) {
     $pdo->prepare("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,started_at,finished_at,campaign_id,status,disposition,amd_status,amd_cause,recording_path) VALUES (?,5000,5000,'900000001',UTC_TIMESTAMP(),UTC_TIMESTAMP(),?,'X',?,?,?,?)")->execute([$cid, $ap, $disp, $amd, $cause, $rec]);
@@ -231,6 +231,13 @@ $pdo->exec("UPDATE zynervox_bot_amd_audit SET stt_status='pending' WHERE call_id
 $r = marcador_stt_run($repo, ['name'=>'bad', 'command'=>[$bad], 'timeout'=>10], 50, true);
 check('STT con motor roto: error registrado, sin romper', $r['errors'] === 1 && $pdo->query("SELECT stt_status FROM zynervox_bot_amd_audit WHERE call_id='zv2-a1'")->fetchColumn() === 'error');
 check('config STT: sin fichero = sin motor; con fichero válido = motor', marcador_stt_engine($tmp.'/no.json') === null && (function() use($tmp, $fake) { file_put_contents($tmp.'/c.json', json_encode(['engine'=>'x', 'command'=>[$fake]])); return marcador_stt_engine($tmp.'/c.json')['name'] === 'x'; })());
+// Delivery AGI logic (no AGI is run): effective parameters, ms, recording and validation
+$argsOk = ['audit', 'zv2-a1', '1730', MARCADOR_RECORDINGS_DIR.'zv2-a1.wav', '4500', '2500', '1500', '800', '8000', '100', '50', '2', '256', '5000'];
+$res = marcador_amd_audit_agi_apply($repo, $argsOk);
+$ag = $pdo->query("SELECT decided_ms,audio_path,audio_seconds,total_analysis_time FROM zynervox_bot_amd_audit WHERE call_id='zv2-a1'")->fetch();
+check('AGI de auditoría: guarda ms, audio, duración y los 9 parámetros efectivos', (int)$ag['decided_ms'] === 1730 && (float)$ag['audio_seconds'] === 4.5 && $ag['audio_path'] === MARCADOR_RECORDINGS_DIR.'zv2-a1.wav' && (int)$ag['total_analysis_time'] === 8000 && $res['params_stored'] === true);
+check('AGI de auditoría: rechaza call_id y rutas fuera de la carpeta del marcador', throws(fn() => marcador_amd_audit_agi_apply($repo, ['audit', 'a;b'])) !== '' && throws(fn() => marcador_amd_audit_agi_apply($repo, ['audit', 'zv2-a1', '10', '/etc/passwd.wav'])) !== '' && throws(fn() => marcador_amd_audit_agi_apply($repo, ['audit', 'zv2-a1', '10', MARCADOR_RECORDINGS_DIR.'../x.wav'])) !== '');
+check('AGI de auditoría: sin audio ni parámetros completos no pisa nada', marcador_amd_audit_agi_apply($repo, ['audit', 'zv2-a1', '1800', '', '0', '1', '2'])['params_stored'] === false && (int)$pdo->query("SELECT total_analysis_time FROM zynervox_bot_amd_audit WHERE call_id='zv2-a1'")->fetchColumn() === 8000 && (int)$pdo->query("SELECT decided_ms FROM zynervox_bot_amd_audit WHERE call_id='zv2-a1'")->fetchColumn() === 1800);
 array_map('unlink', glob($tmp.'/*')); @rmdir($tmp);
 // Detection-only campaign (test stage): no trunk and no destination is valid, half-configured is not
 $det = bot_cfg_save($repo, null, ['name'=>'Solo detectar', 'active'=>'1', 'call_origin'=>'7307', 'max_channels'=>'1', 'amd_enabled'=>'1']);
