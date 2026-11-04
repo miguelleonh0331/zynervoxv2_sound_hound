@@ -439,7 +439,7 @@ Auth::checkAccess(9);
             Array.from(box.querySelectorAll('tbody tr')).forEach(function (tr) { var td = tr.children[3]; if (td) { td.style.whiteSpace = 'nowrap'; td.style.userSelect = 'all'; td.style.fontVariantNumeric = 'tabular-nums'; } });
             var sel = document.getElementById('f_estado'), est = d.estados || {}, sum = Object.keys(est).reduce(function (a, k) { return a + n(est[k]); }, 0);
             sel.textContent = ''; var o0 = el('option', '', 'Todos (' + sum + ')'); o0.value = ''; sel.appendChild(o0);
-            (d.estado_list || []).forEach(function (e) { var o = el('option', '', e.label + ' (' + n(est[e.key]) + ')'); o.value = e.key; sel.appendChild(o); });
+            (d.estado_list || []).forEach(function (e) { if (!n(est[e.key]) && e.key !== detailEstado && (e.key === 'transferencia_fallida' || e.key === 'contesto')) return; var o = el('option', '', e.label + ' (' + n(est[e.key]) + ')'); o.value = e.key; sel.appendChild(o); });
             sel.value = detailEstado;
             lastPages = Math.max(1, n(d.pages) || Math.ceil(d.total / d.per_page));
             document.getElementById('pageinfo').textContent = 'Página ' + d.page + ' de ' + lastPages + ' · ' + d.total + ' llamadas' + (detailEstado ? ' con ese estado' : '');
