@@ -7,12 +7,17 @@ function call_audit_directory(): string {
     if (realpath($dir)!==$dir || !is_writable($dir)) throw new RuntimeException('Audit spool unavailable');
     return $dir;
 }
-function call_recording_metadata(string $callId): array {
+function call_recording_metadata(string $callId, ?string $root=null): array {
     if (!preg_match('/^[A-Za-z0-9_.-]{1,80}$/D',$callId)) throw new RuntimeException('Invalid call ID');
-    $root=rtrim((string)\Config\Config::deployment('runtime'),'/');
-    $path=$root.'/recordings/bot_ivr/'.$callId.'.wav';
-    clearstatcache(true,$path);
-    $bytes=!is_link($path) && is_file($path) ? filesize($path) : false;
+    $root=rtrim($root ?? (string)\Config\Config::deployment('runtime'),'/');
+    // bot_ivr/ is the list dialplan; marcador/ is the dialer dialplan (same file name, same ID filter).
+    $bytes=false;
+    foreach (['bot_ivr','marcador'] as $folder) {
+        $path=$root.'/recordings/'.$folder.'/'.$callId.'.wav';
+        clearstatcache(true,$path);
+        $bytes=!is_link($path) && is_file($path) ? filesize($path) : false;
+        if ($bytes!==false) break;
+    }
     return ['recording_path'=>$bytes!==false?$path:null,'recording_status'=>$bytes===false?'none':($bytes>44?'ready':'empty'),'recording_bytes'=>$bytes===false?null:$bytes];
 }
 function call_audit_write(array &$entry): string {
