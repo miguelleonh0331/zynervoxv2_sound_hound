@@ -7,6 +7,7 @@ require_once __DIR__.'/campaigns_service.php';
 require_once __DIR__.'/../ivr_builder/forwarding.php';
 require_once __DIR__.'/../marcador/amd_audit.php';
 require_once __DIR__.'/../marcador/list_summary.php';
+require_once __DIR__.'/../marcador/zypad.php';
 
 const BOT_CFG_MAX_HEADERS = 16;
 
@@ -550,4 +551,56 @@ function bot_cfg_report_extra(\ZynervoxQueries\BotIvrRepository $db, array $filt
         'attempts_per_lead'=>['total'=>$total, 'lists'=>$apl], 'first_contact_attempt'=>$fc,
         'sip'=>['families'=>$families, 'codes'=>$codes, 'partial'=>$partial > 0, 'partial_calls'=>$partial],
         'amd_by_cause'=>$x['amd_by_cause'], 'by_carrier'=>['multiple'=>count($carriers) > 1, 'rows'=>$carriers]];
+}
+
+// --- zypad: word catalog and comparison by dial mode (migration 021, contract "zypad v1") ---
+
+/** Word catalog: [{word_id, word, category, active, updated_at (Lima), updated_by}] plus the catalog version the bridge compares to reload. */
+function bot_cfg_zypad_words(\ZynervoxQueries\BotIvrRepository $db): array {
+    $lima = new DateTimeZone('America/Lima');
+    $rows = array_map(fn($r) => ['word_id'=>(int)$r['word_id'], 'word'=>$r['word'], 'category'=>$r['category'], 'active'=>(bool)$r['active'],
+        'updated_at'=>(new DateTimeImmutable($r['updated_at'], new DateTimeZone('UTC')))->setTimezone($lima)->format('Y-m-d H:i:s'), 'updated_by'=>$r['updated_by']], $db->zypadWords());
+    return ['version'=>$db->zypadCatalogVersion(), 'categories'=>['casilla_voz'], 'words'=>$rows];
+}
+/** Adds a word or updates its category/active flag (case-insensitive, stored lowercase). Throws RuntimeException in Spanish when invalid. */
+function bot_cfg_zypad_word_save(\ZynervoxQueries\BotIvrRepository $db, string $word, string $actor, bool $active = true, string $category = 'casilla_voz'): array {
+    $word = mb_strtolower(trim(preg_replace('/\s+/u', ' ', $word) ?? ''), 'UTF-8');
+    if ($word === '' || mb_strlen($word, 'UTF-8') > 80 || !preg_match('/^[\p{L}\p{N}][\p{L}\p{N} \'.-]*$/u', $word)) throw new RuntimeException('La palabra debe tener de 1 a 80 letras o números.');
+    if (!in_array($category, ['casilla_voz'], true)) throw new RuntimeException('Categoría no válida.');
+    if (trim($actor) === '') throw new RuntimeException('Indica quién guarda el cambio.');
+    $db->zypadWordSave($word, $category, $active, $actor);
+    return bot_cfg_zypad_words($db);
+}
+/** Turns a word on or off by id. */
+function bot_cfg_zypad_word_set_active(\ZynervoxQueries\BotIvrRepository $db, int $wordId, bool $active, string $actor): array {
+    foreach ($db->zypadWords() as $w) if ((int)$w['word_id'] === $wordId) return bot_cfg_zypad_word_save($db, $w['word'], $actor, $active, $w['category']);
+    throw new RuntimeException('La palabra no existe.');
+}
+/** Deletes a word; "mensaje" (the first entry) can only be turned off. */
+function bot_cfg_zypad_word_delete(\ZynervoxQueries\BotIvrRepository $db, int $wordId): array {
+    if ($wordId === 1) throw new RuntimeException('La palabra «mensaje» no se borra; desactívala si no la quieres.');
+    if (!$db->zypadWordDelete($wordId)) throw new RuntimeException('La palabra no existe.');
+    return bot_cfg_zypad_words($db);
+}
+
+/**
+ * Comparison by dial mode with its N (same filters as bot_cfg_report plus dial_mode: AMD|ZYPAD_SOMBRA|ZYPAD_CORTE). Rows: dial_mode, label, calls, preanswer_audio (+pct),
+ * casilla_voz (result_final), amd_machine, zypad_hits, both_casilla, only_zypad, only_amd, only_zypad_amd_human (possible false cut: review with the recording),
+ * saved_n / saved_seconds_total / saved_seconds_avg (time the cut would have saved against the answer; only zypad hits before answer). small_sample = calls < 20.
+ */
+function bot_cfg_dialmode_report(\ZynervoxQueries\BotIvrRepository $db, array $filters = []): array {
+    $f = bot_cfg_report_filters($filters);
+    $mode = strtoupper(trim((string)($filters['dial_mode'] ?? '')));
+    if ($mode !== '' && !isset(MARCADOR_DIAL_MODE_LABELS[$mode])) throw new RuntimeException('Tipo de marcación no válido.');
+    $f['dial_mode'] = $mode;
+    $pct = fn(int $a, int $b) => $b > 0 ? round(100 * $a / $b, 1) : null;
+    $rows = [];
+    foreach ($db->dialModeReport($f) as $r) {
+        $n = (int)$r['calls']; $row = ['dial_mode'=>$r['dial_mode'], 'label'=>MARCADOR_DIAL_MODE_LABELS[$r['dial_mode']] ?? $r['dial_mode'], 'calls'=>$n];
+        foreach (['preanswer_audio', 'amd_decided', 'amd_machine', 'zypad_hits', 'casilla_voz', 'both_casilla', 'only_zypad', 'only_amd', 'only_zypad_amd_human', 'saved_n'] as $k) $row[$k] = (int)$r[$k];
+        $row += ['preanswer_audio_pct'=>$pct($row['preanswer_audio'], $n), 'casilla_voz_pct'=>$pct($row['casilla_voz'], $n), 'saved_seconds_total'=>round((float)$r['saved_seconds'], 1),
+            'saved_seconds_avg'=>$row['saved_n'] > 0 ? round((float)$r['saved_seconds'] / $row['saved_n'], 1) : null, 'small_sample'=>$n < BOT_TEMP_MIN_CALLS];
+        $rows[] = $row;
+    }
+    return ['filters'=>['from_utc'=>$f['from_utc'], 'to_utc'=>$f['to_utc'], 'campaign_id'=>$f['campaign_id'], 'list_id'=>$f['list_id'], 'dial_mode'=>$mode, 'timezone'=>'America/Lima'], 'rows'=>$rows];
 }

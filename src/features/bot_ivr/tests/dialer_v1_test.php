@@ -392,5 +392,44 @@ $ex = bot_cfg_report_extra($repo, []);
 check('bot_cfg_report_extra: todas las series presentes', !array_diff(['by_day','by_weekday_hour','funnel','attempts_per_lead','first_contact_attempt','sip','amd_by_cause','by_carrier'], array_keys($ex)) && count($ex['funnel']['stages']) === 5 && isset($ex['sip']['partial']));
 check('bot_cfg_report_extra: embudo coherente con el KPI', $ex['funnel']['stages'][0]['n'] === (int)bot_cfg_report($repo, ['from'=>'2000-01-01'])['kpi']['calls']);
 check('bot_cfg_report_extra: acepta rango y lista', is_array(bot_cfg_report_extra($repo, ['from'=>'2026-11-01','to'=>'2026-11-30','list_id'=>5000])));
+// --- zypad (021): catalog, delivery at closing, dial mode, report and the one-shot list ---
+$wl = bot_cfg_zypad_words($repo);
+check('catálogo zypad: «mensaje» es la primera entrada, activa', $wl['words'][0]['word'] === 'mensaje' && $wl['words'][0]['word_id'] === 1 && $wl['words'][0]['active'] === true && $wl['categories'] === ['casilla_voz']);
+$wl = bot_cfg_zypad_word_save($repo, '  Deje  su MENSAJE ', 'tester');
+$wl2 = bot_cfg_zypad_word_save($repo, 'deje su mensaje', 'tester', false);
+check('catálogo zypad: minúsculas, sin duplicados por mayúsculas y se puede desactivar', count($wl['words']) === 2 && count($wl2['words']) === 2 && $wl2['words'][1]['word'] === 'deje su mensaje' && $wl2['words'][1]['active'] === false);
+check('catálogo zypad: rechaza vacío, símbolos y borrar «mensaje»', throws(fn() => bot_cfg_zypad_word_save($repo, ' ', 't')) !== '' && throws(fn() => bot_cfg_zypad_word_save($repo, 'a;b', 't')) !== '' && throws(fn() => bot_cfg_zypad_word_delete($repo, 1)) !== '');
+$wid = $wl2['words'][1]['word_id'];
+bot_cfg_zypad_word_set_active($repo, $wid, true, 'tester');
+check('catálogo zypad: activar por id y borrar', bot_cfg_zypad_words($repo)['words'][1]['active'] === true && count(bot_cfg_zypad_word_delete($repo, $wid)['words']) === 1);
+// Campaign by 7314: shadow mode, one channel, no retry of any kind
+$zc = bot_cfg_save($repo, null, ['name'=>'ZSOMBRA', 'active'=>'1', 'call_origin'=>'7314', 'max_channels'=>'1', 'lead_order'=>'UP', 'amd_enabled'=>'1', 'transfer_carrier_id'=>'', 'transfer_destination'=>'', 'rules'=>[],
+    'amd_actions'=>[['result'=>'HUMAN', 'action'=>'hangup'], ['result'=>'NOTSURE', 'action'=>'hangup'], ['result'=>'MACHINE', 'action'=>'hangup']],
+    'schedules'=>[['weekday'=>1, 'start_time'=>'00:00', 'end_time'=>'23:59']]]);
+$zcfg = bot_cfg_get($repo, $zc);
+check('campaña de sombra: sin reglas SIP y sin reintento de AMD', $zcfg['rules'] === [] && !array_filter($zcfg['amd_actions'], fn($a) => $a['action'] === 'retry'));
+$pdo->exec("INSERT INTO zynervox_bot_lists (campaign_id,name,active,max_channels,dialer_state) VALUES ($zc,'Z',1,1,'running')");
+$zl = (int)$pdo->lastInsertId();
+$zst = ['NEW', 'B', 'NA', 'UNAV', 'CONG', 'CANCEL', 'FAIL', 'AA', 'ANSWER'];
+foreach ($zst as $i=>$st) $pdo->exec("INSERT INTO zynervox_bot_list (list_id,phone,status,called_count,last_call_at,last_sip_code) VALUES ($zl,'96000000$i','$st',".($st === 'NEW' ? 0 : 1).",UTC_TIMESTAMP() - INTERVAL 3 DAY,".($st === 'B' ? 486 : ($st === 'NA' ? 0 : 480)).")");
+check('lista de una sola vez: solo el NEW es marcable; ningún estado ya llamado reintenta', $repo->countEligibleLeads($zc, 'UP') === 1);
+$pdo->exec("UPDATE zynervox_bot_list SET status='AA' WHERE list_id=$zl AND phone='960000000'");
+$pdo->prepare("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,started_at,finished_at,campaign_id,status,disposition,amd_status,amd_cause,corte_por) SELECT ?,list_id,lead_id,phone,UTC_TIMESTAMP(),UTC_TIMESTAMP(),?,'X','AMD_MACHINE','MACHINE','MAXWORDS','' FROM zynervox_bot_list WHERE list_id=? AND phone='960000000'")->execute(['zv2-z1', $zc, $zl]);
+check('lista de una sola vez: una casilla de voz (MACHINE) tampoco reintenta', $repo->countEligibleLeads($zc, 'UP') === 0);
+// Delivery at closing
+$pdo->prepare("UPDATE zynervox_bot_call_attempts SET started_at=UTC_TIMESTAMP() - INTERVAL 20 SECOND, answered_at=UTC_TIMESTAMP() - INTERVAL 10 SECOND WHERE call_id='zv2-z1'")->execute();
+$r = marcador_zypad_apply($repo, ['zypad', 'zv2-z1', 'zypad', 'pre', 'Mensaje', '3.4', 'ninguno', 'si', 'uuid-1']);
+$za = $pdo->query("SELECT dial_mode,detectado_por,momento,palabra,segundo,corte_por,preanswer_audio,zypad_call_id,result_final,amd_status FROM zynervox_bot_call_attempts WHERE call_id='zv2-z1'")->fetch();
+check('zypad al cierre: guarda los campos validados y deduce el tipo de marcación del origen', $r['updated'] === 1 && $za['dial_mode'] === 'ZYPAD_SOMBRA' && $za['detectado_por'] === 'ZYPAD' && $za['momento'] === 'PRE' && $za['palabra'] === 'Mensaje' && (float)$za['segundo'] === 3.4 && $za['corte_por'] === 'NINGUNO' && $za['preanswer_audio'] === 'SI' && $za['zypad_call_id'] === 'uuid-1');
+check('resultado homologado: MACHINE => CASILLA_VOZ sin perder amd_status ni amd_cause', $za['result_final'] === 'CASILLA_VOZ' && $za['amd_status'] === 'MACHINE' && $pdo->query("SELECT amd_cause FROM zynervox_bot_call_attempts WHERE call_id='zv2-z1'")->fetchColumn() === 'MAXWORDS');
+$pdo->prepare("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,started_at,finished_at,campaign_id,status,disposition,amd_status) SELECT 'zv2-z2',list_id,lead_id,phone,UTC_TIMESTAMP(),UTC_TIMESTAMP(),campaign_id,'X','ANSWER_HUMAN','HUMAN' FROM zynervox_bot_call_attempts WHERE call_id='zv2-z1'")->execute();
+$r2 = marcador_zypad_apply($repo, ['zypad', 'zv2-z2', '', '', '', '', '', '', '']);
+check('zypad sin datos: guarda el tipo de marcación y deja lo demás vacío', $r2['updated'] === 1 && $pdo->query("SELECT CONCAT(dial_mode,'|',detectado_por,momento,palabra,corte_por,preanswer_audio,zypad_call_id,IFNULL(segundo,'-'),'|',result_final) FROM zynervox_bot_call_attempts WHERE call_id='zv2-z2'")->fetchColumn() === 'ZYPAD_SOMBRA|-|');
+check('zypad: valores fuera de la lista se vacían y un call_id inválido se rechaza', marcador_zypad_apply($repo, ['zypad', 'zv2-z2', 'XX', 'YY', "a\nb", 'abc', 'ZZ', 'TAL', 'a b'])['detectado_por'] === '' && throws(fn() => marcador_zypad_apply($repo, ['zypad', 'a;b'])) !== '');
+$pdo->prepare("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,started_at,finished_at,campaign_id,status,disposition,amd_status,dial_mode,detectado_por,momento,preanswer_audio) SELECT 'zv2-z3',list_id,lead_id,phone,UTC_TIMESTAMP(),UTC_TIMESTAMP(),campaign_id,'X','ANSWER_HUMAN','HUMAN','ZYPAD_SOMBRA','ZYPAD','PRE','SI' FROM zynervox_bot_call_attempts WHERE call_id='zv2-z1'")->execute();
+$dm = bot_cfg_dialmode_report($repo, ['campaign_id'=>$zc, 'include_invalid_amd'=>1]);
+$row = $dm['rows'][0] ?? [];
+check('reporte por tipo de marcación: N, casilla de voz y coincidencia zypad/AMD', count($dm['rows']) === 1 && $row['dial_mode'] === 'ZYPAD_SOMBRA' && $row['calls'] === 3 && $row['preanswer_audio'] === 2 && $row['both_casilla'] === 1 && $row['only_zypad'] === 1 && $row['only_zypad_amd_human'] === 1 && $row['only_amd'] === 0 && $row['small_sample'] === true);
+check('reporte por tipo de marcación: tiempo que el corte habría ahorrado', $row['saved_n'] === 1 && $row['saved_seconds_total'] === 6.6 && $row['saved_seconds_avg'] === 6.6 && throws(fn() => bot_cfg_dialmode_report($repo, ['dial_mode'=>'X'])) !== '');
 echo $fail ? "$fail FALLOS\n" : "TODO OK\n";
 exit($fail ? 1 : 0);

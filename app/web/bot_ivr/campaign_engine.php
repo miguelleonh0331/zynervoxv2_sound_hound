@@ -6,6 +6,7 @@ if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 require_once __DIR__.'/campaign_config_service.php';
 require_once __DIR__.'/../includes/AmiClient.php';
 require_once __DIR__.'/../marcador/amd_audit.php';
+require_once __DIR__.'/../marcador/zypad.php';
 
 const BOT_ENGINE_BURST = 50;
 const BOT_ENGINE_AMI_GRACE = 10;
@@ -187,7 +188,7 @@ try {
             $originate = fn(array $c, array $call, array $headers) => bot_engine_originate($ami, $c, $call, $headers);
         }
         if (!$dry && time() - $lastBeat >= 5) { $repo->touchDialerHeartbeat(); $lastBeat = time(); }
-        if (!$dry && time() - $lastMaint >= 10) { try { marcador_list_summary_maintain($repo); } catch (Throwable $e) { error_log('ZV2 summary: '.$e->getMessage()); } $lastMaint = time(); } // summaries, finished lists; never stops the dialing
+        if (!$dry && time() - $lastMaint >= 10) { try { marcador_list_summary_maintain($repo); $repo->stampDialModes(MARCADOR_DIAL_MODES); } catch (Throwable $e) { error_log('ZV2 summary: '.$e->getMessage()); } $lastMaint = time(); } // summaries, finished lists; never stops the dialing
         $report = bot_engine_tick($repo, $originate, $only, new DateTimeImmutable('now', new DateTimeZone('UTC')));
         if ($dry) echo json_encode(['dry_run'=>true, 'campaigns'=>$report], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)."\n";
         elseif (array_filter($report, fn($r) => !empty($r['launched']) || !empty($r['error']))) echo json_encode($report, JSON_UNESCAPED_UNICODE)."\n";

@@ -190,6 +190,60 @@ trait CampaignConfigQueries {
         $out['by_carrier'] = $q("SELECT a.carrier, $C $from GROUP BY a.carrier ORDER BY calls DESC");
         return $out;
     }
+    // --- zypad (migration 021): word catalog, per-attempt zypad facts and the report by dial mode ---
+    public function zypadWords(): array {
+        return $this->db->query('SELECT word_id,word,category,active,updated_at,updated_by FROM zynervox_bot_zypad_words ORDER BY word_id')->fetchAll(\PDO::FETCH_ASSOC);
+    }
+    public function zypadWordSave(string $word, string $category, bool $active, string $actor): int {
+        $this->db->prepare('INSERT INTO zynervox_bot_zypad_words (word,category,active,updated_at,updated_by) VALUES (?,?,?,UTC_TIMESTAMP(),?) ON DUPLICATE KEY UPDATE category=VALUES(category),active=VALUES(active),updated_at=UTC_TIMESTAMP(),updated_by=VALUES(updated_by)')
+            ->execute([$word, $category, $active ? 1 : 0, $actor]);
+        $s = $this->db->prepare('SELECT word_id FROM zynervox_bot_zypad_words WHERE word=?'); $s->execute([$word]);
+        return (int)$s->fetchColumn();
+    }
+    public function zypadWordDelete(int $wordId): bool {
+        $s = $this->db->prepare('DELETE FROM zynervox_bot_zypad_words WHERE word_id=? AND word_id<>1'); $s->execute([$wordId]);
+        return $s->rowCount() > 0;
+    }
+    /** Highest updated_at of the catalog (UTC string): the bridge can compare it to know when to reload. */
+    public function zypadCatalogVersion(): string {
+        return (string)$this->db->query('SELECT COALESCE(MAX(updated_at),"") FROM zynervox_bot_zypad_words')->fetchColumn();
+    }
+    /** Zypad facts delivered at closing; returns the number of attempts updated (0 = unknown call_id). Empty values stay empty. */
+    public function recordZypad(string $callId, array $d): int {
+        $s = $this->db->prepare('UPDATE zynervox_bot_call_attempts SET detectado_por=?,momento=?,palabra=?,segundo=?,corte_por=?,preanswer_audio=?,zypad_call_id=? WHERE call_id=?');
+        $s->execute([$d['detectado_por'], $d['momento'], $d['palabra'], $d['segundo'], $d['corte_por'], $d['preanswer_audio'], $d['zypad_call_id'], $callId]);
+        if ($s->rowCount() > 0) return $s->rowCount();
+        $e = $this->db->prepare('SELECT COUNT(*) FROM zynervox_bot_call_attempts WHERE call_id=?'); $e->execute([$callId]); // unchanged values also give 0 rows
+        return (int)$e->fetchColumn();
+    }
+    /** dial_mode from the campaign origin for attempts not stamped yet. $map: origin => mode. */
+    public function stampDialModes(array $map): int {
+        $case = 'CASE c.call_origin'; $p = [];
+        foreach ($map as $origin=>$mode) { $case .= ' WHEN ? THEN ?'; $p[] = (string)$origin; $p[] = $mode; }
+        $case .= " ELSE 'AMD' END";
+        $s = $this->db->prepare("UPDATE zynervox_bot_call_attempts t JOIN zynervox_bot_campaigns c ON c.campaign_id=t.campaign_id SET t.dial_mode=$case WHERE t.dial_mode=''");
+        $s->execute($p);
+        return $s->rowCount();
+    }
+    /** Comparison by dial mode (same filters as the report, plus optional dial_mode). */
+    public function dialModeReport(array $f): array {
+        [$where, $params] = $this->reportWhere($f);
+        if (!empty($f['dial_mode'])) { $where .= ' AND a.dial_mode=?'; $params[] = $f['dial_mode']; }
+        $v = $f['include_invalid_amd'] ? '1=1' : "a.started_at>='".$f['invalid_before_utc']."'";
+        $zy = "(a.detectado_por='ZYPAD' OR a.corte_por='ZYPAD')"; $am = "(a.amd_status='MACHINE' AND $v)";
+        $sql = "SELECT IF(a.dial_mode='','AMD',a.dial_mode) dial_mode, COUNT(*) calls,
+            COALESCE(SUM(a.preanswer_audio='SI'),0) preanswer_audio,
+            COALESCE(SUM(a.amd_status<>'' AND $v),0) amd_decided,
+            COALESCE(SUM($am),0) amd_machine, COALESCE(SUM($zy),0) zypad_hits,
+            COALESCE(SUM(a.result_final='CASILLA_VOZ'),0) casilla_voz,
+            COALESCE(SUM($zy AND $am),0) both_casilla, COALESCE(SUM($zy AND NOT $am),0) only_zypad, COALESCE(SUM(NOT $zy AND $am),0) only_amd,
+            COALESCE(SUM($zy AND NOT $am AND a.amd_status='HUMAN' AND $v),0) only_zypad_amd_human,
+            COALESCE(SUM(a.detectado_por='ZYPAD' AND a.momento='PRE' AND a.segundo IS NOT NULL AND a.answered_at IS NOT NULL),0) saved_n,
+            COALESCE(SUM(IF(a.detectado_por='ZYPAD' AND a.momento='PRE' AND a.segundo IS NOT NULL AND a.answered_at IS NOT NULL, GREATEST(0, TIMESTAMPDIFF(SECOND,a.started_at,a.answered_at)-a.segundo), 0)),0) saved_seconds
+            FROM zynervox_bot_call_attempts a WHERE $where GROUP BY dial_mode ORDER BY dial_mode";
+        $s = $this->db->prepare($sql); $s->execute($params);
+        return $s->fetchAll(\PDO::FETCH_ASSOC);
+    }
     public function reportDetail(array $f, int $limit, int $offset): array {
         [$where, $params] = $this->reportWhere($f); $off = (int)$f['offset_seconds'];
         $from = "FROM zynervox_bot_call_attempts a LEFT JOIN zynervox_bot_lists p ON p.list_id=a.list_id LEFT JOIN zynervox_bot_campaigns c ON c.campaign_id=a.campaign_id WHERE $where";
@@ -431,9 +485,10 @@ trait CampaignConfigQueries {
         return "SELECT $select FROM zynervox_bot_list l JOIN zynervox_bot_lists p ON p.list_id=l.list_id AND p.campaign_id=? AND p.active=1".($onlyStarted ? " AND p.dialer_state='running'" : '').($listId !== null ? ' AND p.list_id='.$listId : '')."
             LEFT JOIN zynervox_bot_campaign_sip_rules sr ON sr.campaign_id=p.campaign_id AND sr.active=1 AND l.status IN ('B','NA','UNAV','CONG','CANCEL','FAIL')
                 AND sr.sip_code=IF(l.last_sip_code BETWEEN 100 AND 199,487,l.last_sip_code)
-            LEFT JOIN zynervox_bot_campaign_amd_actions aa ON aa.campaign_id=p.campaign_id AND aa.action='retry' AND l.status IN ('AA','ANSWER') AND aa.result IN (
-                (SELECT x.amd_status FROM zynervox_bot_call_attempts x WHERE x.lead_id=l.lead_id AND x.finished_at IS NOT NULL ORDER BY x.attempt_id DESC LIMIT 1),
-                (SELECT x.amd_cause FROM zynervox_bot_call_attempts x WHERE x.lead_id=l.lead_id AND x.finished_at IS NOT NULL ORDER BY x.attempt_id DESC LIMIT 1))
+            LEFT JOIN zynervox_bot_campaign_amd_actions aa ON aa.campaign_id=p.campaign_id AND aa.action='retry' AND aa.result IN (
+                (SELECT IF(x.corte_por='ZYPAD','MACHINE',NULL) FROM zynervox_bot_call_attempts x WHERE x.lead_id=l.lead_id AND x.finished_at IS NOT NULL ORDER BY x.attempt_id DESC LIMIT 1),
+                IF(l.status IN ('AA','ANSWER'), (SELECT x.amd_status FROM zynervox_bot_call_attempts x WHERE x.lead_id=l.lead_id AND x.finished_at IS NOT NULL ORDER BY x.attempt_id DESC LIMIT 1), NULL),
+                IF(l.status IN ('AA','ANSWER'), (SELECT x.amd_cause FROM zynervox_bot_call_attempts x WHERE x.lead_id=l.lead_id AND x.finished_at IS NOT NULL ORDER BY x.attempt_id DESC LIMIT 1), NULL))
             WHERE (l.status='NEW'
                 OR (sr.sip_code IS NOT NULL AND l.called_count<sr.max_attempts".($ignoreTime ? '' : " AND l.last_call_at<=DATE_SUB(UTC_TIMESTAMP(),INTERVAL sr.retry_delay_min MINUTE)").")
                 OR (aa.result IS NOT NULL AND l.called_count<aa.max_attempts".($ignoreTime ? '' : " AND l.last_call_at<=DATE_SUB(UTC_TIMESTAMP(),INTERVAL aa.retry_delay_min MINUTE)")."))
