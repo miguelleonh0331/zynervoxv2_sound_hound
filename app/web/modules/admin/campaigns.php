@@ -90,7 +90,7 @@ try {
 if ($isNew && $form === null) {
     $form = ['campaign'=>['campaign_id'=>null, 'name'=>'', 'active'=>0, 'call_origin'=>'', 'max_channels'=>10, 'amd_enabled'=>0,
         'transfer_carrier_id'=>'', 'transfer_destination'=>'', 'timezone'=>'America/Lima', 'lead_order'=>'DOWN', 'dial_timeout'=>60, 'campaign_cid'=>'', 'dialer_state'=>'stopped'],
-        'headers'=>[], 'rules'=>[], 'amd_actions'=>[], 'schedules'=>[], 'lead_fields'=>['phone', 'customer_name'], 'active_calls'=>0];
+        'headers'=>[], 'rules'=>bot_cfg_default_rules(), 'amd_actions'=>[], 'schedules'=>[], 'lead_fields'=>['phone', 'customer_name'], 'active_calls'=>0];
 }
 $c = $form['campaign'] ?? [];
 $running = ($c['dialer_state'] ?? '') === 'running';
