@@ -37,3 +37,25 @@ function marcador_zypad_catalog(\ZynervoxQueries\BotIvrRepository $repo): array 
     $words = array_map(fn($w) => ['word'=>$w['word'], 'category'=>$w['category'], 'active'=>(bool)$w['active']], $repo->zypadWords());
     return ['version'=>substr(sha1(json_encode($words, JSON_UNESCAPED_UNICODE)), 0, 16), 'words'=>$words];
 }
+
+/**
+ * Closing delivery of the dialplans 7314/7315, own AGI action (Telefonia, 04/11): args (index 0 = "zypad") = [zypad, call_id, detectado_por, momento, palabra, segundo, corte_por, preanswer_audio,
+ * zypad_call_id, palabra_epoch_ms, first_audio_epoch_ms, answer_epoch_ms, preanswer_bytes]. The last four are optional. The dialplan fills detectado_por/momento/corte_por itself:
+ * they are stored as given (empty = nobody detected). Called for every call, answered or not. dial_mode is deduced from the campaign origin.
+ */
+function marcador_zypad_closing(\ZynervoxQueries\BotIvrRepository $repo, array $args): array {
+    $callId = (string)($args[1] ?? '');
+    if (!preg_match('/^[0-9A-Za-z._-]{1,80}$/D', $callId)) throw new InvalidArgumentException('call_id inválido.');
+    $pick = function (int $i, array $allowed) use ($args): string { $v = strtoupper(trim((string)($args[$i] ?? ''))); return in_array($v, $allowed, true) ? $v : ''; };
+    $num = fn(int $i) => preg_match('/^[0-9]{1,15}$/D', trim((string)($args[$i] ?? ''))) ? (int)trim((string)$args[$i]) : null;
+    $word = mb_strtolower(trim((string)($args[4] ?? '')), 'UTF-8');
+    if (mb_strlen($word, 'UTF-8') > 80 || preg_match('/[\x00-\x1f]/', $word)) $word = '';
+    $sec = trim((string)($args[5] ?? ''));
+    $d = ['detectado_por'=>$pick(2, ['ZYPAD', 'AMD', 'NINGUNO']), 'momento'=>$pick(3, ['PRE', 'POST']), 'palabra'=>$word,
+        'segundo'=>preg_match('/^[0-9]{1,5}(\.[0-9]{1,3})?$/D', $sec) ? round((float)$sec, 2) : null, 'corte_por'=>$pick(6, ['ZYPAD', 'AMD', 'NINGUNO']),
+        'preanswer_audio'=>$pick(7, ['SI', 'NO']), 'zypad_call_id'=>preg_match('/^[0-9A-Za-z._-]{1,80}$/D', (string)($args[8] ?? '')) ? (string)$args[8] : '',
+        'palabra_epoch_ms'=>$word === '' ? null : $num(9), 'palabra_audio_ms'=>null, 'first_audio_epoch_ms'=>$num(10), 'answer_epoch_ms'=>$num(11), 'preanswer_bytes'=>$num(12)];
+    $repo->stampDialModes(MARCADOR_DIAL_MODES);
+    $n = $repo->recordZypad($callId, $d);
+    return ['call_id'=>$callId, 'updated'=>$n] + $d;
+}
