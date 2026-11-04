@@ -44,7 +44,7 @@ Auth::checkAccess(9);
         .rep-error { color: #fca5a5; margin-bottom: 0.5rem; }
         .notes p { font-size: 0.76rem; color: #fbbf24; margin: 0.15rem 0; }
         .muted { color: var(--text-muted); font-size: 0.75rem; }
-        table.matrix { border-collapse: separate; border-spacing: 2px; font-size: 0.68rem; }
+        table.matrix { width: auto; border-collapse: separate; border-spacing: 2px; font-size: 0.68rem; }
         table.matrix th { font-weight: 600; color: var(--text-muted); padding: 2px 4px; text-align: center; }
         table.matrix td { min-width: 34px; height: 30px; text-align: center; border-radius: 2px; color: #fff; }
         table.matrix td.empty { background: var(--glass); color: transparent; }
@@ -373,7 +373,7 @@ Auth::checkAccess(9);
                 }
                 t.appendChild(tr);
             }
-            box.appendChild(t); box.appendChild(el('p', 'muted', 'Cada celda: % contestadas. Pasa el cursor para ver cuántas llamadas hay detrás.'));
+            box.appendChild(t); box.appendChild(el('p', 'muted', 'Cada celda: % contestadas. Pasa el cursor para ver cuántos intentos hay detrás.'));
         }
         function attempts(apl) {
             var box = document.getElementById('attempts'); box.textContent = '';
