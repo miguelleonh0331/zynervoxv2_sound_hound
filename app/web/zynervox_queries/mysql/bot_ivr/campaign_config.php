@@ -279,10 +279,29 @@ trait CampaignConfigQueries {
      */
     public function zypadAmdByContact(array $f): array {
         [$w, $p] = $this->contactWhere($f);
+        $cat = marcador_contact_category_sql();
         $zy = "(a.detectado_por='ZYPAD' OR a.corte_por='ZYPAD')"; $am = "a.amd_status='MACHINE'";
-        $s = $this->db->prepare("SELECT a.dial_mode, COUNT(*) contacts, COALESCE(SUM($zy),0) casilla_zypad, COALESCE(SUM($am),0) casilla_amd, COALESCE(SUM($zy AND $am),0) ambos,
-                COALESCE(SUM($zy AND NOT $am),0) solo_zypad, COALESCE(SUM(NOT $zy AND $am),0) solo_amd, COALESCE(SUM($zy AND a.amd_status='HUMAN'),0) solo_zypad_amd_humano
-            FROM zynervox_bot_call_attempts a JOIN (SELECT MAX(a.attempt_id) id FROM zynervox_bot_call_attempts a WHERE $w AND a.dial_mode LIKE 'ZYPAD%' GROUP BY a.list_id, a.lead_id) m ON m.id=a.attempt_id GROUP BY a.dial_mode ORDER BY a.dial_mode");
+        // solo_zypad = zypad heard the word and the AMD did not say MACHINE. It splits in three, always adding up: AMD said HUMAN, the call was never answered, and the rest
+        // (NOTSURE, answered without AMD result, call still in progress, or cut by zypad with no AMD machine).
+        $s = $this->db->prepare("SELECT t.dial_mode, COUNT(*) contacts, COALESCE(SUM(t.zy),0) casilla_zypad, COALESCE(SUM(t.am),0) casilla_amd, COALESCE(SUM(t.zy AND t.am),0) ambos,
+                COALESCE(SUM(t.zy AND NOT t.am),0) solo_zypad, COALESCE(SUM(NOT t.zy AND t.am),0) solo_amd,
+                COALESCE(SUM(t.zy AND NOT t.am AND t.cat='humano'),0) solo_zypad_amd_humano,
+                COALESCE(SUM(t.zy AND NOT t.am AND t.cat IN ('no_disponible','sin_respuesta','ocupado','errores')),0) solo_zypad_sin_contestar,
+                COALESCE(SUM(t.zy AND NOT t.am AND t.cat NOT IN ('humano','no_disponible','sin_respuesta','ocupado','errores')),0) solo_zypad_otros
+            FROM (SELECT a.dial_mode, $zy zy, $am am, $cat cat FROM zynervox_bot_call_attempts a JOIN (SELECT MAX(a.attempt_id) id FROM zynervox_bot_call_attempts a WHERE $w AND a.dial_mode LIKE 'ZYPAD%' GROUP BY a.list_id, a.lead_id) m ON m.id=a.attempt_id) t
+            GROUP BY t.dial_mode ORDER BY t.dial_mode");
+        $s->execute($p);
+        return $s->fetchAll(\PDO::FETCH_ASSOC);
+    }
+    /** Contacts by weekday and hour (Lima) of their LAST attempt in the filters: contacts, answered (a person, a machine, not sure or answered without AMD), human, casilla. */
+    public function contactWeekdayHour(array $f): array {
+        [$w, $p] = $this->contactWhere($f);
+        $off = (int)$f['offset_seconds']; $cat = marcador_contact_category_sql();
+        $loc = "DATE_ADD(a.started_at, INTERVAL $off SECOND)";
+        $s = $this->db->prepare("SELECT WEEKDAY($loc)+1 weekday, HOUR($loc) hour_local, COUNT(*) contacts,
+                SUM(t.cat IN ('humano','casilla_voz','no_seguro','contestada_sin_amd')) answered, SUM(t.cat='humano') human, SUM(t.cat='casilla_voz') casilla
+            FROM (SELECT a.attempt_id, $cat cat FROM zynervox_bot_call_attempts a JOIN (SELECT MAX(a.attempt_id) id FROM zynervox_bot_call_attempts a WHERE $w GROUP BY a.list_id, a.lead_id) m ON m.id=a.attempt_id) t
+            JOIN zynervox_bot_call_attempts a ON a.attempt_id=t.attempt_id GROUP BY weekday, hour_local ORDER BY weekday, hour_local");
         $s->execute($p);
         return $s->fetchAll(\PDO::FETCH_ASSOC);
     }

@@ -674,7 +674,8 @@ function bot_cfg_contact_distribution(\ZynervoxQueries\BotIvrRepository $db, arr
 
 /**
  * Zypad vs AMD per contact (last attempt in the range), only for the zypad dial modes. Rows per dial mode with its N (contacts):
- * casilla_zypad, casilla_amd, ambos, solo_zypad, solo_amd and solo_zypad_amd_humano (possible false cut: review with the recording).
+ * casilla_zypad, casilla_amd, ambos, solo_zypad, solo_amd and the split of solo_zypad: solo_zypad_amd_humano (a person answered: possible false cut, review with the recording) +
+ * solo_zypad_sin_contestar (never answered: busy, unavailable, no answer, errors) + solo_zypad_otros (NOTSURE, answered without AMD result, call in progress, or cut by zypad) = solo_zypad.
  */
 function bot_cfg_contact_zypad_amd(\ZynervoxQueries\BotIvrRepository $db, array $filters = []): array {
     $f = bot_cfg_report_filters($filters);
@@ -682,8 +683,19 @@ function bot_cfg_contact_zypad_amd(\ZynervoxQueries\BotIvrRepository $db, array 
     foreach ($db->zypadAmdByContact($f) as $r) {
         $n = (int)$r['contacts'];
         $row = ['dial_mode'=>$r['dial_mode'], 'label'=>MARCADOR_DIAL_MODE_LABELS[$r['dial_mode']] ?? $r['dial_mode'], 'contacts'=>$n, 'small_sample'=>$n < BOT_TEMP_MIN_CALLS];
-        foreach (['casilla_zypad', 'casilla_amd', 'ambos', 'solo_zypad', 'solo_amd', 'solo_zypad_amd_humano'] as $k) $row[$k] = (int)$r[$k];
+        foreach (['casilla_zypad', 'casilla_amd', 'ambos', 'solo_zypad', 'solo_amd', 'solo_zypad_amd_humano', 'solo_zypad_sin_contestar', 'solo_zypad_otros'] as $k) $row[$k] = (int)$r[$k];
         $rows[] = $row;
     }
     return ['filters'=>['from_utc'=>$f['from_utc'], 'to_utc'=>$f['to_utc'], 'campaign_id'=>$f['campaign_id'], 'list_id'=>$f['list_id']], 'rows'=>$rows];
+}
+
+/**
+ * Matrix weekday × hour (Lima) BY CONTACT: each contact counts once, in the cell of its last attempt inside the filters (from, to, campaign_id, list_id).
+ * Cells: {weekday (1=Monday..7), hour_local (0-23), contacts, answered (person, machine, not sure or answered without AMD), human, casilla}. Only cells with contacts.
+ */
+function bot_cfg_contact_weekday_hour(\ZynervoxQueries\BotIvrRepository $db, array $filters = []): array {
+    $f = bot_cfg_report_filters($filters);
+    $cells = array_map(fn($r) => ['weekday'=>(int)$r['weekday'], 'hour_local'=>(int)$r['hour_local'], 'contacts'=>(int)$r['contacts'], 'answered'=>(int)$r['answered'], 'human'=>(int)$r['human'], 'casilla'=>(int)$r['casilla']], $db->contactWeekdayHour($f));
+    return ['filters'=>['from_utc'=>$f['from_utc'], 'to_utc'=>$f['to_utc'], 'campaign_id'=>$f['campaign_id'], 'list_id'=>$f['list_id'], 'timezone'=>'America/Lima'], 'basis'=>'contactos (último intento de cada contacto)', 'cells'=>$cells,
+        'total'=>['contacts'=>array_sum(array_column($cells, 'contacts')), 'answered'=>array_sum(array_column($cells, 'answered')), 'human'=>array_sum(array_column($cells, 'human'))]];
 }

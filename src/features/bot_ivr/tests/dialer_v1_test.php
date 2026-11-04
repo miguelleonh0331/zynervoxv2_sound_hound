@@ -504,5 +504,20 @@ $dl1 = null; foreach ($ds['campaigns'] as $cc) foreach ($cc['lists'] as $ll) if 
 check('dashboard: la lista trae su distribución por contacto y la campaña la suma', $dl1 !== null && $dl1[1]['distribution']['contacts'] === $nContacts && $dl1[0]['distribution']['contacts'] === $nContacts && $dl1[1]['insight']['basis'] === 'contactos');
 $za = bot_cfg_contact_zypad_amd($repo, []);
 check('zypad vs AMD por contacto: devuelve filas con su N (o vacío) sin error', is_array($za['rows']));
+// zypad-only split and the weekday x hour matrix by contact
+$pdo->exec("INSERT INTO zynervox_bot_lists (campaign_id,name,active,max_channels,dialer_state) VALUES ($zc,'ZS2',1,1,'stopped')");
+$zl2 = (int)$pdo->lastInsertId();
+$zcases = [['HUMAN', 'SIP 200 OK', 'XFER_OK', 'ANSWER'], ['', 'SIP 480 Temporarily Unavailable', 'BUSY', 'BUSY'], ['', 'SIP 487 Request Terminated', 'NOANSWER', ''], ['NOTSURE', 'SIP 200 OK', 'ANSWER_HUMAN', 'ANSWER'], ['', 'SIP 200 OK', 'ANSWER_HUMAN', 'ANSWER'], ['MACHINE', 'SIP 200 OK', 'AMD_MACHINE', 'ANSWER']];
+foreach ($zcases as $j=>$zc2) {
+    $pdo->exec("INSERT INTO zynervox_bot_list (list_id,phone,status,called_count) VALUES ($zl2,'9560000".$j."','X',1)"); $lz = (int)$pdo->lastInsertId();
+    $pdo->prepare("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,campaign_id,started_at,finished_at,status,dial_status,amd_status,disposition,sip_cause,dial_mode,detectado_por,momento) VALUES (?,?,?,'956000000',?,UTC_TIMESTAMP(),UTC_TIMESTAMP(),'X',?,?,?,?,'ZYPAD_SOMBRA','ZYPAD','PRE')")
+        ->execute(["zv2-zs$j", $zl2, $lz, $zc, $zc2[3], $zc2[0], $zc2[2], $zc2[1]]);
+}
+$zr = bot_cfg_contact_zypad_amd($repo, ['list_id'=>$zl2, 'from'=>'2000-01-01'])['rows'][0] ?? [];
+check('zypad vs AMD por contacto: solo_zypad = con AMD humano + sin contestar + otros', ($zr['solo_zypad'] ?? -1) === 5 && $zr['solo_zypad_amd_humano'] === 1 && $zr['solo_zypad_sin_contestar'] === 2 && $zr['solo_zypad_otros'] === 2
+    && $zr['solo_zypad_amd_humano'] + $zr['solo_zypad_sin_contestar'] + $zr['solo_zypad_otros'] === $zr['solo_zypad'] && $zr['ambos'] === 1 && $zr['contacts'] === 6);
+$wm = bot_cfg_contact_weekday_hour($repo, ['list_id'=>$zl2, 'from'=>'2000-01-01']);
+check('matriz día × hora por contacto: cada contacto cuenta una vez, con contestados y humanos', $wm['total']['contacts'] === 6 && $wm['total']['answered'] === 4 && $wm['total']['human'] === 1 && $wm['cells'][0]['weekday'] >= 1 && $wm['cells'][0]['weekday'] <= 7 && $wm['cells'][0]['hour_local'] >= 0 && $wm['cells'][0]['hour_local'] <= 23);
+check('matriz día × hora por contacto: rango sin llamadas = vacía sin error', bot_cfg_contact_weekday_hour($repo, ['from'=>gmdate('Y-m-d', time() - 400 * 86400), 'to'=>gmdate('Y-m-d', time() - 399 * 86400)])['cells'] === []);
 echo $fail ? "$fail FALLOS\n" : "TODO OK\n";
 exit($fail ? 1 : 0);
