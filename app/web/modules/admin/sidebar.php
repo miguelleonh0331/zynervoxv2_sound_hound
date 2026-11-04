@@ -52,6 +52,7 @@ function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
         ['key' => 'users',       'href' => 'modules/admin/users.php',        'icon' => 'users',      'label' => 'Users (Usuarios)',   'in_scope' => true],
         ['key' => 'campaigns',   'href' => 'modules/admin/campaigns.php',    'icon' => 'campaigns',  'label' => 'Campañas', 'in_scope' => true],
         ['key' => 'lists',       'href' => 'modules/admin/lists.php',        'icon' => 'lists',      'label' => 'Listas', 'in_scope' => true],
+        ['key' => 'amd',         'href' => 'modules/admin/amd.php',          'icon' => 'checklist',  'label' => 'AMD',                'in_scope' => true],
         ['key' => 'phones',      'href' => 'modules/admin/phones.php',       'icon' => 'phones',     'label' => 'Anexos/Teléfonos',   'in_scope' => true],
         ['key' => 'admin',       'href' => 'modules/admin/carriers.php',     'icon' => 'admin',      'label' => 'Troncales SIP',      'in_scope' => true],
         ['key' => 'dialplan',    'href' => 'modules/admin/dialplan.php',     'icon' => 'scripts',    'label' => 'Dialplan',           'in_scope' => true],
