@@ -214,10 +214,10 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             var big = el('div', 'gcol'); big.appendChild(el('div', 'cap', 'Acumulado'));
             big.appendChild(needleGauge(l.list_id, ins, !nd || nd.no_data, nd ? n0(nd.pct) : 0, 124,
                 !nd ? 'Calculando…' : nd.no_data ? 'Sin datos: ' + nd.called + ' de ' + nd.min_called + ' contactos llamados mínimos' : String(n0(nd.pct)).replace('.', ',') + ' % humanos · ' + nd.label)); gs.appendChild(big);
-            var mini = el('div', 'gcol mini'); mini.appendChild(el('div', 'cap', 'Últimas 10 llamadas'));
+            var mini = el('div', 'gcol mini'); mini.appendChild(el('div', 'cap', 'Últimas ' + (l10 ? n0(l10.window) : 50) + ' llamadas'));
             var nd10 = !l10 || l10.no_data, h10 = l10 ? n0(l10.human) : 0;
             mini.appendChild(needleGauge(l.list_id + '_10', ins, nd10, l10 && l10.calls ? 100 * h10 / l10.calls : 0, 96,
-                nd10 ? 'Sin datos' : h10 + (h10 === 1 ? ' humano' : ' humanos') + ' en las últimas 10')); gs.appendChild(mini);
+                nd10 ? 'Sin datos' : h10 + (h10 === 1 ? ' humano' : ' humanos') + ' en las últimas ' + n0(l10.window))); gs.appendChild(mini);
             temp.appendChild(gs); card.appendChild(temp);
 
             var why = l.reason || (l.started ? 'Marcando' : '');

@@ -290,11 +290,15 @@ function bot_cfg_summary_counts(array $u): array {
     return $c;
 }
 
-/** Mini needle: the last 10 finished calls of a list (first attempts and retries), how many were human. «Sin datos» under 10. These are ATTEMPTS, not contacts. */
+/** Window of the mini needle (last N finished calls). Change only this line to resize it; the Dashboard reads it from the API (key name «last10» is kept for compatibility). */
+const BOT_RECENT_WINDOW = 50;
+
+/** Mini needle: the last BOT_RECENT_WINDOW finished calls of a list (first attempts and retries), how many were human. «Sin datos» below the window. These are ATTEMPTS, not contacts. */
 function bot_cfg_last10(\ZynervoxQueries\BotIvrRepository $db, int $listId): array {
-    $r = $db->lastFinishedAttempts($listId, 10);
-    $nodata = $r['calls'] < 10;
-    return ['calls'=>$r['calls'], 'human'=>$r['human'], 'window'=>10, 'no_data'=>$nodata, 'label'=>$nodata ? 'Sin datos' : $r['human'].' de 10 últimas llamadas', 'basis'=>'intentos'];
+    $w = BOT_RECENT_WINDOW;
+    $r = $db->lastFinishedAttempts($listId, $w);
+    $nodata = $r['calls'] < $w;
+    return ['calls'=>$r['calls'], 'human'=>$r['human'], 'window'=>$w, 'no_data'=>$nodata, 'label'=>$nodata ? 'Sin datos' : $r['human'].' de '.$w.' últimas llamadas', 'basis'=>'intentos'];
 }
 
 function bot_cfg_dashboard(\ZynervoxQueries\BotIvrRepository $db, ?DateTimeInterface $now = null): array {
