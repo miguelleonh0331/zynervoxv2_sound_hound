@@ -297,8 +297,9 @@ Auth::checkAccess(9);
         }
         function detail(d) {
             var box = document.getElementById('detail'); box.textContent = '';
-            box.appendChild(table(['Inicio (Lima)', 'Campaña', 'Lista', 'Teléfono', 'Estado', 'AMD', 'SIP', 'Q.850', 'Seg.'],
-                d.rows.map(function (r) { return [r.started_at_local, r.campaign, r.list, r.phone, r.disposition || r.status, r.amd_valid ? (r.amd_status || '') : (r.amd_status ? r.amd_status + ' (no válido)' : ''), r.sip_cause, r.q850, r.billsec]; })));
+            var DM = { AMD: 'Solo AMD', ZYPAD_SOMBRA: 'Zypad sombra', ZYPAD_CORTE: 'Zypad corte' };
+            box.appendChild(table(['Inicio (Lima)', 'Campaña', 'Lista', 'Teléfono', 'Tipo', 'Estado', 'AMD', 'Zypad', 'SIP', 'Q.850', 'Seg.'],
+                d.rows.map(function (r) { return [r.started_at_local, r.campaign, r.list, r.phone, DM[r.dial_mode] || r.dial_mode || 'Solo AMD', r.result_final || r.disposition || r.status, r.amd_valid ? (r.amd_status || '') : (r.amd_status ? r.amd_status + ' (no válido)' : ''), (r.palabra ? '«' + r.palabra + '» ' + (r.momento || '') + (r.segundo != null && r.segundo !== '' ? ' ' + r.segundo + ' s' : '') + (r.preanswer_audio === 'SI' ? ' · audio previo' : '') : (r.preanswer_audio === 'SI' ? 'audio previo' : '')), r.sip_cause, r.q850, r.billsec]; })));
             lastPages = Math.max(1, Math.ceil(d.total / d.per_page));
             document.getElementById('pageinfo').textContent = 'Página ' + d.page + ' de ' + lastPages + ' · ' + d.total + ' llamadas';
             document.getElementById('prev').disabled = d.page <= 1; document.getElementById('next').disabled = d.page >= lastPages;
