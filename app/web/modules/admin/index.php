@@ -149,9 +149,6 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             card.appendChild(el('div', 'rate', 'Avance ' + l.progress_pct + ' % · ' + l.totals.not_called + ' de ' + l.totals.contacts + ' contactos sin llamar'));
 
             var ac = el('div', 'actions');
-            var tog = el('button', 'btn-action', l.active ? 'Desactivar' : 'Activar');
-            tog.type = 'button'; tog.addEventListener('click', function () { act(l.active ? 'deactivate' : 'activate', c.campaign_id, l.list_id, l.active && l.started ? 'Se desactivará la lista «' + l.name + '» y se detendrá. ¿Continuar?' : ''); });
-            ac.appendChild(tog);
             var go = el('button', 'btn-action', l.started ? 'Detener' : 'Iniciar'); go.type = 'button';
             if (l.started) go.addEventListener('click', function () { act('stop', c.campaign_id, l.list_id, ''); });
             else {
@@ -183,8 +180,9 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             d.dashboard.campaigns.forEach(function (c) {
                 var box = el('div', 'card camp'), h = el('h2', '', c.name); h.appendChild(el('span', 'tag' + (c.started ? ' run' : ''), c.started ? 'En marcha' : 'Detenida'));
                 if (!c.active) h.appendChild(el('span', 'tag', 'Inactiva')); box.appendChild(h);
-                var ls = el('div', 'lists'); c.lists.forEach(function (l) { ls.appendChild(listCard(c, l)); });
-                if (!c.lists.length) box.appendChild(el('p', 'g-sub', 'Sin listas.')); else box.appendChild(ls);
+                var act = c.lists.filter(function (l) { return l.active; });
+                var ls = el('div', 'lists'); act.forEach(function (l) { ls.appendChild(listCard(c, l)); });
+                if (!act.length) box.appendChild(el('p', 'g-sub', 'Sin listas activas. Actívalas en Listas.')); else box.appendChild(ls);
                 cs.appendChild(box);
             });
             document.getElementById('updated').textContent = '· ' + new Date().toLocaleTimeString();

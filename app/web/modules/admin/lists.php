@@ -24,6 +24,7 @@ $origins = [];
 $maxTotal = null;
 $filterCampaign = null;
 $allLists = [];
+$startedMap = [];
 $limits = null;
 try {
     $db = bot_ivr_repository();
@@ -45,6 +46,12 @@ try {
                 if ($listId === false) throw new RuntimeException('Elige una lista.');
                 bot_cfg_set_list_channels($db, $campaignId, $listId, $_POST['channels'] ?? null);
                 $_SESSION['lists_message'] = 'Lista #' . $listId . ': canales actualizados (surten efecto en el siguiente ciclo, sin parar la campaña).';
+            } elseif ($action === 'toggle_active') {
+                $listId = filter_var($_POST['list_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
+                if ($listId === false) throw new RuntimeException('Elige una lista.');
+                $on = (string)($_POST['active'] ?? '') === '1';
+                bot_cfg_list_set_active($db, $campaignId, $listId, $on, (string)($_SESSION['user'] ?? 'admin'));
+                $_SESSION['lists_message'] = 'Lista #' . $listId . ($on ? ' activada.' : ' desactivada (si estaba marcando, se detuvo).');
             } elseif ($action === 'delete_list') {
                 $listId = filter_var($_POST['list_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
                 if ($listId === false) throw new RuntimeException('Elige una lista.');
@@ -87,6 +94,7 @@ try {
     }
     $lists = bot_cfg_lists_channels($db);
     $allLists = $lists;
+    try { foreach (bot_cfg_dashboard($db)['campaigns'] as $dc) foreach ($dc['lists'] as $dl) $startedMap[(int)$dl['list_id']] = (bool)$dl['started']; } catch (Throwable $e) { $startedMap = []; }
     $filterCampaign = filter_var($_GET['campaign_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]) ?: null;
     if ($filterCampaign !== null) $lists = array_values(array_filter($lists, fn($l) => (int)$l['campaign_id'] === $filterCampaign));
     try { $limits = bot_cfg_server_limits($db); $maxTotal = $limits['max_channels_server']; } catch (Throwable $e) { $error = $error ?: 'No se pudo leer el máximo de canales del servidor: ' . $e->getMessage(); }
@@ -142,7 +150,7 @@ try {
         <div class="card" style="margin-top: 1rem;">
             <h2>Listado de listas<?php if ($filterCampaign !== null): ?> · campaña #<?php echo (int)$filterCampaign; ?> <a class="btn-action" href="lists.php">Ver todas</a><?php endif; ?></h2>
             <table class="table-compact">
-                <thead><tr><th>ID</th><th>Campaña</th><th>Nombre</th><th>Activa</th><th>Leads</th><th>Origen</th><th>Canales</th><th>Abiertas</th><th></th></tr></thead>
+                <thead><tr><th>ID</th><th>Campaña</th><th>Nombre</th><th>Activa</th><th>Leads</th><th>Origen</th><th>Canales</th><th>Abiertas</th><th>Estado</th><th></th></tr></thead>
                 <tbody>
                 <?php foreach ($lists as $l): $cid = (int)$l['campaign_id']; ?>
                     <tr>
@@ -164,6 +172,18 @@ try {
                         </td>
                         <td><?php echo (int)($l['open_calls'] ?? 0); ?></td>
                         <td>
+                            <?php $isOn = (int)$l['active'] === 1; $isRunning = !empty($startedMap[(int)$l['list_id']]); ?>
+                            <form method="POST" action="lists.php" class="inline-form" style="display: inline;"<?php if ($isOn && $isRunning): ?> onsubmit="return confirm(this.getAttribute('data-confirm'));" data-confirm="<?php echo h('La lista «' . $l['name'] . '» está marcando. Al desactivarla se detendrá (las llamadas en curso terminan solas). ¿Continuar?'); ?>"<?php endif; ?>>
+                                <input type="hidden" name="csrf" value="<?php echo h($_SESSION['lists_csrf']); ?>">
+                                <input type="hidden" name="action" value="toggle_active">
+                                <input type="hidden" name="campaign_id" value="<?php echo $cid; ?>">
+                                <input type="hidden" name="list_id" value="<?php echo (int)$l['list_id']; ?>">
+                                <input type="hidden" name="active" value="<?php echo $isOn ? '0' : '1'; ?>">
+                                <?php echo $isOn ? ($isRunning ? 'Activa · marcando' : 'Activa') : 'Inactiva'; ?>
+                                <button type="submit" class="btn-action"><?php echo $isOn ? 'Desactivar' : 'Activar'; ?></button>
+                            </form>
+                        </td>
+                        <td>
                             <form method="POST" action="lists.php" class="inline-form" style="display: inline;" onsubmit="return confirm(this.getAttribute('data-confirm'));" data-confirm="<?php echo h('Se eliminará la lista «' . $l['name'] . '» (#' . (int)$l['list_id'] . ') y sus ' . (int)$l['leads_count'] . ' contactos. El historial de llamadas se conserva. No se puede deshacer.'); ?>">
                                 <input type="hidden" name="csrf" value="<?php echo h($_SESSION['lists_csrf']); ?>">
                                 <input type="hidden" name="action" value="delete_list">
@@ -174,7 +194,7 @@ try {
                         </td>
                     </tr>
                 <?php endforeach; ?>
-                <?php if (!$lists): ?><tr><td colspan="9" style="color: var(--text-muted);">Sin listas.</td></tr><?php endif; ?>
+                <?php if (!$lists): ?><tr><td colspan="10" style="color: var(--text-muted);">Sin listas.</td></tr><?php endif; ?>
                 </tbody>
             </table>
         </div>
