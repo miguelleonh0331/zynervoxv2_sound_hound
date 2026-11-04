@@ -43,4 +43,28 @@ interface BotIvrRepository {
     public function leadCount(int $listId): int;
     public function audioLeads(int $listId, int $campaignId): array;
     public function importLeads(int $listId, int $campaignId, array $parsed): array;
+    public function campaignAmdParams(int $id): array;
+    public function setCampaignAmdParams(int $id, array $params): void;
+    public function openAmdAudit(array $call, int $campaignId, array $params): void;
+    public function recordAmdAudit(string $callId, array $data): void;
+    public function syncAmdAudit(): array;
+    public function pendingSttAudits(int $limit): array;
+    public function countPendingSttAudits(): int;
+    public function saveSttResult(int $auditId, string $status, string $text, string $engine, string $error, ?float $seconds): void;
+    public function listState(int $campaignId, int $listId): array;
+    public function setListDialerState(int $campaignId, int $listId, string $state, string $actor): void;
+    public function setCampaignListsState(int $campaignId, string $state, string $actor): void;
+    public function setListActive(int $campaignId, int $listId, bool $active): void;
+    public function runningListsCount(int $campaignId): int;
+    public function listEligibleCount(int $campaignId, int $listId, string $order): int;
+    public function touchDialerHeartbeat(): void;
+    public function dialerHeartbeatAge(): ?int;
+    public function dashboardRows(): array;
+    public function reportAggregates(array $f): array;
+    public function reportDetail(array $f, int $limit, int $offset): array;
+    public function listsChannels(): array;
+    public function dialerMaxTotalChannels(): int;
+    public function setDialerMaxTotalChannels(int $n): void;
+    public function setListChannels(int $campaignId, int $listId, int $n): void;
+    public function openCallsTotal(): int;
 }
