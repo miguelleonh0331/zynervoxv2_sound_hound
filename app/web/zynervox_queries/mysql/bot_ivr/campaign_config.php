@@ -211,7 +211,7 @@ trait CampaignConfigQueries {
     /** Zypad facts delivered at closing; returns the attempt count found (0 = unknown call_id). detectado_por/momento/corte_por are derived here from the attempt itself. */
     public function recordZypad(string $callId, array $d): int {
         // detectado_por / momento / corte_por: the given value wins (even ''), null derives it from the attempt.
-        $s = $this->db->prepare("UPDATE zynervox_bot_call_attempts SET zypad_call_id=?,palabra=?,palabra_epoch_ms=?,palabra_audio_ms=?,segundo=?,preanswer_audio=?,preanswer_bytes=?,first_audio_epoch_ms=?,answer_epoch_ms=?,
+        $s = $this->db->prepare("UPDATE zynervox_bot_call_attempts SET zypad_call_id=?,palabra=?,palabra_epoch_ms=COALESCE(?,palabra_epoch_ms),palabra_audio_ms=COALESCE(?,palabra_audio_ms),segundo=COALESCE(?,segundo),preanswer_audio=?,preanswer_bytes=COALESCE(?,preanswer_bytes),first_audio_epoch_ms=COALESCE(?,first_audio_epoch_ms),answer_epoch_ms=COALESCE(?,answer_epoch_ms),
             detectado_por=COALESCE(?,IF(?<>'','ZYPAD',IF(amd_status='MACHINE','AMD','NINGUNO'))), momento=COALESCE(?,IF(?<>'',?,IF(amd_status='MACHINE','POST',''))),
             corte_por=COALESCE(?,IF(dial_mode='ZYPAD_SOMBRA','NINGUNO',corte_por)) WHERE call_id=?");
         $s->execute([$d['zypad_call_id'], $d['palabra'], $d['palabra_epoch_ms'], $d['palabra_audio_ms'], $d['segundo'], $d['preanswer_audio'], $d['preanswer_bytes'], $d['first_audio_epoch_ms'], $d['answer_epoch_ms'],
