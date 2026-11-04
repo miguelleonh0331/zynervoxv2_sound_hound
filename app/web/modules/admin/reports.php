@@ -88,6 +88,7 @@ Auth::checkAccess(9);
             <a class="btn-action" id="csv" href="#">Exportar CSV</a>
         </form>
         <div class="quick" id="quick"></div>
+        <p class="muted" id="scope"></p>
         <div id="error"></div>
         <div class="notes" id="notes"></div>
 
@@ -157,6 +158,9 @@ Auth::checkAccess(9);
         var DAYS = ['', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
         var SVGNS = 'http://www.w3.org/2000/svg';
         var form = document.getElementById('filters');
+        // Enlace desde Listas: ?campaign_id=N&list_id=M (enteros). Se aplica en la primera carga; si la lista no existe o no es de esa campaña, la página se comporta como siempre.
+        var qs = new URLSearchParams(location.search), pending = null;
+        (function () { var c = /^[1-9][0-9]*$/.test(qs.get('campaign_id') || '') ? qs.get('campaign_id') : '', l = /^[1-9][0-9]*$/.test(qs.get('list_id') || '') ? qs.get('list_id') : ''; if (c && l) pending = { campaign_id: c, list_id: l }; })();
         document.getElementById('minn').textContent = MIN;
 
         function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
@@ -168,6 +172,7 @@ Auth::checkAccess(9);
         function query(extra) {
             var p = new URLSearchParams(new FormData(form));
             Array.from(p.keys()).forEach(function (k) { if (!p.get(k)) p.delete(k); });
+            if (pending) { p.set('campaign_id', pending.campaign_id); p.set('list_id', pending.list_id); }
             Object.keys(extra || {}).forEach(function (k) { p.set(k, extra[k]); });
             return p.toString();
         }
@@ -438,7 +443,7 @@ Auth::checkAccess(9);
             l.value = keep;
         }
         function limaDate(offset) { var d = new Date(Date.now() + offset * 86400000); return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); }
-        function quick(from, to) { form.elements.from.value = from; form.elements.to.value = to; page = 1; load(); }
+        function quick(from, to) { document.getElementById('scope').textContent = ''; form.elements.from.value = from; form.elements.to.value = to; page = 1; load(); }
         var q = document.getElementById('quick');
         [['Hoy', 0, 0], ['Ayer', -1, -1], ['Últimos 7 días', -6, 0], ['Últimos 30 días', -29, 0]].forEach(function (x) { var b = el('button', 'btn-action', x[0]); b.type = 'button'; b.addEventListener('click', function () { quick(limaDate(x[1]), limaDate(x[2])); }); q.appendChild(b); });
         var all = el('button', 'btn-action', 'Todo el historial'); all.type = 'button'; all.addEventListener('click', function () { quick('', ''); }); q.appendChild(all);
@@ -449,15 +454,24 @@ Auth::checkAccess(9);
                 .then(function (r) { return r.json().then(function (j) { if (!r.ok || !j.ok) throw new Error(j.error || 'Error'); return j; }); })
                 .then(function (j) {
                     document.getElementById('error').textContent = '';
-                    if (!optionsLoaded) fillOptions(j.options);
+                    if (!optionsLoaded) {
+                        fillOptions(j.options);
+                        if (pending) {
+                            var camp = j.options.filter(function (o) { return String(o.campaign_id) === pending.campaign_id; })[0], lst = camp && camp.lists.filter(function (x) { return String(x.list_id) === pending.list_id; })[0];
+                            if (!lst) { pending = null; load(); return; } // lista inexistente o de otra campaña: comportamiento normal
+                            document.getElementById('f_campaign').value = pending.campaign_id; fillLists(); document.getElementById('f_list').value = pending.list_id;
+                            document.getElementById('scope').textContent = 'Mostrando toda la vida de la lista «' + lst.name + '» (sin límite de fechas, con los contactos aún sin llamar). Elige fechas y pulsa Aplicar para acotar.';
+                            pending = null;
+                        }
+                    }
                     var r = j.report, x = j.extra;
                     notes(j); contactsTotal(j.contacts); compareLists(j.contacts); zypadVsAmd(j.zypad_amd); kpis(r.kpi); trend(x && x.by_day); comparatives(r); sumTable(j.summary);
                     dialmodes(j.dialmodes); if (x) { funnel(x.funnel); sip(x.sip); amd(x.amd_by_cause); carriers(x.by_carrier); matrix(x.by_weekday_hour); attempts(x.attempts_per_lead); cumul(x.first_contact_attempt); }
                     xfer(r.transfers); detail(r.detail);
                 })
-                .catch(function (e) { var b = document.getElementById('error'); b.textContent = ''; b.appendChild(el('p', 'rep-error', 'No se pudo cargar el informe: ' + e.message)); });
+                .catch(function (e) { if (pending) { pending = null; load(); return; } var b = document.getElementById('error'); b.textContent = ''; b.appendChild(el('p', 'rep-error', 'No se pudo cargar el informe: ' + e.message)); });
         }
-        form.addEventListener('submit', function (e) { e.preventDefault(); page = 1; load(); });
+        form.addEventListener('submit', function (e) { e.preventDefault(); document.getElementById('scope').textContent = ''; page = 1; load(); });
         document.getElementById('f_campaign').addEventListener('change', fillLists);
         document.getElementById('prev').addEventListener('click', function () { if (page > 1) { page--; load(); } });
         document.getElementById('next').addEventListener('click', function () { if (page < lastPages) { page++; load(); } });

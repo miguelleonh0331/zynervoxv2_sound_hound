@@ -157,7 +157,7 @@ try {
                     <tr>
                         <td><strong><?php echo (int)$l['list_id']; ?></strong></td>
                         <td><a href="campaigns.php?id=<?php echo $cid; ?>">#<?php echo $cid; ?> <?php echo h($campaigns[$cid]['name'] ?? ''); ?></a></td>
-                        <td><?php echo h($l['name']); ?></td>
+                        <td><a href="reports.php?campaign_id=<?php echo $cid; ?>&amp;list_id=<?php echo (int)$l['list_id']; ?>"><?php echo h($l['name']); ?></a></td>
                         <td><?php echo (int)$l['active'] ? 'Sí' : 'No'; ?></td>
                         <td><?php echo (int)$l['leads_count']; ?></td>
                         <td><?php echo ($l['dial_prefix'] ?? '') === '' ? '—' : h(($origins[$l['dial_prefix']] ?? '') . ' (' . $l['dial_prefix'] . ')'); ?></td>
