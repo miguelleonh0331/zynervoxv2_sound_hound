@@ -190,7 +190,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
                 !nd ? 'Calculando…' : nd.no_data ? 'Sin datos: ' + nd.called + ' de ' + nd.min_called + ' contactos llamados mínimos' : String(n0(nd.pct)).replace('.', ',') + ' % humanos · ' + nd.label)); gs.appendChild(big);
             var mini = el('div', 'gcol mini'); mini.appendChild(el('div', 'cap', 'Últimas 10 llamadas'));
             var nd10 = !l10 || l10.no_data, h10 = l10 ? n0(l10.human) : 0;
-            mini.appendChild(needleGauge(l.list_id + '_10', ins, nd10, l10 && l10.calls ? 100 * h10 / l10.calls : 0, 84,
+            mini.appendChild(needleGauge(l.list_id + '_10', ins, nd10, l10 && l10.calls ? 100 * h10 / l10.calls : 0, 96,
                 nd10 ? 'Sin datos' : h10 + (h10 === 1 ? ' humano' : ' humanos') + ' en las últimas 10')); gs.appendChild(mini);
             temp.appendChild(gs); card.appendChild(temp);
 
