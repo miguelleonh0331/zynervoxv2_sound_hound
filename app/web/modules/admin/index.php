@@ -125,11 +125,11 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
                     var canvas = document.createElement('canvas');
                     var g = new RadialGauge({
                         renderTo: canvas, width: 124, height: 124, units: '% humanos', minValue: 0, maxValue: o.max, value: value, majorTicks: o.ticks, minorTicks: 5, strokeTicks: true,
-                        highlights: o.hl, highlightsWidth: 8, startAngle: 60, ticksAngle: 240, valueBox: false, needle: !noData,
+                        highlights: o.hl, highlightsWidth: 12, startAngle: 60, ticksAngle: 240, valueBox: false, needle: !noData,
                         colorPlate: '#fdfdfd', colorPlateEnd: '#e6e8ec', colorMajorTicks: '#1f2937', colorMinorTicks: '#4b5563', colorNumbers: '#1f2937', colorUnits: '#4b5563',
-                        borders: true, borderShadowWidth: 0, borderOuterWidth: 4, borderMiddleWidth: 2, borderInnerWidth: 1, colorBorderOuter: '#c9ced6', colorBorderOuterEnd: '#59616e', colorBorderMiddle: '#eef0f3', colorBorderMiddleEnd: '#8b93a0', colorBorderInner: '#fafafa', colorBorderInnerEnd: '#d7dbe1',
-                        needleType: 'arrow', needleWidth: 2, needleStart: 0, needleEnd: 82, needleCircleSize: 6, needleCircleOuter: true, needleCircleInner: false, needleShadow: true, colorNeedle: '#dc2626', colorNeedleEnd: '#7f1d1d', colorNeedleShadowDown: 'rgba(0,0,0,.45)', colorNeedleCircleOuter: '#d1d5db', colorNeedleCircleOuterEnd: '#374151',
-                        fontNumbersSize: 15, fontUnitsSize: 11, animation: true, animationDuration: 600, animationRule: 'linear'
+                        borders: true, borderShadowWidth: 0, borderOuterWidth: 6, borderMiddleWidth: 3, borderInnerWidth: 2, colorBorderOuter: '#c9ced6', colorBorderOuterEnd: '#59616e', colorBorderMiddle: '#eef0f3', colorBorderMiddleEnd: '#8b93a0', colorBorderInner: '#fafafa', colorBorderInnerEnd: '#d7dbe1',
+                        needleType: 'arrow', needleWidth: 3, needleStart: 0, needleEnd: 82, needleCircleSize: 9, needleCircleOuter: true, needleCircleInner: false, needleShadow: true, colorNeedle: '#dc2626', colorNeedleEnd: '#7f1d1d', colorNeedleShadowDown: 'rgba(0,0,0,.45)', colorNeedleCircleOuter: '#d1d5db', colorNeedleCircleOuterEnd: '#374151',
+                        fontNumbersSize: 28, fontUnitsSize: 20, animation: true, animationDuration: 600, animationRule: 'linear'
                     });
                     g.draw(); ent = GAUGES[listId] = { g: g, key: key, canvas: canvas, value: value };
                 } else if (ent.value !== value) { ent.g.value = value; ent.value = value; }
