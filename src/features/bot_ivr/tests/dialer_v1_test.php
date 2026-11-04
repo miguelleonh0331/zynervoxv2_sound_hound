@@ -238,6 +238,18 @@ $ag = $pdo->query("SELECT decided_ms,audio_path,audio_seconds,total_analysis_tim
 check('AGI de auditoría: guarda ms, audio, duración y los 9 parámetros efectivos', (int)$ag['decided_ms'] === 1730 && (float)$ag['audio_seconds'] === 4.5 && $ag['audio_path'] === MARCADOR_RECORDINGS_DIR.'zv2-a1.wav' && (int)$ag['total_analysis_time'] === 8000 && $res['params_stored'] === true);
 check('AGI de auditoría: rechaza call_id y rutas fuera de la carpeta del marcador', throws(fn() => marcador_amd_audit_agi_apply($repo, ['audit', 'a;b'])) !== '' && throws(fn() => marcador_amd_audit_agi_apply($repo, ['audit', 'zv2-a1', '10', '/etc/passwd.wav'])) !== '' && throws(fn() => marcador_amd_audit_agi_apply($repo, ['audit', 'zv2-a1', '10', MARCADOR_RECORDINGS_DIR.'../x.wav'])) !== '');
 check('AGI de auditoría: sin audio ni parámetros completos no pisa nada', marcador_amd_audit_agi_apply($repo, ['audit', 'zv2-a1', '1800', '', '0', '1', '2'])['params_stored'] === false && (int)$pdo->query("SELECT total_analysis_time FROM zynervox_bot_amd_audit WHERE call_id='zv2-a1'")->fetchColumn() === 8000 && (int)$pdo->query("SELECT decided_ms FROM zynervox_bot_amd_audit WHERE call_id='zv2-a1'")->fetchColumn() === 1800);
+// Race: the sync marks no_audio, then the AGI delivers the recording; and header-only wav
+$mk('zv2-a4', 'AMD_MACHINE', 'MACHINE', 'MAXWORDS', null);
+marcador_amd_audit_open($repo, ['call_id'=>'zv2-a4', 'list_id'=>5000, 'lead_id'=>5004], $ap, marcador_amd_params($repo, $ap));
+marcador_amd_audit_sync($repo);
+$late = $tmp.'/late.wav'; file_put_contents($late, str_repeat("\0", 44));
+check('la sync deja no_audio si aún no hay grabación', $pdo->query("SELECT stt_status FROM zynervox_bot_amd_audit WHERE call_id='zv2-a4'")->fetchColumn() === 'no_audio');
+$lateRel = MARCADOR_RECORDINGS_DIR.'zv2-a4.wav';
+$pdo->prepare("UPDATE zynervox_bot_amd_audit SET audio_path=NULL WHERE call_id='zv2-a4'")->execute();
+$repo->recordAmdAudit('zv2-a4', ['audio_path'=>$late]);
+check('si la grabación llega después, pasa a pendiente', $pdo->query("SELECT stt_status FROM zynervox_bot_amd_audit WHERE call_id='zv2-a4'")->fetchColumn() === 'pending');
+marcador_stt_run($repo, ['name'=>'fake', 'command'=>[$fake], 'timeout'=>10], 50, true);
+check('un wav con solo cabecera no se transcribe', $pdo->query("SELECT stt_status FROM zynervox_bot_amd_audit WHERE call_id='zv2-a4'")->fetchColumn() === 'no_audio');
 array_map('unlink', glob($tmp.'/*')); @rmdir($tmp);
 // Detection-only campaign (test stage): no trunk and no destination is valid, half-configured is not
 $det = bot_cfg_save($repo, null, ['name'=>'Solo detectar', 'active'=>'1', 'call_origin'=>'7307', 'max_channels'=>'1', 'amd_enabled'=>'1']);

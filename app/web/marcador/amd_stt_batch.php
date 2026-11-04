@@ -68,6 +68,7 @@ function marcador_stt_run(\ZynervoxQueries\BotIvrRepository $repo, ?array $engin
         $path = (string)$a['audio_path'];
         $real = str_contains($path, '..') ? false : realpath($path);
         if ($real === false || !is_file($real) || !is_readable($real)) { $repo->saveSttResult((int)$a['audit_id'], 'error', '', $engine['name'], 'Audio no disponible.', null); $r['errors']++; continue; }
+        if (filesize($real) <= 44) { $repo->saveSttResult((int)$a['audit_id'], 'no_audio', '', $engine['name'], 'Grabación sin audio (solo cabecera).', 0.0); continue; } // header-only wav: nothing to transcribe
         [$text, $error] = marcador_stt_transcribe($engine, $real);
         $seconds = marcador_audio_seconds($real);
         if ($error !== '') { $repo->saveSttResult((int)$a['audit_id'], 'error', '', $engine['name'], $error, $seconds); $r['errors']++; }

@@ -200,6 +200,8 @@ trait CampaignConfigQueries {
         if (!$set) return;
         $vals[] = $callId;
         $this->db->prepare('UPDATE zynervox_bot_amd_audit SET '.implode(',', $set).' WHERE call_id=?')->execute($vals);
+        // The AGI can deliver the recording after the sync already marked the call 'no_audio': give it a chance to be transcribed.
+        if (isset($data['audio_path'])) $this->db->prepare("UPDATE zynervox_bot_amd_audit SET stt_status='pending' WHERE call_id=? AND stt_status='no_audio' AND audit_state='ready'")->execute([$callId]);
     }
     /** Closes the loop for finished calls: drops rows of calls never answered, copies result, cause, attempt id and recording path for the answered ones. */
     public function syncAmdAudit(): array {
