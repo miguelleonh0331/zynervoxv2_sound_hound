@@ -80,7 +80,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         .dist-list li.hot { background: #ecfdf5; border-left-color: #10b981; font-weight: 700; animation: hotbeat 2s ease-in-out infinite; }
         @keyframes hotbeat { 0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,.0); } 50% { box-shadow: 0 0 0 3px rgba(16,185,129,.35); } }
         .chan { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; font-size: 0.78rem; margin: 0.4rem 0; }
-        .chan select { padding: 2px 6px; font-weight: 700; }
+        .chan select { width: auto; min-width: 4.5rem; padding: 2px 6px; font-weight: 700; }
         @media (prefers-reduced-motion: reduce) { .live .pulse, .live .bar.progress > span, .live .needle-wrap canvas, .live .tag.run, .dist-list li.hot { animation: none; } .bar > span { transition: none; } }
     </style>
 </head>
