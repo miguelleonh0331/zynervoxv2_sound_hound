@@ -9,6 +9,7 @@ mysql zynervox_core < "$source_root/src/features/bot_ivr/models/016-dialer-amd-s
 mysql zynervox_core < "$source_root/src/features/bot_ivr/models/017-dialer-list-state.sql"
 mysql zynervox_core < "$source_root/src/features/bot_ivr/models/018-amd-audit.sql"
 mysql zynervox_core < "$source_root/src/features/bot_ivr/models/019-amd-global-summary-indexes.sql"
+mysql zynervox_core < "$source_root/src/features/bot_ivr/models/020-amd-contact-audio.sql"
 mysql <<'SQL'
 GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_dial_runs TO 'zynervoxv2_bot_ivr'@'localhost';
 GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_dial_runs TO 'zynervoxv2_bot_ivr'@'127.0.0.1';
