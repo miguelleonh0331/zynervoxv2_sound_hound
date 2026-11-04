@@ -163,14 +163,15 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         }
 
         function fpct(v) { return String(v).replace('.', ','); }
+        function rpct(v, t) { return t > 0 ? (Math.round(1000 * v / t) / 10).toFixed(1) : '0.0'; } // porcentaje real redondeado, sin ajustar para cuadrar
         // Barra única: el 100 % son los contactos de la lista; cada contacto cuenta una vez, por su último resultado.
         function distBlock(card, d) {
             card.appendChild(el('div', 'dist-title', 'Qué pasó con los ' + d.contacts + ' contactos'));
             var bar = el('div', 'bar dist'); bar.setAttribute('role', 'img'); bar.setAttribute('aria-label', 'Contactos por resultado');
-            CATS.forEach(function (c) { var v = n0(d.counts[c[0]]); if (v) { var sp = el('span'); sp.style.width = n0(d.pct[c[0]]) + '%'; sp.style.background = c[2]; sp.title = c[1] + ': ' + v + ' (' + fpct(d.pct[c[0]]) + ' %)'; bar.appendChild(sp); } });
+            CATS.forEach(function (c) { var v = n0(d.counts[c[0]]); if (v) { var sp = el('span'); sp.style.width = (100 * v / d.contacts) + '%'; sp.style.background = c[2]; sp.title = c[1] + ': ' + v + ' (' + fpct(rpct(v, d.contacts)) + ' %)'; bar.appendChild(sp); } });
             card.appendChild(bar);
             var ul = el('ul', 'dist-list');
-            CATS.forEach(function (c) { var v = n0(d.counts[c[0]]); var li = el('li', v ? '' : 'zero'), i = el('i'); i.style.background = c[2]; li.appendChild(i); li.appendChild(el('span', '', c[1])); li.appendChild(el('span', 'n', String(v))); li.appendChild(el('span', 'p', fpct(n0(d.pct[c[0]]).toFixed(1)) + ' %')); ul.appendChild(li); });
+            CATS.forEach(function (c) { var v = n0(d.counts[c[0]]); if (!v) return; var li = el('li'), i = el('i'); i.style.background = c[2]; li.appendChild(i); li.appendChild(el('span', '', c[1])); li.appendChild(el('span', 'n', String(v))); li.appendChild(el('span', 'p', fpct(rpct(v, d.contacts)) + ' %')); ul.appendChild(li); });
             card.appendChild(ul);
         }
 
