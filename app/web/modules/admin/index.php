@@ -54,9 +54,15 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         .bar.progress > span { background: #3b82f6; }
         .live .bar.progress > span { background-image: linear-gradient(45deg, rgba(255,255,255,.25) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.25) 50%, rgba(255,255,255,.25) 75%, transparent 75%); background-size: 16px 16px; animation: move 1s linear infinite; }
         @keyframes move { to { background-position: 16px 0; } }
-        .rates { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin: 0.5rem 0; }
         .rate { font-size: 0.72rem; color: var(--text-muted); }
-        .rate strong { font-size: 1.15rem; color: var(--text); }
+        .rate strong { color: var(--text); }
+        .dist-title { font-size: 0.8rem; font-weight: 700; margin: 0.6rem 0 0.25rem; }
+        .bar.dist { height: 14px; border-radius: 3px; }
+        .dist-list { list-style: none; margin: 0.4rem 0; padding: 0; font-size: 0.78rem; }
+        .dist-list li { display: grid; grid-template-columns: 12px 1fr auto auto; gap: 0.4rem; align-items: center; padding: 1px 0; }
+        .dist-list i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+        .dist-list .n { font-weight: 700; text-align: right; min-width: 2.5rem; } .dist-list .p { color: var(--text-muted); text-align: right; min-width: 3.4rem; }
+        .dist-list li.zero { opacity: 0.55; }
         .legend { display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.68rem; color: var(--text-muted); }
         .legend i { display: inline-block; width: 9px; height: 9px; margin-right: 3px; border-radius: 2px; }
         .pace { font-size: 0.75rem; color: var(--text-muted); margin: 0.4rem 0; }
@@ -88,9 +94,10 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         var CSRF = <?php echo json_encode($_SESSION['dashboard_csrf']); ?>;
         var API = 'dashboard_api.php';
         var busy = false, timer = null;
-        var COLORS = { human: '#10b981', machine: '#6366f1', not_sure: '#a78bfa', unavailable: '#f59e0b', no_answer: '#9ca3af', failed: '#ef4444' };
-        var NAMES = { human: 'Humano', machine: 'Contestadora', not_sure: 'No seguro', unavailable: 'No disponible', no_answer: 'Sin respuesta', failed: 'Fallidas' };
-        var KEYS = ['human', 'machine', 'not_sure', 'unavailable', 'no_answer', 'failed'];
+        // Categorías por contacto, en el orden y con los colores del contrato (Distribución por contacto).
+        var CATS = [['humano', 'Humano', '#10b981'], ['casilla_voz', 'Casilla de voz', '#3b82f6'], ['no_seguro', 'No seguro', '#8b5cf6'], ['contestada_sin_amd', 'Contestada sin AMD', '#38bdf8'],
+            ['no_disponible', 'No disponible', '#f59e0b'], ['sin_respuesta', 'Sin respuesta', '#6b7280'], ['ocupado', 'Ocupado', '#f97316'], ['errores', 'Errores', '#ef4444'],
+            ['en_llamada', 'En llamada', '#1e3a8a'], ['sin_llamar', 'Sin llamar', '#d1d5db']];
         var TEMP = { 'Caliente': 'hot', 'Tibia': 'warm', 'Fría': 'cold' };
         var SVGNS = 'http://www.w3.org/2000/svg';
 
@@ -115,9 +122,9 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             var hl = noData ? [{ from: 0, to: max, color: '#9ca3af' }] : [{ from: 0, to: warm, color: '#3b82f6' }, { from: warm, to: hot, color: '#f59e0b' }, { from: hot, to: max, color: '#16a34a' }];
             return { max: max, ticks: ticks, hl: hl };
         }
-        function needleGauge(listId, ins, totals) {
-            var th = ins.thresholds || {}, calls = n0(totals.calls), noData = ins.temperature === 'Sin datos' || !n0(th.hot_human_pct);
-            var o = gaugeOptions(ins, noData), key = JSON.stringify([o.max, o.ticks, o.hl, noData]), value = noData ? 0 : n0(ins.rates_pct && ins.rates_pct.human);
+        function needleGauge(listId, ins, nd) {
+            var th = ins.thresholds || {}, noData = !nd || nd.no_data || !n0(th.hot_human_pct);
+            var o = gaugeOptions(ins, noData), key = JSON.stringify([o.max, o.ticks, o.hl, noData]), value = noData ? 0 : n0(nd.pct);
             var wrap = el('div', 'needle-wrap'), ent = GAUGES[listId];
             if (typeof RadialGauge === 'undefined') { wrap.appendChild(el('div', 'needle-text', 'No se pudo cargar el medidor.')); }
             else {
@@ -136,8 +143,8 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
                 } else if (ent.value !== value) { ent.g.value = value; ent.value = value; }
                 ent.seen = true; wrap.appendChild(ent.canvas);
             }
-            var txt = noData ? 'Sin datos: ' + calls + ' de ' + n0(th.min_calls) + ' llamadas mínimas'
-                : String(n0(ins.rates_pct && ins.rates_pct.human)).replace('.', ',') + ' % humanos, ' + n0(totals.human) + ' de ' + calls;
+            var txt = !nd ? 'Calculando…' : noData ? 'Sin datos: ' + nd.called + ' de ' + nd.min_called + ' contactos llamados mínimos'
+                : String(n0(nd.pct)).replace('.', ',') + ' % humanos · ' + nd.label;
             wrap.appendChild(el('div', 'needle-text', txt)); return wrap;
         }
         function sweepGauges() { Object.keys(GAUGES).forEach(function (k) { if (!GAUGES[k].seen) { try { GAUGES[k].g.destroy(); } catch (e) {} delete GAUGES[k]; } else GAUGES[k].seen = false; }); }
@@ -155,10 +162,16 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             post(action, c, l).then(refresh).catch(function (e) { showNotice(e.message, 'dash-error'); refresh(); });
         }
 
-        function stackBar(t) {
-            var bar = el('div', 'bar'), total = Math.max(1, t.calls);
-            KEYS.forEach(function (k) { var v = t[k] || 0; if (v) { var s = el('span'); s.style.width = (100 * v / total) + '%'; s.style.background = COLORS[k]; s.title = NAMES[k] + ': ' + v; bar.appendChild(s); } });
-            return bar;
+        function fpct(v) { return String(v).replace('.', ','); }
+        // Barra única: el 100 % son los contactos de la lista; cada contacto cuenta una vez, por su último resultado.
+        function distBlock(card, d) {
+            card.appendChild(el('div', 'dist-title', 'Qué pasó con los ' + d.contacts + ' contactos'));
+            var bar = el('div', 'bar dist'); bar.setAttribute('role', 'img'); bar.setAttribute('aria-label', 'Contactos por resultado');
+            CATS.forEach(function (c) { var v = n0(d.counts[c[0]]); if (v) { var sp = el('span'); sp.style.width = n0(d.pct[c[0]]) + '%'; sp.style.background = c[2]; sp.title = c[1] + ': ' + v + ' (' + fpct(d.pct[c[0]]) + ' %)'; bar.appendChild(sp); } });
+            card.appendChild(bar);
+            var ul = el('ul', 'dist-list');
+            CATS.forEach(function (c) { var v = n0(d.counts[c[0]]); var li = el('li', v ? '' : 'zero'), i = el('i'); i.style.background = c[2]; li.appendChild(i); li.appendChild(el('span', '', c[1])); li.appendChild(el('span', 'n', String(v))); li.appendChild(el('span', 'p', fpct(n0(d.pct[c[0]]).toFixed(1)) + ' %')); ul.appendChild(li); });
+            card.appendChild(ul);
         }
 
         function listCard(c, l) {
@@ -170,21 +183,17 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
 
             var temp = el('div', 'temp ' + (TEMP[ins.temperature] || ''));
             temp.appendChild(el('span', 't-name', ins.temperature || 'Sin datos')); temp.appendChild(el('span', 't-advice', ins.recommendation || 'Seguir'));
-            var ng = needleGauge(l.list_id, ins, l.totals); ng.style.flexBasis = '100%'; temp.appendChild(ng); card.appendChild(temp);
+            var dist = l.distribution, ng = needleGauge(l.list_id, ins, dist && dist.needle); ng.style.flexBasis = '100%'; temp.appendChild(ng); card.appendChild(temp);
 
             var why = l.reason || (l.started ? 'Marcando' : '');
             if (why) card.appendChild(el('div', 'reason' + (l.reason ? '' : ' ok'), why));
 
-            var rt = el('div', 'rates');
-            [['Humano', rates.human], ['Contestadora', rates.machine], ['Contacto', rates.contact]].forEach(function (x) { var d = el('div', 'rate', x[0]); d.insertBefore(el('strong', '', (x[1] == null ? 0 : x[1]) + ' %'), d.firstChild); d.insertBefore(el('br'), d.childNodes[1]); rt.appendChild(d); });
-            card.appendChild(rt);
+            if (dist) distBlock(card, dist); else card.appendChild(el('div', 'g-sub', 'Calculando el resumen de contactos…'));
 
-            card.appendChild(el('div', 'rate', 'Resultados (' + l.totals.calls + ' llamadas)')); card.appendChild(stackBar(l.totals));
-            var lg = el('div', 'legend'); KEYS.forEach(function (k) { var s = el('span'); var i = el('i'); i.style.background = COLORS[k]; s.appendChild(i); s.appendChild(document.createTextNode(NAMES[k] + ' ' + (l.totals[k] || 0))); lg.appendChild(s); }); card.appendChild(lg);
-
-            card.appendChild(el('div', 'pace', 'Ritmo: ' + (pace.calls_last_15min || 0) + ' llamadas en 15 min (' + (pace.calls_per_min || 0) + '/min) · Canales ' + l.open_calls + ' / ' + l.channels));
-            var pb = el('div', 'bar progress'), pf = el('span'); pf.style.width = l.progress_pct + '%'; pb.appendChild(pf); card.appendChild(pb);
-            card.appendChild(el('div', 'rate', 'Avance ' + l.progress_pct + ' % · ' + l.totals.not_called + ' de ' + l.totals.contacts + ' contactos sin llamar'));
+            card.appendChild(el('div', 'pace', 'Intentos: ' + l.totals.calls + ' en total · ' + (pace.calls_last_15min || 0) + ' intentos en 15 min (' + (pace.calls_per_min || 0) + '/min) · Canales ' + l.open_calls + ' / ' + l.channels));
+            var called = dist ? dist.contacts - n0(dist.counts.sin_llamar) : 0, av = dist && dist.contacts ? Math.round(1000 * called / dist.contacts) / 10 : l.progress_pct;
+            var pb = el('div', 'bar progress'), pf = el('span'); pf.style.width = av + '%'; pb.appendChild(pf); card.appendChild(pb);
+            card.appendChild(el('div', 'rate', dist ? 'Avance: ' + called + ' de ' + dist.contacts + ' contactos ya llamados (' + fpct(av) + ' %)' : 'Avance ' + l.progress_pct + ' %'));
 
             var ac = el('div', 'actions');
             var go = el('button', 'btn-action', l.started ? 'Detener' : 'Iniciar'); go.type = 'button';
@@ -194,7 +203,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
                 go.addEventListener('click', function () { act('start', c.campaign_id, l.list_id, 'Al iniciar, el marcador empezará a llamar de verdad a los contactos de la lista «' + l.name + '». ¿Continuar?'); });
             }
             ac.appendChild(go); card.appendChild(ac);
-            if (ins.thresholds_provisional && ins.thresholds) card.appendChild(el('div', 'foot', 'Umbrales provisionales (según % de humanos): Caliente ≥ ' + ins.thresholds.hot_human_pct + ' %, Tibia ≥ ' + ins.thresholds.warm_human_pct + ' %, Fría por debajo; con menos de ' + ins.thresholds.min_calls + ' llamadas, Sin datos.'));
+            if (ins.thresholds_provisional && ins.thresholds) card.appendChild(el('div', 'foot', 'Umbrales provisionales (según % de humanos entre contactos llamados): Caliente ≥ ' + ins.thresholds.hot_human_pct + ' %, Tibia ≥ ' + ins.thresholds.warm_human_pct + ' %, Fría por debajo; con menos de ' + ins.thresholds.min_called_contacts + ' contactos llamados, Sin datos.'));
             return card;
         }
 

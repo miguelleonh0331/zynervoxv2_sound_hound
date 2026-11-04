@@ -49,7 +49,24 @@ Auth::checkAccess(9);
         table.matrix td { min-width: 34px; height: 30px; text-align: center; border-radius: 2px; color: #fff; }
         table.matrix td.empty { background: var(--glass); color: transparent; }
         table.matrix td.low { opacity: 0.35; }
-        @media (max-width: 600px) { .panels { grid-template-columns: 1fr; } .hbar { grid-template-columns: 6.5rem 1fr 6.5rem; } }
+        .big { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.6rem; margin: 0.5rem 0 0.8rem; }
+        .big .c { background: var(--bg-card); border: 1px solid var(--border); border-top: 5px solid var(--kc); border-radius: 2px; padding: 0.6rem 0.75rem; }
+        .big .c .num { font-size: 2.1rem; font-weight: 800; line-height: 1.1; }
+        .big .c .nm { font-size: 0.85rem; font-weight: 700; } .big .c .pc { font-size: 0.8rem; color: var(--text-muted); }
+        .big .c.zero { opacity: 0.55; } .big .c.zero .num { font-size: 1.4rem; }
+        .stack { display: flex; height: 30px; border-radius: 3px; overflow: hidden; background: var(--glass); }
+        .stack span { display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; }
+        .stack span.lt { color: #1f2937; }
+        .cmp { display: grid; grid-template-columns: minmax(8rem, 15rem) 1fr minmax(8rem, 13rem); gap: 0.6rem; align-items: center; margin: 0.4rem 0; font-size: 0.8rem; }
+        .cmp .stack { height: 22px; } .cmp .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; } .cmp .nm small { display: block; font-weight: 400; color: var(--text-muted); font-size: 0.68rem; }
+        .cmp .rt { font-size: 0.74rem; color: var(--text-muted); } .cmp .rt strong { color: var(--text); font-size: 0.85rem; }
+        .key { display: flex; flex-wrap: wrap; gap: 0.2rem 0.8rem; font-size: 0.72rem; color: var(--text-muted); margin: 0.4rem 0 0.8rem; }
+        .key i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; }
+        .says { margin: 0.3rem 0 0.8rem; padding-left: 1.1rem; font-size: 0.88rem; line-height: 1.6; }
+        .says li strong { font-size: 1rem; }
+        details.tech { margin-top: 1.6rem; border: 1px solid var(--border); border-radius: 2px; padding: 0.4rem 0.9rem 0.9rem; }
+        details.tech > summary { cursor: pointer; font-weight: 700; font-size: 1rem; padding: 0.4rem 0; }
+        @media (max-width: 600px) { .cmp { grid-template-columns: 1fr; gap: 0.15rem; } { .panels { grid-template-columns: 1fr; } .hbar { grid-template-columns: 6.5rem 1fr 6.5rem; } }
     </style>
 </head>
 <body>
@@ -58,7 +75,7 @@ Auth::checkAccess(9);
         <header class="top-bar" style="margin-bottom: 1rem;">
             <div>
                 <h1 style="font-size: 1.25rem; font-weight: 700;">Reportes</h1>
-                <p style="color: var(--text-muted); font-size: 0.8125rem;">Resultados de llamadas para decidir · horas en Lima · «contacto humano» = el AMD detectó una persona</p>
+                <p style="color: var(--text-muted); font-size: 0.8125rem;">Qué pasó con tus contactos, sin tecnicismos · cada contacto cuenta una sola vez, por su último resultado · horas en Lima</p>
             </div>
         </header>
         <form class="filters" id="filters">
@@ -74,7 +91,29 @@ Auth::checkAccess(9);
         <div id="error"></div>
         <div class="notes" id="notes"></div>
 
-        <h2 class="sec">A · Resumen</h2>
+        <h2 class="sec">¿Qué pasó con mis contactos?</h2>
+        <p class="muted" id="contactnote"></p>
+        <section class="big" id="bigcats"></section>
+        <div id="bigbar"></div>
+
+        <h2 class="sec">Comparar listas</h2>
+        <p class="muted">Cada fila es una lista y su barra es el 100 % de sus contactos. Ordenadas de más a menos humanos entre los contactos ya llamados.</p>
+        <div id="cmpkey" class="key"></div>
+        <div id="cmprows"></div>
+        <div class="scroll" id="cmptable"></div>
+
+        <h2 class="sec">¿Zypad acierta más que el AMD con las casillas de voz?</h2>
+        <p class="muted">Zypad y el AMD son dos detectores de casillas de voz del marcador: Zypad escucha antes de que contesten y el AMD decide después. Aquí se cuentan contactos, no intentos.</p>
+        <div id="zypadbox"></div>
+
+        <h2 class="sec">¿Cuándo conviene llamar?</h2>
+        <p class="muted">Porcentaje de intentos contestados según el día y la hora (Lima). Más oscuro = contestan más. Las celdas apagadas tienen menos de <span id="minn"></span> intentos: no saques conclusiones de ellas. Esta tabla cuenta intentos, no contactos.</p>
+        <div class="scroll" id="matrix"></div>
+
+        <details class="tech">
+            <summary>Detalle técnico (intentos, códigos SIP, embudo)</summary>
+            <p class="muted">Aquí todo se cuenta en <strong>intentos</strong> (cada vez que se marca un número), no en contactos.</p>
+        <h2 class="sec">Resumen de intentos</h2>
         <section class="kpis" id="kpis"></section>
         <section class="panels">
             <div class="panel wide"><h3>Tendencia diaria</h3><p class="sub">Línea: % de llamadas contestadas y % con contacto humano (escala desde 0). Los puntos vacíos tienen muestra pequeña. Abajo, las llamadas de cada día.</p><div id="trend"></div></div>
@@ -83,7 +122,7 @@ Auth::checkAccess(9);
             <div class="panel wide"><h3>Resumen acumulado por lista</h3><p class="sub">Desde que la lista empezó a marcar (no depende del rango de fechas). Estado y totales de cada lista.</p><div class="scroll" id="sumtable"></div></div>
         </section>
 
-        <h2 class="sec">B · Diagnóstico</h2>
+        <h2 class="sec">Diagnóstico</h2>
         <section class="panels">
             <div class="panel"><h3>Embudo hasta el contacto</h3><p class="sub">Cada barra es el total de esa etapa; el % es sobre la etapa anterior. No es un embudo estricto: una contestadora no pasa a humano.</p><div id="funnel"></div></div>
             <div class="panel"><h3>Causas SIP por familia</h3><p class="sub">Barras ordenadas por número de llamadas.</p><div id="sip"></div><div class="scroll" id="sipcodes"></div></div>
@@ -92,21 +131,21 @@ Auth::checkAccess(9);
             <div class="panel wide" id="carrierbox" hidden><h3>Por troncal</h3><div class="scroll" id="carrier"></div></div>
         </section>
 
-        <h2 class="sec">C · Tipos de marcación</h2>
+        <h2 class="sec">Tipos de marcación (intentos)</h2>
         <section class="panels">
             <div class="panel wide"><h3>Solo AMD frente a Zypad</h3>
                 <p class="sub">Compara cada tipo con su N. En «sombra», Zypad escucha antes de contestar pero no corta: decide el AMD. «Tiempo ahorrado» es lo que el corte habría adelantado frente al momento de contestar, solo en llamadas donde Zypad oyó una palabra antes de contestar. Sin metas ni umbrales: son datos para comparar.</p>
                 <div class="scroll" id="dialmodes"></div></div>
         </section>
 
-        <h2 class="sec">D · Acción</h2>
+        <h2 class="sec">Reintentos y detalle</h2>
         <section class="panels">
-            <div class="panel wide"><h3>¿A qué hora conviene llamar?</h3><p class="sub">% de llamadas contestadas por día de la semana y hora (Lima). Más oscuro = más contestadas. Las celdas apagadas tienen menos de <span id="minn"></span> llamadas: no concluyas con ellas.</p><div class="scroll" id="matrix"></div></div>
             <div class="panel"><h3>Intentos por contacto</h3><p class="sub">Qué parte de los contactos de cada lista se llamó 1, 2, 3 o 4+ veces (100 % por lista).</p><div id="attempts"></div></div>
             <div class="panel"><h3>¿Vale la pena otro reintento?</h3><p class="sub">% acumulado de contactos alcanzados (contestó) según el número de intento. Si la curva casi no sube, el siguiente reintento rinde poco.</p><div id="cumul"></div></div>
             <div class="panel wide"><h3>Detalle de llamadas</h3><div class="scroll" id="detail"></div>
                 <div class="pager"><button type="button" class="btn-action" id="prev">Anterior</button><span id="pageinfo"></span><button type="button" class="btn-action" id="next">Siguiente</button></div></div>
         </section>
+        </details>
     </main>
     <script>
     (function () {
@@ -156,6 +195,70 @@ Auth::checkAccess(9);
             });
         }
 
+
+        // ---- Resultado por contacto (cada contacto cuenta una vez, por su último intento) ----
+        var CC = { humano: '#10b981', casilla_voz: '#3b82f6', no_seguro: '#8b5cf6', contestada_sin_amd: '#38bdf8', no_disponible: '#f59e0b', sin_respuesta: '#6b7280', ocupado: '#f97316', errores: '#ef4444', en_llamada: '#1e3a8a', sin_llamar: '#d1d5db' };
+        function fx(v) { return String(v).replace('.', ','); }
+        function stack(counts, pcts, cats, total) {
+            var bar = el('div', 'stack'); bar.setAttribute('role', 'img');
+            cats.forEach(function (c) {
+                var v = n(counts[c.key]); if (!v) return;
+                var p = n(pcts[c.key]), sp = el('span', c.key === 'sin_llamar' || c.key === 'contestada_sin_amd' ? 'lt' : '', p >= 9 ? fx(p) + ' %' : ''); sp.style.width = p + '%'; sp.style.background = CC[c.key];
+                sp.title = c.label + ': ' + v + ' de ' + total + ' contactos (' + fx(p) + ' %)'; bar.appendChild(sp);
+            });
+            return bar;
+        }
+        function keyOf(box, cats) { box.textContent = ''; cats.forEach(function (c) { var s = el('span'), i = el('i'); i.style.background = CC[c.key]; s.appendChild(i); s.appendChild(document.createTextNode(c.label)); box.appendChild(s); }); }
+        function contactsTotal(ct) {
+            var box = document.getElementById('bigcats'), bar = document.getElementById('bigbar'); box.textContent = ''; bar.textContent = '';
+            document.getElementById('contactnote').textContent = ct && ct.note ? ct.note : '';
+            if (!ct || !ct.total || !ct.total.contacts) { box.appendChild(el('p', 'muted', 'No hay contactos con resultado en este rango.')); return; }
+            var t = ct.total;
+            ct.categories.forEach(function (c) {
+                var v = n(t.counts[c.key]); if (!v && (c.key === 'sin_llamar' || c.key === 'en_llamada') && ct.source === 'attempts') return;
+                var k = el('div', 'c' + (v ? '' : ' zero')); k.style.setProperty('--kc', CC[c.key]);
+                k.appendChild(el('div', 'num', String(v))); k.appendChild(el('div', 'nm', c.label)); k.appendChild(el('div', 'pc', fx(n(t.pct[c.key]).toFixed(1)) + ' % de los contactos')); box.appendChild(k);
+            });
+            bar.appendChild(el('p', 'muted', t.contacts + ' contactos en total = 100 %'));
+            bar.appendChild(stack(t.counts, t.pct, ct.categories, t.contacts));
+        }
+        function compareLists(ct) {
+            var rows = document.getElementById('cmprows'), tb = document.getElementById('cmptable'); rows.textContent = ''; tb.textContent = '';
+            if (!ct || !ct.lists || !ct.lists.length) { rows.appendChild(el('p', 'muted', 'No hay listas con contactos en este rango.')); document.getElementById('cmpkey').textContent = ''; return; }
+            keyOf(document.getElementById('cmpkey'), ct.categories);
+            var ls = ct.lists.slice().sort(function (a, b) { return (a.needle.no_data - b.needle.no_data) || (n(b.needle.pct) - n(a.needle.pct)); });
+            ls.forEach(function (l) {
+                var r = el('div', 'cmp'), nm = el('div', 'nm', l.list); nm.title = l.list + ' · ' + l.campaign; nm.appendChild(el('small', '', l.campaign + (l.state_label ? ' · ' + l.state_label : '')));
+                r.appendChild(nm); r.appendChild(stack(l.counts, l.pct, ct.categories, l.contacts));
+                var rt = el('div', 'rt'), st = el('strong', '', l.needle.no_data ? 'Sin datos' : fx(n(l.needle.pct)) + ' % humanos');
+                rt.appendChild(st); rt.appendChild(document.createElement('br'));
+                rt.appendChild(document.createTextNode(l.contacts + ' contactos' + (l.needle.no_data ? '' : ' · ' + l.needle.human + ' humanos de ' + l.needle.called + ' llamados')));
+                if (l.contacts < MIN || l.needle.no_data) { rt.appendChild(document.createElement('br')); rt.appendChild(el('span', 'tag-small', 'pocos datos')); }
+                r.appendChild(rt); rows.appendChild(r);
+            });
+            var cols = ['humano', 'casilla_voz', 'no_seguro', 'sin_respuesta', 'ocupado', 'errores', 'sin_llamar'], lab = {}; ct.categories.forEach(function (c) { lab[c.key] = c.label; });
+            tb.appendChild(table(['Lista', 'Campaña', 'Contactos'].concat(cols.map(function (k) { return lab[k]; })),
+                ls.map(function (l) { return [l.list, l.campaign, l.contacts].concat(cols.map(function (k) { return n(l.counts[k]) + ' (' + fx(n(l.pct[k]).toFixed(1)) + ' %)'; })); })));
+        }
+        function zypadVsAmd(z) {
+            var box = document.getElementById('zypadbox'); box.textContent = '';
+            if (!z || !z.rows || !z.rows.length) { box.appendChild(el('p', 'muted', 'Todavía no hay contactos llamados con Zypad en este rango.')); return; }
+            z.rows.forEach(function (r) {
+                var h = el('h3', '', r.label + ' · ' + r.contacts + ' contactos'); h.style.margin = '0.5rem 0 0.2rem'; if (r.contacts < MIN) h.appendChild(el('span', 'tag-small', 'pocos datos')); box.appendChild(h);
+                var tot = n(r.ambos) + n(r.solo_zypad) + n(r.solo_amd), ul = el('ul', 'says');
+                function li(html) { var x = el('li'); html.forEach(function (p) { x.appendChild(typeof p === 'string' ? document.createTextNode(p) : p); }); ul.appendChild(x); }
+                function b(t) { return el('strong', '', t); }
+                if (!tot) { li(['Ningún contacto terminó en casilla de voz.']); }
+                else {
+                    li(['Zypad detectó ', b(n(r.casilla_zypad) + ' de ' + tot), ' casillas de voz antes de contestar.']);
+                    li(['El AMD detectó ', b(n(r.casilla_amd) + ' de ' + tot), ' casillas de voz.']);
+                    li(['Los dos coincidieron en ', b(String(n(r.ambos))), '; solo Zypad en ', b(String(n(r.solo_zypad))), ' y solo el AMD en ', b(String(n(r.solo_amd))), '.']);
+                }
+                if (n(r.solo_zypad_amd_humano)) li([b(String(n(r.solo_zypad_amd_humano))), ' contactos que Zypad tomó por casilla pero el AMD vio como humano: conviene revisarlos con la grabación.']);
+                box.appendChild(ul);
+            });
+        }
+
         function notes(d) {
             var box = document.getElementById('notes'); box.textContent = '';
             box.appendChild(el('p', '', 'Los resultados del AMD anteriores al 03/11/2026 15:31 (Lima) no son válidos y no se cuentan como humano/contestadora.'));
@@ -165,13 +268,13 @@ Auth::checkAccess(9);
 
         function kpis(k) {
             var box = document.getElementById('kpis'); box.textContent = ''; var calls = n(k.calls);
-            [['Llamadas', String(calls), 'en el rango', '#3b82f6'],
-             ['Contestadas', fp(n(k.answered), calls), 'sobre llamadas', '#3b82f6'],
+            [['Intentos', String(calls), 'en el rango', '#3b82f6'],
+             ['Contestadas', fp(n(k.answered), calls), 'sobre intentos', '#3b82f6'],
              ['Contacto humano', fp(n(k.human) + n(k.not_sure), calls), 'humano + no seguro, sobre llamadas', '#10b981'],
-             ['Contestadora', fp(n(k.machine), calls), 'sobre llamadas', '#6366f1'],
-             ['No disponible', fp(n(k.unavailable), calls), 'sobre llamadas', '#f59e0b'],
-             ['Sin respuesta', fp(n(k.no_answer), calls), 'sobre llamadas', '#9ca3af'],
-             ['Fallidas', fp(n(k.failed), calls), 'sobre llamadas', '#ef4444'],
+             ['Contestadora', fp(n(k.machine), calls), 'sobre intentos', '#6366f1'],
+             ['No disponible', fp(n(k.unavailable), calls), 'sobre intentos', '#f59e0b'],
+             ['Sin respuesta', fp(n(k.no_answer), calls), 'sobre intentos', '#9ca3af'],
+             ['Fallidas', fp(n(k.failed), calls), 'sobre intentos', '#ef4444'],
              ['Transferencias OK', fp(n(k.xfer_ok), n(k.xfer_ok) + n(k.xfer_fail)), 'sobre transferencias iniciadas', '#10b981']]
             .forEach(function (x) { var c = el('div', 'kpi'); c.style.setProperty('--kc', x[3]); c.appendChild(el('div', 'l', x[0])); c.appendChild(el('div', 'v', x[1].split(' (')[0])); c.appendChild(el('div', 'b', (x[1].indexOf('(') > 0 ? '(' + x[1].split(' (')[1] + ' · ' : '') + x[2])); box.appendChild(c); });
         }
@@ -347,7 +450,7 @@ Auth::checkAccess(9);
                     document.getElementById('error').textContent = '';
                     if (!optionsLoaded) fillOptions(j.options);
                     var r = j.report, x = j.extra;
-                    notes(j); kpis(r.kpi); trend(x && x.by_day); comparatives(r); sumTable(j.summary);
+                    notes(j); contactsTotal(j.contacts); compareLists(j.contacts); zypadVsAmd(j.zypad_amd); kpis(r.kpi); trend(x && x.by_day); comparatives(r); sumTable(j.summary);
                     dialmodes(j.dialmodes); if (x) { funnel(x.funnel); sip(x.sip); amd(x.amd_by_cause); carriers(x.by_carrier); matrix(x.by_weekday_hour); attempts(x.attempts_per_lead); cumul(x.first_contact_attempt); }
                     xfer(r.transfers); detail(r.detail);
                 })
