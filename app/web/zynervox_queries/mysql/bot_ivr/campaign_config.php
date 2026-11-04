@@ -185,6 +185,8 @@ trait CampaignConfigQueries {
         $out['attempts_per_lead'] = $q("SELECT t.list_id, LEAST(t.c,4) attempts, COUNT(*) leads FROM (SELECT a.list_id, a.lead_id, COUNT(*) c $from GROUP BY a.list_id, a.lead_id) t GROUP BY t.list_id, attempts ORDER BY t.list_id, attempts");
         $A = self::REPORT_ANSWERED;
         $out['first_contact_attempt'] = $q("SELECT m.n attempt_no, COUNT(*) leads FROM (SELECT x.lead_id, MIN(x.n) n FROM (SELECT a.lead_id, ROW_NUMBER() OVER (PARTITION BY a.lead_id ORDER BY a.attempt_id) n, ($A) ans $from) x WHERE x.ans=1 GROUP BY x.lead_id) m GROUP BY m.n ORDER BY m.n");
+        // By attempt number: ROW_NUMBER over each contact's finished attempts inside the filters (one pass, index list_id + attempt_id when filtering by list).
+        $out['by_attempt'] = $q("SELECT x.n attempt_no, COUNT(*) calls, COALESCE(SUM(x.ans),0) answered, COALESCE(SUM(x.hum),0) human FROM (SELECT ROW_NUMBER() OVER (PARTITION BY a.list_id, a.lead_id ORDER BY a.attempt_id) n, ($A) ans, (a.amd_status='HUMAN') hum $from) x GROUP BY x.n ORDER BY x.n");
         $out['by_sip_code'] = $q("SELECT COALESCE(REGEXP_SUBSTR(a.sip_cause, '[0-9]{3}'), '') code, a.disposition, COUNT(*) calls $from GROUP BY code, a.disposition ORDER BY calls DESC");
         $out['amd_by_cause'] = $q("SELECT a.amd_status, a.amd_cause, COUNT(*) calls $from AND a.amd_status<>''$valid GROUP BY a.amd_status, a.amd_cause ORDER BY calls DESC");
         $out['by_carrier'] = $q("SELECT a.carrier, $C $from GROUP BY a.carrier ORDER BY calls DESC");

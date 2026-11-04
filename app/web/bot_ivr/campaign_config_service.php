@@ -586,6 +586,7 @@ function bot_cfg_report_extra(\ZynervoxQueries\BotIvrRepository $db, array $filt
         'by_day'=>$x['by_day'], 'by_weekday_hour'=>$x['by_weekday_hour'],
         'funnel'=>['stages'=>$stages, 'leaks'=>$leaks],
         'attempts_per_lead'=>['total'=>$total, 'lists'=>$apl], 'first_contact_attempt'=>$fc,
+        'by_attempt'=>array_map(fn($r) => ['attempt_no'=>(int)$r['attempt_no'], 'calls'=>(int)$r['calls'], 'answered'=>(int)$r['answered'], 'human'=>(int)$r['human']], $x['by_attempt']),
         'sip'=>['families'=>$families, 'codes'=>$codes, 'partial'=>$partial > 0, 'partial_calls'=>$partial],
         'amd_by_cause'=>$x['amd_by_cause'], 'by_carrier'=>['multiple'=>count($carriers) > 1, 'rows'=>$carriers]];
 }
