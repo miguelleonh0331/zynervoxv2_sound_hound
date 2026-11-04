@@ -169,6 +169,62 @@ trait CampaignConfigQueries {
         $s->execute($params);
         return ['total'=>(int)$t->fetchColumn(), 'rows'=>$s->fetchAll(\PDO::FETCH_ASSOC)];
     }
+    // --- AMD parameters per campaign and AMD audit (migration 018). Logic and the STT batch live in app/web/marcador/. ---
+    private const AMD_PARAM_COLUMNS = ['initial_silence','greeting','after_greeting_silence','total_analysis_time','minimum_word_length','between_words_silence','maximum_number_of_words','silence_threshold','maximum_word_length'];
+    /** Stored parameters of the campaign (empty array when it has no row yet: the caller applies the defaults). */
+    public function campaignAmdParams(int $id): array {
+        try {
+            $s = $this->db->prepare('SELECT '.implode(',', self::AMD_PARAM_COLUMNS).' FROM zynervox_bot_campaign_amd_params WHERE campaign_id=?');
+            $s->execute([$id]);
+            $row = $s->fetch(\PDO::FETCH_ASSOC);
+            return $row ? array_map('intval', $row) : [];
+        } catch (\PDOException $e) { error_log('ZV2 amd_params (migración 018 pendiente?): '.$e->getMessage()); return []; } // never stops the dialing
+    }
+    public function setCampaignAmdParams(int $id, array $params): void {
+        $this->campaign($id);
+        $cols = self::AMD_PARAM_COLUMNS;
+        $sql = 'INSERT INTO zynervox_bot_campaign_amd_params (campaign_id,'.implode(',', $cols).') VALUES (?'.str_repeat(',?', count($cols)).') ON DUPLICATE KEY UPDATE '.implode(',', array_map(fn($c) => "$c=VALUES($c)", $cols));
+        $this->db->prepare($sql)->execute(array_merge([$id], array_map(fn($c) => $params[$c], $cols)));
+    }
+    /** Creates the audit row of a launched call with the parameter snapshot. Idempotent per call_id. */
+    public function openAmdAudit(array $call, int $campaignId, array $params): void {
+        $cols = self::AMD_PARAM_COLUMNS;
+        $sql = 'INSERT IGNORE INTO zynervox_bot_amd_audit (call_id,campaign_id,list_id,lead_id,'.implode(',', $cols).') VALUES (?,?,?,?'.str_repeat(',?', count($cols)).')';
+        $this->db->prepare($sql)->execute(array_merge([$call['call_id'], $campaignId, $call['list_id'], $call['lead_id']], array_map(fn($c) => $params[$c], $cols)));
+    }
+    /** Extra facts that arrive with the call (decided_ms, audio_path, audio_seconds). Only the given keys change. */
+    public function recordAmdAudit(string $callId, array $data): void {
+        $allowed = ['decided_ms','audio_path','audio_seconds','reviewed_class'];
+        $set = []; $vals = [];
+        foreach ($allowed as $k) if (array_key_exists($k, $data)) { $set[] = "$k=?"; $vals[] = $data[$k]; }
+        if (!$set) return;
+        $vals[] = $callId;
+        $this->db->prepare('UPDATE zynervox_bot_amd_audit SET '.implode(',', $set).' WHERE call_id=?')->execute($vals);
+    }
+    /** Closes the loop for finished calls: drops rows of calls never answered, copies result, cause, attempt id and recording path for the answered ones. */
+    public function syncAmdAudit(): array {
+        $answered = "(t.amd_status IN ('HUMAN','MACHINE','NOTSURE') OR t.disposition IN ('ANSWER_HUMAN','XFER_OK','XFER_FAIL'))";
+        $drop = $this->db->exec("DELETE u FROM zynervox_bot_amd_audit u JOIN zynervox_bot_call_attempts t ON t.call_id=u.call_id WHERE u.audit_state='open' AND t.finished_at IS NOT NULL AND NOT $answered");
+        $ready = $this->db->exec("UPDATE zynervox_bot_amd_audit u JOIN zynervox_bot_call_attempts t ON t.call_id=u.call_id
+            SET u.audit_state='ready', u.attempt_id=t.attempt_id, u.amd_status=t.amd_status, u.amd_cause=t.amd_cause,
+                u.audio_path=COALESCE(NULLIF(t.recording_path,''),u.audio_path),
+                u.stt_status=IF(COALESCE(NULLIF(t.recording_path,''),u.audio_path) IS NULL,'no_audio','pending')
+            WHERE u.audit_state='open' AND t.finished_at IS NOT NULL AND $answered");
+        return ['dropped'=>(int)$drop, 'ready'=>(int)$ready];
+    }
+    public function pendingSttAudits(int $limit): array {
+        $s = $this->db->prepare("SELECT audit_id,call_id,audio_path FROM zynervox_bot_amd_audit WHERE audit_state='ready' AND stt_status='pending' AND audio_path IS NOT NULL ORDER BY audit_id LIMIT ".max(1, min(500, $limit)));
+        $s->execute();
+        return $s->fetchAll(\PDO::FETCH_ASSOC);
+    }
+    public function countPendingSttAudits(): int {
+        return (int)$this->db->query("SELECT COUNT(*) FROM zynervox_bot_amd_audit WHERE audit_state='ready' AND stt_status='pending' AND audio_path IS NOT NULL")->fetchColumn();
+    }
+    public function saveSttResult(int $auditId, string $status, string $text, string $engine, string $error, ?float $seconds): void {
+        if (!in_array($status, ['done','error','no_audio'], true)) throw new \RuntimeException('Estado STT inválido.');
+        $this->db->prepare('UPDATE zynervox_bot_amd_audit SET stt_status=?,stt_text=?,stt_engine=?,stt_error=?,audio_seconds=COALESCE(?,audio_seconds),stt_at=UTC_TIMESTAMP() WHERE audit_id=?')
+            ->execute([$status, $status === 'done' ? $text : null, substr($engine, 0, 60), substr($error, 0, 255), $seconds, $auditId]);
+    }
     public function setDialerState(int $id, string $state, string $actor): void {
         if (!in_array($state, ['running','stopped'], true)) throw new \RuntimeException('Estado de marcador inválido.');
         $this->campaign($id);

@@ -8,12 +8,13 @@ $web = realpath(__DIR__.'/../../../../app/web');
 require_once $web.'/zynervox_queries/contracts/BotIvrRepository.php';
 require_once $web.'/zynervox_queries/mysql/bot_ivr/repository.php';
 require_once $web.'/bot_ivr/campaign_engine.php';
+require_once $web.'/marcador/amd_stt_batch.php';
 $pdo = new PDO('mysql:unix_socket=/var/lib/mysql/mysql.sock;dbname='.$database.';charset=utf8mb4', 'root', '', [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
 $repo = new ZynervoxQueries\Mysql\BotIvr\Repository($pdo);
 $fail = 0;
 function check(string $what, bool $ok): void { global $fail; echo ($ok ? 'ok   ' : 'FAIL ').$what."\n"; if (!$ok) $fail++; }
 function throws(callable $f): string { try { $f(); } catch (Throwable $e) { return $e->getMessage(); } return ''; }
-foreach (['call_events','ivr_results','call_attempts','list','lists','campaign_headers','campaign_retry_rules','campaign_sip_rules','campaign_amd_actions','campaign_schedules','campaigns'] as $t) $pdo->exec("DELETE FROM zynervox_bot_$t");
+foreach (['call_events','ivr_results','call_attempts','list','lists','campaign_headers','campaign_retry_rules','amd_audit','campaign_amd_params','campaign_sip_rules','campaign_amd_actions','campaign_schedules','campaigns'] as $t) $pdo->exec("DELETE FROM zynervox_bot_$t");
 
 $base = ['name'=>'T', 'active'=>'1', 'call_origin'=>'7307', 'max_channels'=>'2', 'lead_order'=>'UP', 'amd_enabled'=>'1', 'transfer_carrier_id'=>'dest', 'transfer_destination'=>'5551000',
     'headers'=>[['name'=>'X-Monto', 'field'=>'monto'], ['name'=>'X-Cliente', 'field'=>'customer_name']],
@@ -187,6 +188,50 @@ check('reporte: estructura (kpi, serie por hora, por AMD, por causa, transferenc
 check('reporte: fechas en hora de Lima', throws(fn() => bot_cfg_report($repo, ['from'=>'ayer'])) !== '' && bot_cfg_report_filters(['from'=>'2026-11-03 15:31'])['from_utc'] === '2026-11-03 20:31:00' && bot_cfg_report_filters(['to'=>'2026-11-03'])['to_utc'] === '2026-11-04 05:00:00');
 $csv = bot_cfg_report_csv($repo, ['campaign_id'=>$id]);
 check('CSV con BOM, cabecera y teléfonos enmascarados', str_starts_with($csv, "\xEF\xBB\xBFattempt_id,inicio_lima") && !str_contains($csv, '911223355'));
+// AMD parameters per campaign, audit rows and the STT batch (018). No call is made: rows are inserted by hand.
+$ap = bot_cfg_save($repo, null, ['name'=>'AMD params', 'active'=>'1', 'call_origin'=>'7307', 'amd_enabled'=>'1']);
+check('parámetros AMD sin fila = valores actuales', marcador_amd_params($repo, $ap) === MARCADOR_AMD_DEFAULTS && MARCADOR_AMD_DEFAULTS['total_analysis_time'] === 8000 && count(MARCADOR_AMD_DEFAULTS) === 9);
+$saved = marcador_amd_params_save($repo, $ap, ['total_analysis_time'=>'5000', 'maximum_number_of_words'=>3]);
+check('guardar parámetros AMD cambia solo lo enviado', $saved['total_analysis_time'] === 5000 && $saved['maximum_number_of_words'] === 3 && $saved['greeting'] === 1500 && marcador_amd_params($repo, $ap)['total_analysis_time'] === 5000);
+check('rechaza parámetros AMD fuera de rango', throws(fn() => marcador_amd_params_save($repo, $ap, ['maximum_number_of_words'=>0])) !== '' && throws(fn() => marcador_amd_params_save($repo, $ap, ['greeting'=>'abc'])) !== '');
+$vars = marcador_amd_variables(marcador_amd_params($repo, $ap));
+check('9 variables de canal con __ZV2_AMD_*', count($vars) === 9 && in_array('__ZV2_AMD_TOTAL_ANALYSIS_TIME=5000', $vars, true) && in_array('__ZV2_AMD_MAX_WORD_LENGTH=5000', $vars, true));
+$cOn = $repo->campaign($ap) + ['amd_params'=>marcador_amd_params($repo, $ap), 'amd_actions'=>[]];
+check('el motor envía las variables solo con AMD activo', in_array('__ZV2_AMD_TOTAL_ANALYSIS_TIME=5000', bot_engine_variables($cOn, ['call_id'=>'zv2-x', 'list_id'=>1, 'lead_id'=>1], []), true) && !preg_grep('/^__ZV2_AMD_/', bot_engine_variables(['amd_enabled'=>0] + $cOn, ['call_id'=>'zv2-x', 'list_id'=>1, 'lead_id'=>1], [])));
+// audit: open, record, sync. Three calls: answered with recording, answered without audio, unanswered
+$mk = function(string $cid, string $disp, string $amd, string $cause, ?string $rec) use($pdo, $ap) {
+    $pdo->prepare("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,started_at,finished_at,campaign_id,status,disposition,amd_status,amd_cause,recording_path) VALUES (?,5000,5000,'900000001',UTC_TIMESTAMP(),UTC_TIMESTAMP(),?,'X',?,?,?,?)")->execute([$cid, $ap, $disp, $amd, $cause, $rec]);
+};
+$tmp = sys_get_temp_dir().'/zv2_stt_'.getmypid(); @mkdir($tmp);
+$wav = $tmp.'/a.wav'; $pcm = str_repeat("\0\0", 8000);
+file_put_contents($wav, 'RIFF'.pack('V', 36 + strlen($pcm)).'WAVEfmt '.pack('VvvVVvv', 16, 1, 1, 8000, 16000, 2, 16).'data'.pack('V', strlen($pcm)).$pcm);
+$mk('zv2-a1', 'AMD_MACHINE', 'MACHINE', 'MAXWORDS', $wav); $mk('zv2-a2', 'ANSWER_HUMAN', 'HUMAN', 'HUMAN', null); $mk('zv2-a3', 'NOANSWER', '', '', null);
+foreach (['zv2-a1', 'zv2-a2', 'zv2-a3'] as $i=>$cid) marcador_amd_audit_open($repo, ['call_id'=>$cid, 'list_id'=>5000, 'lead_id'=>5000 + $i], $ap, marcador_amd_params($repo, $ap));
+$row = $pdo->query("SELECT total_analysis_time,audit_state FROM zynervox_bot_amd_audit WHERE call_id='zv2-a1'")->fetch();
+check('la auditoría guarda la foto de los parámetros usados', (int)$row['total_analysis_time'] === 5000 && $row['audit_state'] === 'open');
+marcador_amd_audit_open($repo, ['call_id'=>'zv2-a1', 'list_id'=>5000, 'lead_id'=>5000], $ap, MARCADOR_AMD_DEFAULTS);
+check('abrir dos veces la misma llamada no duplica ni pisa', (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_amd_audit WHERE call_id='zv2-a1'")->fetchColumn() === 1 && (int)$pdo->query("SELECT total_analysis_time FROM zynervox_bot_amd_audit WHERE call_id='zv2-a1'")->fetchColumn() === 5000);
+marcador_amd_audit_record($repo, 'zv2-a1', ['decided_ms'=>1730, 'audio_path'=>'../etc/passwd']);
+check('registra ms hasta decidir y rechaza rutas con ..', (int)$pdo->query("SELECT decided_ms FROM zynervox_bot_amd_audit WHERE call_id='zv2-a1'")->fetchColumn() === 1730 && $pdo->query("SELECT audio_path FROM zynervox_bot_amd_audit WHERE call_id='zv2-a1'")->fetchColumn() === null);
+$sync = marcador_amd_audit_sync($repo);
+check('sync: borra la no contestada y completa las contestadas', $sync['dropped'] >= 1 && $sync['ready'] >= 2 && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_amd_audit WHERE call_id='zv2-a3'")->fetchColumn() === 0
+  && $pdo->query("SELECT CONCAT(amd_status,'/',amd_cause,'/',stt_status) FROM zynervox_bot_amd_audit WHERE call_id='zv2-a1'")->fetchColumn() === 'MACHINE/MAXWORDS/pending'
+  && $pdo->query("SELECT stt_status FROM zynervox_bot_amd_audit WHERE call_id='zv2-a2'")->fetchColumn() === 'no_audio');
+$r = marcador_stt_run($repo, null);
+check('STT sin motor: informa, no falla y deja pendiente', $r['engine'] === null && $r['pending'] === 1 && str_contains($r['message'], 'sin motor') && $pdo->query("SELECT stt_status FROM zynervox_bot_amd_audit WHERE call_id='zv2-a1'")->fetchColumn() === 'pending');
+$fake = $tmp.'/fake_stt.sh'; file_put_contents($fake, "#!/bin/sh\necho '{\"text\":\"  buzon de voz  \"}'\n"); chmod($fake, 0755);
+$pdo->exec("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,started_at,campaign_id,status) VALUES ('zv2-open',5000,5009,'900000009',UTC_TIMESTAMP(),$ap,'CALL')");
+check('STT no corre con llamadas en curso', str_contains(marcador_stt_run($repo, ['name'=>'fake', 'command'=>[$fake], 'timeout'=>10])['message'], 'se aplaza'));
+$pdo->exec("DELETE FROM zynervox_bot_call_attempts WHERE call_id='zv2-open'");
+$r = marcador_stt_run($repo, ['name'=>'fake', 'command'=>[$fake], 'timeout'=>10], 50, true); // earlier engine ticks of this test left calls open
+$a1 = $pdo->query("SELECT stt_status,stt_text,stt_engine,audio_seconds,stt_at IS NOT NULL has_at FROM zynervox_bot_amd_audit WHERE call_id='zv2-a1'")->fetch();
+check('STT con motor: guarda texto, motor, fecha y duración', $r['done'] === 1 && $a1['stt_status'] === 'done' && $a1['stt_text'] === 'buzon de voz' && $a1['stt_engine'] === 'fake' && (float)$a1['audio_seconds'] === 1.0 && (int)$a1['has_at'] === 1);
+$bad = $tmp.'/bad_stt.sh'; file_put_contents($bad, "#!/bin/sh\necho nada\n"); chmod($bad, 0755);
+$pdo->exec("UPDATE zynervox_bot_amd_audit SET stt_status='pending' WHERE call_id='zv2-a1'");
+$r = marcador_stt_run($repo, ['name'=>'bad', 'command'=>[$bad], 'timeout'=>10], 50, true);
+check('STT con motor roto: error registrado, sin romper', $r['errors'] === 1 && $pdo->query("SELECT stt_status FROM zynervox_bot_amd_audit WHERE call_id='zv2-a1'")->fetchColumn() === 'error');
+check('config STT: sin fichero = sin motor; con fichero válido = motor', marcador_stt_engine($tmp.'/no.json') === null && (function() use($tmp, $fake) { file_put_contents($tmp.'/c.json', json_encode(['engine'=>'x', 'command'=>[$fake]])); return marcador_stt_engine($tmp.'/c.json')['name'] === 'x'; })());
+array_map('unlink', glob($tmp.'/*')); @rmdir($tmp);
 // Detection-only campaign (test stage): no trunk and no destination is valid, half-configured is not
 $det = bot_cfg_save($repo, null, ['name'=>'Solo detectar', 'active'=>'1', 'call_origin'=>'7307', 'max_channels'=>'1', 'amd_enabled'=>'1']);
 $pdo->prepare("INSERT INTO zynervox_bot_lists (campaign_id,name,active) VALUES (?,'det',1)")->execute([$det]);

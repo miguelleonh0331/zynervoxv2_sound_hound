@@ -5,6 +5,7 @@ declare(strict_types=1);
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 require_once __DIR__.'/campaign_config_service.php';
 require_once __DIR__.'/../includes/AmiClient.php';
+require_once __DIR__.'/../marcador/amd_audit.php';
 
 const BOT_ENGINE_BURST = 50;
 const BOT_ENGINE_AMI_GRACE = 10;
@@ -17,7 +18,7 @@ function bot_engine_variables(array $c, array $call, array $headers, array $amdA
     foreach ($amdActions as $a) $vars[] = '__ZV2_AMD_ACTION_'.$a['result'].'='.$a['action'];
     // Without trunk and destination the campaign only detects (AMD) and hangs up: the dialplan sees no ZV2_XFER_TRUNK.
     if ($c['transfer_carrier_id'] !== '') array_push($vars, '__ZV2_XFER_TRUNK='.$c['transfer_carrier_id'], '__ZV2_XFER_DEST='.$c['transfer_destination']);
-    if ((int)$c['amd_enabled']) $vars[] = '__ZV2_AMD=1';
+    if ((int)$c['amd_enabled']) { $vars[] = '__ZV2_AMD=1'; array_push($vars, ...marcador_amd_variables($c['amd_params'] ?? MARCADOR_AMD_DEFAULTS)); } // the 9 AMD() arguments, per campaign
     if ($headers) {
         $b64 = base64_encode(json_encode($headers, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
         if (strlen($b64) > 32768) throw new RuntimeException('Headers demasiado grandes para __ZV2_FORWARD_HEADERS.');
@@ -114,7 +115,7 @@ function bot_engine_tick(\ZynervoxQueries\BotIvrRepository $repo, ?callable $ori
         $row = ['campaign_id'=>$id];
         try {
             $config = $repo->campaignConfig($id);
-            $c = $config['campaign'] + ['amd_actions'=>bot_cfg_amd_actions($config['amd_actions'])];
+            $c = $config['campaign'] + ['amd_actions'=>bot_cfg_amd_actions($config['amd_actions']), 'amd_params'=>marcador_amd_params($repo, $id)];
             $row['state'] = $c['dialer_state'];
             if (!$dry && ($c['dialer_state'] !== 'running' || !(int)$c['active'])) { $row['skipped'] = 'detenida'; $report[] = $row; continue; }
             if (!bot_cfg_in_window($c, $config['schedules'], $now)) { $row['skipped'] = 'fuera de franja'; $report[] = $row; continue; }
@@ -146,6 +147,7 @@ function bot_engine_tick(\ZynervoxQueries\BotIvrRepository $repo, ?callable $ori
                 catch (Throwable $e) { $repo->rejectCampaignClaim($call['call_id']); throw $e; }
                 // A lost/ambiguous acknowledgement is never retried: the attempt stays auditable.
                 if (!$ok) { $repo->rejectCampaignClaim($call['call_id']); $row['error'] = 'AMI rechazó el originate'; break; }
+                if ((int)$c['amd_enabled']) marcador_amd_audit_open($repo, $call, $id, $c['amd_params']); // snapshot of the parameters this call used
                 $row['launched']++;
             }
         } catch (Throwable $e) {
