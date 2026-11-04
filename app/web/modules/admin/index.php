@@ -71,7 +71,17 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         .actions button:disabled { opacity: 0.45; cursor: not-allowed; }
         .foot { font-size: 0.68rem; color: var(--text-muted); margin-top: 0.8rem; }
         .dash-error { color: #fca5a5; margin-bottom: 1rem; }
-        @media (prefers-reduced-motion: reduce) { .live .pulse, .live .bar.progress > span { animation: none; } }
+        .bar > span { transition: width 0.8s ease; }
+        .live .needle-wrap canvas { border-radius: 50%; animation: halo 2.2s ease-out infinite; }
+        @keyframes halo { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.5); } 100% { box-shadow: 0 0 0 14px rgba(16,185,129,0); } }
+        .live .tag.run { animation: tagbeat 1.6s ease-in-out infinite; }
+        @keyframes tagbeat { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+        .dist-list li { padding: 2px 4px; border-left: 4px solid transparent; border-radius: 2px; }
+        .dist-list li.hot { background: #ecfdf5; border-left-color: #10b981; font-weight: 700; animation: hotbeat 2s ease-in-out infinite; }
+        @keyframes hotbeat { 0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,.0); } 50% { box-shadow: 0 0 0 3px rgba(16,185,129,.35); } }
+        .chan { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; font-size: 0.78rem; margin: 0.4rem 0; }
+        .chan select { padding: 2px 6px; font-weight: 700; }
+        @media (prefers-reduced-motion: reduce) { .live .pulse, .live .bar.progress > span, .live .needle-wrap canvas, .live .tag.run, .dist-list li.hot { animation: none; } .bar > span { transition: none; } }
     </style>
 </head>
 <body>
@@ -101,6 +111,20 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             ['en_llamada', 'En llamada', '#1e3a8a'], ['sin_llamar', 'Sin llamar', '#d1d5db']];
         var TEMP = { 'Caliente': 'hot', 'Tibia': 'warm', 'Fría': 'cold' };
         var SVGNS = 'http://www.w3.org/2000/svg';
+        var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var PREV = {}; // último valor pintado por barra/número: los cambios se animan desde ahí, sin consultas nuevas
+        // Barra: crece desde el ancho anterior (0 la primera vez) hasta el real, con la transición CSS.
+        function growTo(sp, key, w) {
+            var from = REDUCED ? w : (PREV[key] || 0); PREV[key] = w; sp.style.width = from + '%';
+            if (from !== w) requestAnimationFrame(function () { requestAnimationFrame(function () { sp.style.width = w + '%'; }); });
+        }
+        // Número: cuenta suavemente desde el valor anterior (0 la primera vez) hasta el real.
+        function countTo(node, key, to) {
+            var from = REDUCED ? to : (PREV[key] || 0); PREV[key] = to; node.textContent = String(from);
+            if (from === to) return;
+            var t0 = null; function step(t) { if (t0 === null) t0 = t; var f = Math.min(1, (t - t0) / 600); node.textContent = String(Math.round(from + (to - from) * f)); if (f < 1) requestAnimationFrame(step); }
+            requestAnimationFrame(step);
+        }
 
         function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
         function gb(b) { return b == null ? '' : (b / 1073741824).toFixed(1) + ' GB'; }
@@ -134,14 +158,15 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
                 if (!ent) {
                     var canvas = document.createElement('canvas');
                     var g = new RadialGauge({
-                        renderTo: canvas, width: size, height: size, units: '% humanos', minValue: 0, maxValue: o.max, value: value, majorTicks: o.ticks, minorTicks: 5, strokeTicks: true,
+                        renderTo: canvas, width: size, height: size, units: '% humanos', minValue: 0, maxValue: o.max, value: REDUCED ? value : 0, majorTicks: o.ticks, minorTicks: 5, strokeTicks: true,
                         highlights: o.hl, highlightsWidth: 12, startAngle: 60, ticksAngle: 240, valueBox: false, needle: !noData,
                         colorPlate: '#fdfdfd', colorPlateEnd: '#e6e8ec', colorMajorTicks: '#1f2937', colorMinorTicks: '#4b5563', colorNumbers: '#1f2937', colorUnits: '#4b5563',
                         borders: true, borderShadowWidth: 0, borderOuterWidth: 6, borderMiddleWidth: 3, borderInnerWidth: 2, colorBorderOuter: '#c9ced6', colorBorderOuterEnd: '#59616e', colorBorderMiddle: '#eef0f3', colorBorderMiddleEnd: '#8b93a0', colorBorderInner: '#fafafa', colorBorderInnerEnd: '#d7dbe1',
                         needleType: 'arrow', needleWidth: 3, needleStart: 0, needleEnd: 82, needleCircleSize: 9, needleCircleOuter: true, needleCircleInner: false, needleShadow: true, colorNeedle: '#dc2626', colorNeedleEnd: '#7f1d1d', colorNeedleShadowDown: 'rgba(0,0,0,.45)', colorNeedleCircleOuter: '#d1d5db', colorNeedleCircleOuterEnd: '#374151',
-                        fontNumbersSize: 28, fontUnitsSize: 20, animation: true, animationDuration: 600, animationRule: 'linear'
+                        fontNumbersSize: 28, fontUnitsSize: 20, animation: !REDUCED, animationDuration: 600, animationRule: 'linear'
                     });
                     g.draw(); ent = GAUGES[listId] = { g: g, key: key, canvas: canvas, value: value };
+                    if (!REDUCED && value) setTimeout(function () { g.value = value; }, 80); // al cargar, la aguja sube desde 0 hasta el valor real
                 } else if (ent.value !== value) { ent.g.value = value; ent.value = value; }
                 ent.seen = true; wrap.appendChild(ent.canvas);
             }
@@ -150,31 +175,32 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         function sweepGauges() { Object.keys(GAUGES).forEach(function (k) { if (!GAUGES[k].seen) { try { GAUGES[k].g.destroy(); } catch (e) {} delete GAUGES[k]; } else GAUGES[k].seen = false; }); }
         function n0(v) { return Number(v) || 0; }
 
-        function post(action, c, l) {
-            var body = new URLSearchParams({ action: action, campaign_id: c, list_id: l, csrf: CSRF });
+        function post(action, c, l, extra) {
+            var body = new URLSearchParams(Object.assign({ action: action, campaign_id: c, list_id: l, csrf: CSRF }, extra || {}));
             return fetch(API, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': CSRF }, body: body }).then(function (r) { return r.json(); }).then(function (j) {
                 if (!j.ok) throw new Error(j.error || 'No se pudo completar la acción.');
             });
         }
-        function act(action, c, l, confirmText) {
+        function act(action, c, l, confirmText, extra) {
             if (confirmText && !window.confirm(confirmText)) return;
             showNotice('', '');
-            post(action, c, l).then(refresh).catch(function (e) { showNotice(e.message, 'dash-error'); refresh(); });
+            post(action, c, l, extra).then(refresh).catch(function (e) { showNotice(e.message, 'dash-error'); refresh(); });
         }
 
         function fpct(v) { return String(v).replace('.', ','); }
         function rpct(v, t) { return t > 0 ? (Math.round(1000 * v / t) / 10).toFixed(1) : '0.0'; } // porcentaje real redondeado, sin ajustar para cuadrar
         // Barra única: el 100 % son los contactos de la lista; cada contacto cuenta una vez, por su último resultado.
-        function distBlock(card, d) {
+        function distBlock(card, d, id, hot) {
             card.appendChild(el('div', 'dist-title', 'Qué pasó con los ' + d.contacts + ' contactos'));
             var bar = el('div', 'bar dist'); bar.setAttribute('role', 'img'); bar.setAttribute('aria-label', 'Contactos por resultado');
-            CATS.forEach(function (c) { var v = n0(d.counts[c[0]]); if (v) { var sp = el('span'); sp.style.width = (100 * v / d.contacts) + '%'; sp.style.background = c[2]; sp.title = c[1] + ': ' + v + ' (' + fpct(rpct(v, d.contacts)) + ' %)'; bar.appendChild(sp); } });
+            CATS.forEach(function (c) { var v = n0(d.counts[c[0]]); if (v) { var sp = el('span'); growTo(sp, id + ':w:' + c[0], 100 * v / d.contacts); sp.style.background = c[2]; sp.title = c[1] + ': ' + v + ' (' + fpct(rpct(v, d.contacts)) + ' %)'; bar.appendChild(sp); } });
             card.appendChild(bar);
             var ul = el('ul', 'dist-list');
-            CATS.forEach(function (c) { var v = n0(d.counts[c[0]]); if (!v) return; var li = el('li'), i = el('i'); i.style.background = c[2]; li.appendChild(i); li.appendChild(el('span', '', c[1])); li.appendChild(el('span', 'n', String(v))); li.appendChild(el('span', 'p', fpct(rpct(v, d.contacts)) + ' %')); ul.appendChild(li); });
+            CATS.forEach(function (c) { var v = n0(d.counts[c[0]]); if (!v) return; var li = el('li', c[0] === 'humano' && hot ? 'hot' : ''), i = el('i'), nn = el('span', 'n'); i.style.background = c[2]; li.appendChild(i); li.appendChild(el('span', '', c[1])); countTo(nn, id + ':n:' + c[0], v); li.appendChild(nn); li.appendChild(el('span', 'p', fpct(rpct(v, d.contacts)) + ' %')); ul.appendChild(li); });
             card.appendChild(ul);
         }
 
+        var srvMax = 0;
         function listCard(c, l) {
             var ins = l.insight || {}, rates = ins.rates_pct || {}, pace = ins.pace || {}, live = l.started && !l.reason;
             var card = el('div', 'list-card' + (live ? ' live' : ''));
@@ -197,12 +223,19 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             var why = l.reason || (l.started ? 'Marcando' : '');
             if (why) card.appendChild(el('div', 'reason' + (l.reason ? '' : ' ok'), why));
 
-            if (dist) distBlock(card, dist); else card.appendChild(el('div', 'g-sub', 'Calculando el resumen de contactos…'));
+            var th = ins.thresholds || {}, hot = !!(nd && !nd.no_data && n0(th.hot_human_pct) && n0(nd.pct) >= n0(th.hot_human_pct));
+            if (dist) distBlock(card, dist, l.list_id, hot); else card.appendChild(el('div', 'g-sub', 'Calculando el resumen de contactos…'));
 
             card.appendChild(el('div', 'pace', 'Intentos: ' + l.totals.calls + ' en total · ' + (pace.calls_last_15min || 0) + ' intentos en 15 min (' + (pace.calls_per_min || 0) + '/min) · Canales ' + l.open_calls + ' / ' + l.channels));
             var called = dist ? dist.contacts - n0(dist.counts.sin_llamar) : 0, av = dist && dist.contacts ? Math.round(1000 * called / dist.contacts) / 10 : l.progress_pct;
-            var pb = el('div', 'bar progress'), pf = el('span'); pf.style.width = av + '%'; pb.appendChild(pf); card.appendChild(pb);
+            var pb = el('div', 'bar progress'), pf = el('span'); growTo(pf, l.list_id + ':av', av); pb.appendChild(pf); card.appendChild(pb);
             card.appendChild(el('div', 'rate', dist ? 'Avance: ' + called + ' de ' + dist.contacts + ' contactos ya llamados (' + fpct(av) + ' %)' : 'Avance ' + l.progress_pct + ' %'));
+
+            var ch = el('div', 'chan'), sel = el('select'), maxc = Math.max(n0(srvMax), n0(l.channels), 1);
+            sel.setAttribute('aria-label', 'Canales asignados a ' + l.name);
+            for (var k = 1; k <= maxc; k++) { var op = el('option', '', String(k)); op.value = k; sel.appendChild(op); }
+            sel.value = l.channels; sel.addEventListener('change', function () { act('set_channels', c.campaign_id, l.list_id, '', { channels: sel.value }); });
+            ch.appendChild(el('span', '', 'Canales asignados')); ch.appendChild(sel); ch.appendChild(el('span', 'g-sub', 'en uso ' + l.open_calls + ' de ' + l.channels + ' (máx. servidor ' + srvMax + ')')); card.appendChild(ch);
 
             var ac = el('div', 'actions');
             var go = el('button', 'btn-action', l.started ? 'Detener' : 'Iniciar'); go.type = 'button';
@@ -211,7 +244,10 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
                 if (!l.active) { go.disabled = true; go.title = 'Lista inactiva: actívala primero'; }
                 go.addEventListener('click', function () { act('start', c.campaign_id, l.list_id, 'Al iniciar, el marcador empezará a llamar de verdad a los contactos de la lista «' + l.name + '». ¿Continuar?'); });
             }
-            ac.appendChild(go); card.appendChild(ac);
+            ac.appendChild(go);
+            var off = el('button', 'btn-action', 'Desactivar'); off.type = 'button';
+            off.addEventListener('click', function () { act('deactivate', c.campaign_id, l.list_id, 'Se detiene la lista «' + l.name + '» y sale del Dashboard. Para volver a usarla, actívala en Listas. ¿Continuar?'); });
+            ac.appendChild(off); card.appendChild(ac);
             if (ins.thresholds_provisional && ins.thresholds) card.appendChild(el('div', 'foot', 'Umbrales provisionales (según % de humanos entre contactos llamados): Caliente ≥ ' + ins.thresholds.hot_human_pct + ' %, Tibia ≥ ' + ins.thresholds.warm_human_pct + ' %, Fría por debajo; con menos de ' + ins.thresholds.min_called_contacts + ' contactos llamados, Sin datos.'));
             return card;
         }
@@ -222,7 +258,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             sv.appendChild(tile('Memoria', s.ram_pct, s.ram_pct == null ? '—' : s.ram_pct + ' %', s.ram_total ? gb(s.ram_used) + ' de ' + gb(s.ram_total) : ''));
             sv.appendChild(tile('Disco', s.disk_pct, s.disk_pct == null ? '—' : s.disk_pct + ' %', s.disk_total ? gb(s.disk_used) + ' de ' + gb(s.disk_total) : ''));
             if (d.dashboard) {
-                var srv = d.dashboard.server;
+                var srv = d.dashboard.server; srvMax = srv.max_channels;
                 sv.appendChild(tile('Llamadas en curso', null, srv.open_calls + ' / ' + srv.max_channels, 'canales del servidor'));
             }
             var sc = document.getElementById('services'); sc.textContent = '';
@@ -248,7 +284,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         function refresh() {
             if (busy) return; busy = true; clearTimeout(timer);
             fetch(API, { credentials: 'same-origin', cache: 'no-store' }).then(function (r) { return r.json().then(function (j) { if (!r.ok || !j.ok) throw new Error(j.error || 'Error'); return j; }); })
-                .then(function (d) { showNotice('', '', 'status'); render(d); })
+                .then(function (d) { showNotice('', '', 'status'); if (document.activeElement && document.activeElement.tagName === 'SELECT') return; render(d); })
                 .catch(function (e) { showNotice('No se pudo actualizar el panel: ' + e.message, 'dash-error', 'status'); })
                 .then(function () { busy = false; timer = setTimeout(refresh, 5000); });
         }

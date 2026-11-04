@@ -59,6 +59,7 @@ try {
             if ($action === 'start') bot_cfg_list_start($db, $campaignId, $listId, $actor);
             elseif ($action === 'stop') bot_cfg_list_stop($db, $campaignId, $listId, $actor);
             elseif ($action === 'activate') bot_cfg_list_set_active($db, $campaignId, $listId, true, $actor);
+            elseif ($action === 'set_channels') bot_cfg_set_list_channels($db, $campaignId, $listId, $_POST['channels'] ?? null);
             elseif ($action === 'deactivate') bot_cfg_list_set_active($db, $campaignId, $listId, false, $actor);
             else dash_json(400, ['ok' => false, 'error' => 'Acción inválida.']);
         } catch (RuntimeException $e) {
