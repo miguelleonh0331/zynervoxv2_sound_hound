@@ -92,7 +92,14 @@ Auth::checkAccess(9);
             <div class="panel wide" id="carrierbox" hidden><h3>Por troncal</h3><div class="scroll" id="carrier"></div></div>
         </section>
 
-        <h2 class="sec">C · Acción</h2>
+        <h2 class="sec">C · Tipos de marcación</h2>
+        <section class="panels">
+            <div class="panel wide"><h3>Solo AMD frente a Zypad</h3>
+                <p class="sub">Compara cada tipo con su N. En «sombra», Zypad escucha antes de contestar pero no corta: decide el AMD. «Tiempo ahorrado» es lo que el corte habría adelantado frente al momento de contestar, solo en llamadas donde Zypad oyó una palabra antes de contestar. Sin metas ni umbrales: son datos para comparar.</p>
+                <div class="scroll" id="dialmodes"></div></div>
+        </section>
+
+        <h2 class="sec">D · Acción</h2>
         <section class="panels">
             <div class="panel wide"><h3>¿A qué hora conviene llamar?</h3><p class="sub">% de llamadas contestadas por día de la semana y hora (Lima). Más oscuro = más contestadas. Las celdas apagadas tienen menos de <span id="minn"></span> llamadas: no concluyas con ellas.</p><div class="scroll" id="matrix"></div></div>
             <div class="panel"><h3>Intentos por contacto</h3><p class="sub">Qué parte de los contactos de cada lista se llamó 1, 2, 3 o 4+ veces (100 % por lista).</p><div id="attempts"></div></div>
@@ -297,6 +304,23 @@ Auth::checkAccess(9);
             document.getElementById('prev').disabled = d.page <= 1; document.getElementById('next').disabled = d.page >= lastPages;
         }
 
+        function dialmodes(dm) {
+            var box = document.getElementById('dialmodes'); box.textContent = '';
+            if (!dm || !dm.rows || !dm.rows.length) { empty(box, 'Sin llamadas con tipo de marcación en el rango.'); return; }
+            function cnt(a, d) { return a + ' de ' + d + (d > 0 ? ' (' + String(pct(a, d)).replace('.', ',') + ' %)' : ''); }
+            var t = el('table', 'table-compact'), th = el('thead'), tr = el('tr');
+            ['Tipo de marcación', 'Llamadas (N)', 'Audio antes de contestar', 'Casilla de voz', 'Zypad oyó una palabra', 'Ambos dicen casilla', 'Solo Zypad', 'Solo AMD', 'Solo Zypad con AMD humano', 'Tiempo que habría ahorrado el corte'].forEach(function (h) { tr.appendChild(el('th', '', h)); });
+            th.appendChild(tr); t.appendChild(th); var tb = el('tbody');
+            dm.rows.forEach(function (r) {
+                var x = el('tr'), c = n(r.calls), first = el('td', '', r.label); if (r.small_sample) first.appendChild(el('span', 'tag-small', 'muestra pequeña')); x.appendChild(first);
+                [String(c), cnt(n(r.preanswer_audio), c), cnt(n(r.casilla_voz), c), cnt(n(r.zypad_hits), c), String(n(r.both_casilla)), String(n(r.only_zypad)), String(n(r.only_amd))].forEach(function (v) { x.appendChild(el('td', '', v)); });
+                var rev = el('td', '', String(n(r.only_zypad_amd_human))); if (n(r.only_zypad_amd_human) > 0) { rev.style.background = 'rgba(245,158,11,.22)'; rev.style.fontWeight = '700'; rev.title = 'Caso a revisar con la grabación; no se considera error'; rev.appendChild(el('span', 'muted', ' · a revisar')); } x.appendChild(rev);
+                x.appendChild(el('td', '', r.saved_n > 0 ? n(r.saved_n) + ' llamadas · total ' + String(r.saved_seconds_total).replace('.', ',') + ' s · media ' + String(r.saved_seconds_avg).replace('.', ',') + ' s' : 'Sin datos'));
+                tb.appendChild(x);
+            });
+            t.appendChild(tb); box.appendChild(t);
+            box.appendChild(el('p', 'muted', '«Solo Zypad con AMD humano» se revisa con la grabación: puede ser un posible corte equivocado o una detección acertada que el AMD no vio.'));
+        }
         function fillOptions(opts) {
             options = opts; var c = document.getElementById('f_campaign');
             opts.forEach(function (o) { var op = el('option', '', o.name); op.value = o.campaign_id; c.appendChild(op); });
@@ -323,7 +347,7 @@ Auth::checkAccess(9);
                     if (!optionsLoaded) fillOptions(j.options);
                     var r = j.report, x = j.extra;
                     notes(j); kpis(r.kpi); trend(x && x.by_day); comparatives(r); sumTable(j.summary);
-                    if (x) { funnel(x.funnel); sip(x.sip); amd(x.amd_by_cause); carriers(x.by_carrier); matrix(x.by_weekday_hour); attempts(x.attempts_per_lead); cumul(x.first_contact_attempt); }
+                    dialmodes(j.dialmodes); if (x) { funnel(x.funnel); sip(x.sip); amd(x.amd_by_cause); carriers(x.by_carrier); matrix(x.by_weekday_hour); attempts(x.attempts_per_lead); cumul(x.first_contact_attempt); }
                     xfer(r.transfers); detail(r.detail);
                 })
                 .catch(function (e) { var b = document.getElementById('error'); b.textContent = ''; b.appendChild(el('p', 'rep-error', 'No se pudo cargar el informe: ' + e.message)); });

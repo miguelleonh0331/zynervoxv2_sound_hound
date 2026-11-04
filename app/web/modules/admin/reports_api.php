@@ -36,11 +36,13 @@ try {
     foreach (bot_cfg_lists_channels($db) as $l) if (isset($options[(int)$l['campaign_id']])) $options[(int)$l['campaign_id']]['lists'][] = ['list_id' => (int)$l['list_id'], 'name' => $l['name']];
     $extra = null; $summary = null; $warnings = [];
     try { $extra = bot_cfg_report_extra($db, $filters); } catch (RuntimeException $e) { $warnings[] = $e->getMessage(); } catch (Throwable $e) { $warnings[] = 'No se pudieron calcular los gráficos de diagnóstico.'; }
+    $dialmodes = null;
+    try { $dialmodes = bot_cfg_dialmode_report($db, $filters); } catch (RuntimeException $e) { $warnings[] = $e->getMessage(); } catch (Throwable $e) { $warnings[] = 'No se pudo calcular la comparación por tipo de marcación.'; }
     $sf = ['campaign_id' => $filters['campaign_id'] !== '' ? $filters['campaign_id'] : null, 'list_id' => $filters['list_id'] !== '' ? $filters['list_id'] : null];
     $status = isset($_GET['status']) && is_string($_GET['status']) ? $_GET['status'] : '';
     if (in_array($status, ['running', 'stopped', 'finished', 'deleted'], true)) $sf['status'] = $status;
     try { $summary = bot_cfg_summary($db, $sf); } catch (Throwable $e) { $warnings[] = 'No se pudo leer el resumen por lista.'; }
-    rep_json(200, ['ok' => true, 'report' => $report, 'extra' => $extra, 'summary' => $summary, 'warnings' => $warnings, 'options' => array_values($options)]);
+    rep_json(200, ['ok' => true, 'report' => $report, 'extra' => $extra, 'dialmodes' => $dialmodes, 'summary' => $summary, 'warnings' => $warnings, 'options' => array_values($options)]);
 } catch (RuntimeException $e) {
     rep_json(422, ['ok' => false, 'error' => $e->getMessage()]);
 } catch (Throwable $e) {

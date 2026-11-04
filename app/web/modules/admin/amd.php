@@ -30,7 +30,7 @@ function lima(string $utc): string {
 $error = '';
 $message = (string)($_SESSION['amd_message'] ?? '');
 unset($_SESSION['amd_message']);
-$current = null; $history = [];
+$current = null; $history = []; $zypad = null;
 try {
     $db = bot_ivr_repository();
     $actor = (string)($_SESSION['user'] ?? 'admin');
@@ -43,6 +43,14 @@ try {
                 foreach ($PARAMS as $k => $_) if (isset($_POST[$k])) $values[$k] = $_POST[$k];
                 $new = marcador_amd_global_save($db, $values, $actor, trim((string)($_POST['note'] ?? '')));
                 $_SESSION['amd_message'] = 'Guardada la versión #' . $new['version_id'] . '. Se aplica a las llamadas nuevas de todas las campañas.';
+            } elseif ($action === 'zypad_add') {
+                bot_cfg_zypad_word_save($db, (string)($_POST['word'] ?? ''), $actor, true, 'casilla_voz');
+                $_SESSION['amd_message'] = 'Palabra guardada en el catálogo de Zypad.';
+            } elseif ($action === 'zypad_toggle') {
+                $wid = filter_var($_POST['word_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+                if ($wid === false) throw new RuntimeException('Palabra inválida.');
+                bot_cfg_zypad_word_set_active($db, $wid, (string)($_POST['active'] ?? '') === '1', $actor);
+                $_SESSION['amd_message'] = ((string)($_POST['active'] ?? '') === '1' ? 'Palabra activada.' : 'Palabra desactivada.');
             } elseif ($action === 'rollback') {
                 $vid = filter_var($_POST['version_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
                 if ($vid === false) throw new RuntimeException('Versión inválida.');
@@ -57,6 +65,7 @@ try {
     }
     $current = marcador_amd_global($db);
     $history = marcador_amd_global_history($db, 50);
+    try { $zypad = bot_cfg_zypad_words($db); } catch (Throwable $e) { $error = $error ?: 'No se pudo leer el catálogo de palabras de Zypad.'; }
 } catch (Throwable $e) {
     $error = $error ?: 'No se pudo leer la configuración del AMD.';
 }
@@ -152,6 +161,44 @@ require_once __DIR__ . '/sidebar.php';
                 </tbody>
             </table>
             </div>
+        </div>
+<?php endif; ?>
+<?php if ($zypad !== null): ?>
+        <div class="card">
+            <h2>Zypad: palabras de casilla de voz</h2>
+            <p class="note">Zypad escucha antes de que contesten. Si oye una de estas palabras, anota que es una casilla de voz (en el modo «sombra» solo lo registra: decide el AMD). No distingue mayúsculas y los cambios se aplican sin reiniciar. Desactivar una palabra no borra los datos de las llamadas.</p>
+            <div class="scroll">
+            <table class="table-compact">
+                <thead><tr><th>Palabra</th><th>Categoría</th><th>Estado</th><th>Cambiada (Lima)</th><th>Por</th><th></th></tr></thead>
+                <tbody>
+                <?php foreach ($zypad['words'] as $w): ?>
+                    <tr>
+                        <td><strong><?php echo h($w['word']); ?></strong></td>
+                        <td>Casilla de voz</td>
+                        <td><?php echo $w['active'] ? '<span class="cur">Activa</span>' : 'Desactivada'; ?></td>
+                        <td><?php echo h($w['updated_at']); ?></td>
+                        <td><?php echo h($w['updated_by']); ?></td>
+                        <td>
+                            <form method="POST" action="amd.php" style="display: inline;">
+                                <input type="hidden" name="csrf" value="<?php echo h($_SESSION['amd_csrf']); ?>">
+                                <input type="hidden" name="action" value="zypad_toggle">
+                                <input type="hidden" name="word_id" value="<?php echo (int)$w['word_id']; ?>">
+                                <input type="hidden" name="active" value="<?php echo $w['active'] ? '0' : '1'; ?>">
+                                <button type="submit" class="btn-action"><?php echo $w['active'] ? 'Desactivar' : 'Activar'; ?></button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (!$zypad['words']): ?><tr><td colspan="6" class="note">Aún no hay palabras.</td></tr><?php endif; ?>
+                </tbody>
+            </table>
+            </div>
+            <form method="POST" action="amd.php" class="actions">
+                <input type="hidden" name="csrf" value="<?php echo h($_SESSION['amd_csrf']); ?>">
+                <input type="hidden" name="action" value="zypad_add">
+                <label class="note">Añadir palabra<br><input type="text" name="word" maxlength="80" required style="min-width: 240px;"></label>
+                <button type="submit" class="btn-primary">Añadir</button>
+            </form>
         </div>
 <?php endif; ?>
     </main>

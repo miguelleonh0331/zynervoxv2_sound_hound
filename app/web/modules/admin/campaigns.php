@@ -214,12 +214,12 @@ function campaigns_schedule_row(array $r, array $days): string {
                     <label>Nombre <input name="name" value="<?php echo h($c['name'] ?? ''); ?>" maxlength="100" required></label>
                     <label>Activa
                         <select name="active"><option value="1"<?php echo (string)($c['active'] ?? '0') === '1' ? ' selected' : ''; ?>>Sí</option><option value="0"<?php echo (string)($c['active'] ?? '0') === '1' ? '' : ' selected'; ?>>No</option></select></label>
-                    <label>Origen de llamada
+                    <label>Tipo de marcación
                         <select name="call_origin"><option value="">— elegir —</option>
-                        <?php $originKnown = false; foreach ($origins as $o): $sel = (string)($c['call_origin'] ?? '') === (string)$o['dial_prefix']; $originKnown = $originKnown || $sel; ?>
-                            <option value="<?php echo h($o['dial_prefix']); ?>"<?php echo $sel ? ' selected' : ''; ?>><?php echo h($o['name'] . ' (' . $o['dial_prefix'] . ')'); ?></option>
+                        <?php $dialTypes = ['7308' => 'Solo AMD', '7314' => 'Zypad en sombra + AMD']; foreach ($dialTypes as $prefix => $label): ?>
+                            <option value="<?php echo $prefix; ?>"<?php echo (string)($c['call_origin'] ?? '') === (string)$prefix ? ' selected' : ''; ?>><?php echo h($label); ?></option>
                         <?php endforeach; ?>
-                        <?php if (($c['call_origin'] ?? '') !== '' && !$originKnown): ?><option value="<?php echo h($c['call_origin']); ?>" selected><?php echo h($c['call_origin']); ?> (no disponible)</option><?php endif; ?>
+                        <?php if (($c['call_origin'] ?? '') !== '' && !isset($dialTypes[(string)$c['call_origin']])): ?><option value="<?php echo h($c['call_origin']); ?>" selected><?php echo h($c['call_origin']); ?> (valor existente)</option><?php endif; ?>
                         </select></label>
                     
                     <label>AMD
