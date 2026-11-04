@@ -21,7 +21,10 @@ printf 'e %s/logs - - - 14d\n' "$state" > /etc/tmpfiles.d/zypad-bridge.conf
 chmod 0644 /etc/tmpfiles.d/zypad-bridge.conf
 
 install -m 0644 -o root -g root "$source_root/src/features/zypad/zypad-bridge.service" /etc/systemd/system/zypad-bridge.service
-restorecon -F /etc/systemd/system/zypad-bridge.service
+# Catalogo real: programa de MarcadorBuilder (lee zynervox_bot_zypad_words); el servicio guarda su copia en catalog.json.
+install -d -m 0755 /etc/systemd/system/zypad-bridge.service.d
+printf '[Service]\nEnvironment="CATALOG_CMD=sudo -n -u apache php /var/www/html/zynervoxv2/marcador/zypad_catalog.php"\n' > /etc/systemd/system/zypad-bridge.service.d/20-catalog.conf
+restorecon -RF /etc/systemd/system/zypad-bridge.service /etc/systemd/system/zypad-bridge.service.d
 systemctl daemon-reload
 systemctl enable zypad-bridge.service
 echo ZYPAD_BRIDGE_INSTALLED
