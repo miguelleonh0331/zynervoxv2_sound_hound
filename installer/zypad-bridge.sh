@@ -12,15 +12,8 @@ state=/var/lib/zypad-bridge
 install -d -o root -g "$service_user" -m 0750 /etc/zypad
 install -o root -g "$service_user" -m 0640 "$secret_file" /etc/zypad/bridge.env
 
-# Estado: el padre es traversable (0711) para que asterisk llegue a result/; los logs llevan transcripciones y quedan 0700.
-install -d -o "$service_user" -g "$service_user" -m 0711 "$state"
-install -d -o "$service_user" -g "$service_user" -m 0700 "$state/logs"
-install -d -o "$service_user" -g "$service_user" -m 2770 "$state/result"
-if id asterisk >/dev/null 2>&1; then
-  setfacl -m u:asterisk:rwx,d:u:asterisk:rwX "$state/result"
-fi
-# asterisk_t solo conoce zynervox_runtime_t; result/ es lo unico que lee el dialplan.
-semanage fcontext -a -t zynervox_runtime_t "$state/result(/.*)?" 2>/dev/null || semanage fcontext -m -t zynervox_runtime_t "$state/result(/.*)?"
+# Estado: logs con transcripciones, solo el usuario del servicio.
+install -d -o "$service_user" -g "$service_user" -m 0700 "$state" "$state/logs"
 restorecon -RF "$state"
 
 # Retencion de logs: 14 dias.
@@ -28,9 +21,7 @@ printf 'e %s/logs - - - 14d\n' "$state" > /etc/tmpfiles.d/zypad-bridge.conf
 chmod 0644 /etc/tmpfiles.d/zypad-bridge.conf
 
 install -m 0644 -o root -g root "$source_root/src/features/zypad/zypad-bridge.service" /etc/systemd/system/zypad-bridge.service
-install -d -m 0755 /etc/systemd/system/zypad-bridge.service.d
-printf '[Service]\nStateDirectoryMode=0711\n' > /etc/systemd/system/zypad-bridge.service.d/10-installer.conf
-restorecon -RF /etc/systemd/system/zypad-bridge.service /etc/systemd/system/zypad-bridge.service.d
+restorecon -F /etc/systemd/system/zypad-bridge.service
 systemctl daemon-reload
 systemctl enable zypad-bridge.service
 echo ZYPAD_BRIDGE_INSTALLED
