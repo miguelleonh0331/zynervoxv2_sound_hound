@@ -11,6 +11,9 @@ export function parseEnvFile(text) {
   return out;
 }
 
+// Catalogo de MarcadorBuilder en produccion; CATALOG_CMD vacio lo desactiva.
+const DEFAULT_CATALOG_CMD = 'sudo -n -u apache php /var/www/html/zynervoxv2/marcador/zypad_catalog.php';
+
 export function loadConfig(processEnv = process.env) {
   const file = processEnv.ZYPAD_CONFIG || '/etc/zypad/bridge.env';
   const e = { ...parseEnvFile(fs.readFileSync(file, 'utf8')), ...processEnv };
@@ -21,7 +24,7 @@ export function loadConfig(processEnv = process.env) {
     host: e.BRIDGE_HOST || '127.0.0.1',
     port: +(e.BRIDGE_PORT || 8765),
     logDir: e.BRIDGE_LOG_DIR || '/var/lib/zypad-bridge/logs',
-    catalogCmd: e.CATALOG_CMD || '',          // programa que imprime {"version":..,"words":[{word,category,active}]}
+    catalogCmd: e.CATALOG_CMD ?? DEFAULT_CATALOG_CMD,          // programa que imprime {"version":..,"words":[{word,category,active}]}
     catalogFile: e.CATALOG_FILE || '',        // alternativa: fichero JSON con ese mismo formato
     catalogCache: e.CATALOG_CACHE || '/var/lib/zypad-bridge/catalog.json',
     catalogEveryMs: +(e.CATALOG_EVERY_MS || 10000),
