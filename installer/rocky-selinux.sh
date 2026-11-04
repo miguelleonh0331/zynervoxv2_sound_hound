@@ -20,6 +20,7 @@ context zynervox_runtime_t "$CONFIG_DIR/pbx(/.*)?"
 for agi in call_tracking_agi.php ivr_engine_agi.php; do
     context zynervox_agi_exec_t "$WEB_ROOT/bot_ivr/$agi"
 done
+context zynervox_agi_exec_t "$WEB_ROOT/marcador/amd_audit_agi.php"
 restorecon -RF "$WEB_ROOT" "$CONFIG_DIR" "$ASTERISK_ROOT"
 setsebool -P httpd_can_network_connect_db on
 setsebool -P httpd_can_network_connect on
