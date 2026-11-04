@@ -452,5 +452,13 @@ marcador_zypad_apply($repo, $zargs('zv2-z2', ['uuid-3', 'mensaje', '3000000', '4
 marcador_zypad_closing($repo, ['zypad', 'zv2-z2', 'ZYPAD', 'PRE', 'mensaje', '4.1', 'NINGUNO', 'SI', 'uuid-3']);
 $bq = $pdo->query("SELECT palabra_audio_ms,palabra_epoch_ms,answer_epoch_ms,preanswer_bytes,detectado_por,momento FROM zynervox_bot_call_attempts WHERE call_id='zv2-z2'")->fetch();
 check('audit 15..23 seguido de zypad: se conservan los datos que solo trae el primero', (int)$bq['palabra_audio_ms'] === 4100 && (int)$bq['palabra_epoch_ms'] === 3000000 && (int)$bq['answer_epoch_ms'] === 3005000 && (int)$bq['preanswer_bytes'] === 8000 && $bq['detectado_por'] === 'ZYPAD' && $bq['momento'] === 'PRE');
+// Dashboard reason for a list whose first pass is over: pending retries, not "Sin contactos por llamar"
+$rowR = ['list_active'=>1, 'list_state'=>'running', 'campaign_state'=>'running', 'max_channels'=>3, 'att'=>['open_calls'=>0], 'leads'=>['pending'=>0]];
+$cR = ['campaign_active'=>1];
+check('motivo de lista: primera pasada terminada con reintentos pendientes', bot_cfg_list_reason($rowR, $cR, true, true, 0, 5, fn() => 12) === 'Primera pasada terminada · esperando reintentos (12 pendientes)');
+check('motivo de lista: sin reintentos, o con contactos sin llamar, texto veraz', bot_cfg_list_reason($rowR, $cR, true, true, 0, 5, fn() => 0) === 'Sin contactos por llamar' && bot_cfg_list_reason(['leads'=>['pending'=>7]] + $rowR, $cR, true, true, 0, 5, fn() => 99) === 'Quedan 7 contactos por llamar'
+    && bot_cfg_list_reason($rowR, $cR, true, true, 3, 5, fn() => 99) === '');
+$rid = (int)$pdo->query("SELECT MAX(list_id) FROM zynervox_bot_lists WHERE campaign_id=$zc")->fetchColumn();
+check('conteo de reintentos pendientes de una lista sin reintentos configurados = 0', $repo->listRetryPendingCount($zc, $rid, 'UP') === 0);
 echo $fail ? "$fail FALLOS\n" : "TODO OK\n";
 exit($fail ? 1 : 0);

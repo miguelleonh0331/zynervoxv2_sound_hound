@@ -430,6 +430,14 @@ trait CampaignConfigQueries {
         $s->execute([$campaignId]);
         return (int)$s->fetchColumn() === 0;
     }
+    /** Contacts of the list waiting for a retry, ignoring the wait time (same eligibility as listHasNoPendingWork, minus the never-dialed ones). */
+    public function listRetryPendingCount(int $campaignId, int $listId, string $order): int {
+        $s = $this->db->prepare(preg_replace('/ORDER BY (RAND\(\)|l\.lead_id (DESC|ASC))\s*$/', '', $this->campaignCandidateSql($order, 'COUNT(*)', '', false, $listId, true)));
+        $s->execute([$campaignId]);
+        $all = (int)$s->fetchColumn();
+        $n = $this->db->prepare("SELECT COUNT(*) FROM zynervox_bot_list WHERE list_id=? AND status='NEW'"); $n->execute([$listId]);
+        return max(0, $all - (int)$n->fetchColumn());
+    }
     public function deactivateList(int $campaignId, int $listId): void {
         $this->db->prepare('UPDATE zynervox_bot_lists SET active=0 WHERE list_id=? AND campaign_id=?')->execute([$listId, $campaignId]);
     }

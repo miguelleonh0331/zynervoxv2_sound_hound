@@ -238,7 +238,7 @@ function bot_cfg_list_set_active(\ZynervoxQueries\BotIvrRepository $db, int $cam
 }
 
 /** Why a list is not dialing right now, in plain Spanish ('' = it is dialing or has calls in progress). */
-function bot_cfg_list_reason(array $row, array $c, bool $engineAlive, bool $inWindow, int $eligible, int $serverFree): string {
+function bot_cfg_list_reason(array $row, array $c, bool $engineAlive, bool $inWindow, int $eligible, int $serverFree, ?callable $retryPending = null): string {
     if (!(int)$row['list_active']) return 'Lista inactiva';
     if ($row['list_state'] !== 'running') return 'Lista detenida';
     if ($row['campaign_state'] !== 'running' || !(int)$c['campaign_active']) return 'Campaña detenida';
@@ -246,7 +246,12 @@ function bot_cfg_list_reason(array $row, array $c, bool $engineAlive, bool $inWi
     if (!$inWindow) return 'Fuera de horario';
     $open = (int)($row['att']['open_calls'] ?? 0);
     if ($open >= (int)$row['max_channels']) return '';
-    if ($eligible < 1) return 'Sin contactos por llamar';
+    if ($eligible < 1) {
+        $new = (int)($row['leads']['pending'] ?? 0);
+        if ($new > 0) return 'Quedan '.$new.' contactos por llamar';
+        $retries = $retryPending ? (int)$retryPending() : 0; // only computed here: the one case that needs it
+        return $retries > 0 ? 'Primera pasada terminada · esperando reintentos ('.$retries.' pendientes)' : 'Sin contactos por llamar';
+    }
     if ($serverFree < 1) return 'Máximo de canales del servidor';
     return '';
 }
@@ -301,7 +306,7 @@ function bot_cfg_dashboard(\ZynervoxQueries\BotIvrRepository $db, ?DateTimeInter
                 'unavailable'=>(int)($A['unavailable'] ?? 0), 'no_answer'=>(int)($A['noanswer'] ?? 0), 'failed'=>(int)($A['failed'] ?? 0)],
             'insight'=>null,
             'progress_pct'=>$total > 0 ? (int)round(100 * (int)$L['called'] / $total) : 0,
-            'reason'=>bot_cfg_list_reason($r + ['att'=>$A], $c + ['campaign_active'=>$r['campaign_active']], $alive, $inWindow, $eligible, $max - $openTotal)];
+            'reason'=>bot_cfg_list_reason($r + ['att'=>$A], $c + ['campaign_active'=>$r['campaign_active']], $alive, $inWindow, $eligible, $max - $openTotal, fn() => $db->listRetryPendingCount($cid, (int)$r['list_id'], (string)$r['lead_order']))];
     }
     foreach ($out['campaigns'] as &$camp) foreach ($camp['lists'] as &$l) $l['insight'] = bot_cfg_list_temperature($l['totals'], $calls15[$l['list_id']] ?? 0);
     unset($camp, $l);
