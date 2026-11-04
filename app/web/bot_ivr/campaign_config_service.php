@@ -290,6 +290,13 @@ function bot_cfg_summary_counts(array $u): array {
     return $c;
 }
 
+/** Mini needle: the last 10 finished calls of a list (first attempts and retries), how many were human. «Sin datos» under 10. These are ATTEMPTS, not contacts. */
+function bot_cfg_last10(\ZynervoxQueries\BotIvrRepository $db, int $listId): array {
+    $r = $db->lastFinishedAttempts($listId, 10);
+    $nodata = $r['calls'] < 10;
+    return ['calls'=>$r['calls'], 'human'=>$r['human'], 'window'=>10, 'no_data'=>$nodata, 'label'=>$nodata ? 'Sin datos' : $r['human'].' de 10 últimas llamadas', 'basis'=>'intentos'];
+}
+
 function bot_cfg_dashboard(\ZynervoxQueries\BotIvrRepository $db, ?DateTimeInterface $now = null): array {
     $now ??= new DateTimeImmutable('now', new DateTimeZone('UTC'));
     $age = $db->dialerHeartbeatAge();
@@ -316,6 +323,7 @@ function bot_cfg_dashboard(\ZynervoxQueries\BotIvrRepository $db, ?DateTimeInter
             'totals'=>['contacts'=>$total, 'not_called'=>(int)$L['pending'], 'calls'=>(int)($A['calls'] ?? 0), 'answered'=>(int)($A['answered'] ?? 0), 'human'=>(int)($A['human'] ?? 0), 'machine'=>(int)($A['machine'] ?? 0), 'not_sure'=>(int)($A['notsure'] ?? 0),
                 'unavailable'=>(int)($A['unavailable'] ?? 0), 'no_answer'=>(int)($A['noanswer'] ?? 0), 'failed'=>(int)($A['failed'] ?? 0)],
             'distribution'=>isset($sumByList[(int)$r['list_id']]) && ($sumByList[(int)$r['list_id']]['dist_at'] ?? null) !== null ? marcador_contact_block(bot_cfg_summary_counts($sumByList[(int)$r['list_id']])) + ['as_of_utc'=>$sumByList[(int)$r['list_id']]['dist_at']] : null,
+            'last10'=>bot_cfg_last10($db, (int)$r['list_id']),
             'insight'=>null,
             'progress_pct'=>$total > 0 ? (int)round(100 * (int)$L['called'] / $total) : 0,
             'reason'=>bot_cfg_list_reason($r + ['att'=>$A], $c + ['campaign_active'=>$r['campaign_active']], $alive, $inWindow, $eligible, $max - $openTotal, fn() => $db->listRetryPendingCount($cid, (int)$r['list_id'], (string)$r['lead_order']))];

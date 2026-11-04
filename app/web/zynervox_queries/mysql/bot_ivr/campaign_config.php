@@ -505,6 +505,13 @@ trait CampaignConfigQueries {
         $n = $this->db->prepare("SELECT COUNT(*) FROM zynervox_bot_list WHERE list_id=? AND status='NEW'"); $n->execute([$listId]);
         return max(0, $all - (int)$n->fetchColumn());
     }
+    /** Last N finished attempts of a list (first attempts and retries alike), newest first, by index (list_id, attempt_id): [calls, human]. TEST-% excluded. */
+    public function lastFinishedAttempts(int $listId, int $n = 10): array {
+        $s = $this->db->prepare("SELECT COUNT(*) calls, COALESCE(SUM(t.amd_status='HUMAN'),0) human FROM (SELECT amd_status FROM zynervox_bot_call_attempts WHERE list_id=? AND finished_at IS NOT NULL AND call_id NOT LIKE 'TEST-%' ORDER BY attempt_id DESC LIMIT ".max(1, min(100, $n)).") t");
+        $s->execute([$listId]);
+        $r = $s->fetch(\PDO::FETCH_ASSOC);
+        return ['calls'=>(int)$r['calls'], 'human'=>(int)$r['human']];
+    }
     public function deactivateList(int $campaignId, int $listId): void {
         $this->db->prepare('UPDATE zynervox_bot_lists SET active=0 WHERE list_id=? AND campaign_id=?')->execute([$listId, $campaignId]);
     }

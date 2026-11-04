@@ -519,5 +519,13 @@ check('zypad vs AMD por contacto: solo_zypad = con AMD humano + sin contestar + 
 $wm = bot_cfg_contact_weekday_hour($repo, ['list_id'=>$zl2, 'from'=>'2000-01-01']);
 check('matriz día × hora por contacto: cada contacto cuenta una vez, con contestados y humanos', $wm['total']['contacts'] === 6 && $wm['total']['answered'] === 4 && $wm['total']['human'] === 1 && $wm['cells'][0]['weekday'] >= 1 && $wm['cells'][0]['weekday'] <= 7 && $wm['cells'][0]['hour_local'] >= 0 && $wm['cells'][0]['hour_local'] <= 23);
 check('matriz día × hora por contacto: rango sin llamadas = vacía sin error', bot_cfg_contact_weekday_hour($repo, ['from'=>gmdate('Y-m-d', time() - 400 * 86400), 'to'=>gmdate('Y-m-d', time() - 399 * 86400)])['cells'] === []);
+// Mini needle: last 10 finished calls of a list
+$l10 = bot_cfg_last10($repo, $dl);
+check('mini aguja: con menos de 10 llamadas terminadas dice Sin datos', $l10['no_data'] === ($l10['calls'] < 10) && ($l10['calls'] >= 10 || $l10['label'] === 'Sin datos'));
+$pdo->exec("INSERT INTO zynervox_bot_lists (campaign_id,name,active,max_channels,dialer_state) VALUES ($dc,'M10',1,3,'stopped')"); $m10 = (int)$pdo->lastInsertId();
+$pdo->exec("INSERT INTO zynervox_bot_list (list_id,phone,status,called_count) VALUES ($m10,'957000001','X',1)"); $mlead = (int)$pdo->lastInsertId();
+for ($q = 1; $q <= 12; $q++) $pdo->prepare("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,campaign_id,started_at,finished_at,status,amd_status) VALUES (?,?,?,'957000001',?,UTC_TIMESTAMP(),UTC_TIMESTAMP(),'X',?)")->execute(["zv2-m$q", $m10, $mlead, $dc, $q <= 3 ? 'MACHINE' : ($q % 2 ? 'HUMAN' : '')]);
+$m = bot_cfg_last10($repo, $m10);
+check('mini aguja: las 10 últimas terminadas (primeros intentos y reintentos), con cuántas humanas', $m['calls'] === 10 && $m['no_data'] === false && $m['human'] === 4 && $m['label'] === '4 de 10 últimas llamadas');
 echo $fail ? "$fail FALLOS\n" : "TODO OK\n";
 exit($fail ? 1 : 0);
