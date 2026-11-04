@@ -22,6 +22,11 @@ ALTER TABLE `zynervox_bot_call_attempts`
   ADD COLUMN IF NOT EXISTS `corte_por` VARCHAR(8) CHARACTER SET ascii NOT NULL DEFAULT '',
   ADD COLUMN IF NOT EXISTS `preanswer_audio` VARCHAR(2) CHARACTER SET ascii NOT NULL DEFAULT '',
   ADD COLUMN IF NOT EXISTS `zypad_call_id` VARCHAR(80) CHARACTER SET ascii NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS `palabra_epoch_ms` BIGINT UNSIGNED NULL DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS `palabra_audio_ms` INT UNSIGNED NULL DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS `first_audio_epoch_ms` BIGINT UNSIGNED NULL DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS `answer_epoch_ms` BIGINT UNSIGNED NULL DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS `preanswer_bytes` INT UNSIGNED NULL DEFAULT NULL,
   ADD COLUMN IF NOT EXISTS `result_final` VARCHAR(12) AS (IF(`amd_status`='MACHINE' OR `corte_por`='ZYPAD','CASILLA_VOZ','')) VIRTUAL;
 -- Every attempt made before this migration went through the AMD dialplan.
 UPDATE `zynervox_bot_call_attempts` SET `dial_mode`='AMD' WHERE `dial_mode`='';

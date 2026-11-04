@@ -208,10 +208,13 @@ trait CampaignConfigQueries {
     public function zypadCatalogVersion(): string {
         return (string)$this->db->query('SELECT COALESCE(MAX(updated_at),"") FROM zynervox_bot_zypad_words')->fetchColumn();
     }
-    /** Zypad facts delivered at closing; returns the number of attempts updated (0 = unknown call_id). Empty values stay empty. */
+    /** Zypad facts delivered at closing; returns the attempt count found (0 = unknown call_id). detectado_por/momento/corte_por are derived here from the attempt itself. */
     public function recordZypad(string $callId, array $d): int {
-        $s = $this->db->prepare('UPDATE zynervox_bot_call_attempts SET detectado_por=?,momento=?,palabra=?,segundo=?,corte_por=?,preanswer_audio=?,zypad_call_id=? WHERE call_id=?');
-        $s->execute([$d['detectado_por'], $d['momento'], $d['palabra'], $d['segundo'], $d['corte_por'], $d['preanswer_audio'], $d['zypad_call_id'], $callId]);
+        $s = $this->db->prepare("UPDATE zynervox_bot_call_attempts SET zypad_call_id=?,palabra=?,palabra_epoch_ms=?,palabra_audio_ms=?,segundo=?,preanswer_audio=?,preanswer_bytes=?,first_audio_epoch_ms=?,answer_epoch_ms=?,
+            detectado_por=IF(?<>'','ZYPAD',IF(amd_status='MACHINE','AMD','NINGUNO')), momento=IF(?<>'',?,IF(amd_status='MACHINE','POST','')),
+            corte_por=IF(dial_mode='ZYPAD_SOMBRA','NINGUNO',corte_por) WHERE call_id=?");
+        $s->execute([$d['zypad_call_id'], $d['palabra'], $d['palabra_epoch_ms'], $d['palabra_audio_ms'], $d['segundo'], $d['preanswer_audio'], $d['preanswer_bytes'], $d['first_audio_epoch_ms'], $d['answer_epoch_ms'],
+            $d['palabra'], $d['momento_palabra'], $d['momento_palabra'], $callId]);
         if ($s->rowCount() > 0) return $s->rowCount();
         $e = $this->db->prepare('SELECT COUNT(*) FROM zynervox_bot_call_attempts WHERE call_id=?'); $e->execute([$callId]); // unchanged values also give 0 rows
         return (int)$e->fetchColumn();
@@ -238,8 +241,8 @@ trait CampaignConfigQueries {
             COALESCE(SUM(a.result_final='CASILLA_VOZ'),0) casilla_voz,
             COALESCE(SUM($zy AND $am),0) both_casilla, COALESCE(SUM($zy AND NOT $am),0) only_zypad, COALESCE(SUM(NOT $zy AND $am),0) only_amd,
             COALESCE(SUM($zy AND NOT $am AND a.amd_status='HUMAN' AND $v),0) only_zypad_amd_human,
-            COALESCE(SUM(a.detectado_por='ZYPAD' AND a.momento='PRE' AND a.segundo IS NOT NULL AND a.answered_at IS NOT NULL),0) saved_n,
-            COALESCE(SUM(IF(a.detectado_por='ZYPAD' AND a.momento='PRE' AND a.segundo IS NOT NULL AND a.answered_at IS NOT NULL, GREATEST(0, TIMESTAMPDIFF(SECOND,a.started_at,a.answered_at)-a.segundo), 0)),0) saved_seconds
+            COALESCE(SUM(a.detectado_por='ZYPAD' AND a.momento='PRE' AND a.palabra_epoch_ms IS NOT NULL AND a.answer_epoch_ms IS NOT NULL),0) saved_n,
+            COALESCE(SUM(IF(a.detectado_por='ZYPAD' AND a.momento='PRE' AND a.palabra_epoch_ms IS NOT NULL AND a.answer_epoch_ms IS NOT NULL, GREATEST(0, CAST(a.answer_epoch_ms AS SIGNED)-CAST(a.palabra_epoch_ms AS SIGNED))/1000, 0)),0) saved_seconds
             FROM zynervox_bot_call_attempts a WHERE $where GROUP BY dial_mode ORDER BY dial_mode";
         $s = $this->db->prepare($sql); $s->execute($params);
         return $s->fetchAll(\PDO::FETCH_ASSOC);
