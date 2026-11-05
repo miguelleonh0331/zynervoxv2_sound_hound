@@ -583,5 +583,13 @@ check('AGI «blocked»: el dialplan cierra el intento como Bloqueado y el contac
     && $pdo->query("SELECT status FROM zynervox_bot_list WHERE list_id=$bl AND phone='900000013'")->fetchColumn() === 'BLOCKED' && $repo->markCallBlocked('zv2-no-existe') === 0);
 $pdo->exec("DELETE FROM zynervox_blacklist");
 check('lista negra: borrar el número lo deja marcable otra vez (los nuevos contactos)', !$repo->isBlacklisted('900000011'));
+// Strict check used by the dialplan AGI: SI / NO / ERROR (fail closed when the table or the database fail)
+$pdo->exec("INSERT INTO zynervox_blacklist (phone,reason,created_by) VALUES ('900000021','prueba ficticia','test')");
+check('AGI de lista negra: SI para un bloqueado (con prefijo o formato), NO para otro, ERROR sin dígitos', marcador_blacklist_check($repo, '51900000021') === 'SI' && marcador_blacklist_check($repo, '900000021') === 'SI' && marcador_blacklist_check($repo, '900000022') === 'NO' && marcador_blacklist_check($repo, 'xx') === 'ERROR' && marcador_blacklist_check($repo, '12345') === 'NO');
+$pdo->exec("RENAME TABLE zynervox_blacklist TO zynervox_blacklist_off");
+$errAns = marcador_blacklist_check($repo, '900000022');
+$pdo->exec("RENAME TABLE zynervox_blacklist_off TO zynervox_blacklist");
+check('AGI de lista negra: si la consulta falla responde ERROR (no llamar a ciegas)', $errAns === 'ERROR');
+$pdo->exec("DELETE FROM zynervox_blacklist");
 echo $fail ? "$fail FALLOS\n" : "TODO OK\n";
 exit($fail ? 1 : 0);

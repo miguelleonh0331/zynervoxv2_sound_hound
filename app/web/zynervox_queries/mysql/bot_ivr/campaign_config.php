@@ -640,6 +640,12 @@ trait CampaignConfigQueries {
             return (bool)$s->fetchColumn();
         } catch (\PDOException $e) { error_log('ZV2 lista negra (migración 023 pendiente?): '.$e->getMessage()); return false; }
     }
+    /** Strict lookup for the dialplan AGI: true/false, and it THROWS when the database or the table fails (the dialplan must not call blind). */
+    public function blacklistLookup(string $key): bool {
+        $this->db->exec('SET SESSION max_statement_time=2'); // MariaDB: a stuck query never holds a call for long
+        $s = $this->db->prepare('SELECT 1 FROM zynervox_blacklist WHERE phone=? LIMIT 1'); $s->execute([$key]);
+        return (bool)$s->fetchColumn();
+    }
     /** Leaves a finished attempt «BLOCKED» (no call was made) and the lead in the final status BLOCKED. Does not count as a call of the lead. */
     private function recordBlockedAttempt(int $listId, int $leadId, string $phone, int $campaignId): void {
         $this->db->prepare("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,campaign_id,started_at,finished_at,status,disposition,end_source) VALUES (?,?,?,?,?,UTC_TIMESTAMP(),UTC_TIMESTAMP(),'BLOCKED','BLOCKED','BLOCKED')")
