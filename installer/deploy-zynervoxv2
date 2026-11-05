@@ -38,6 +38,7 @@ for agi in call_tracking_agi.php ivr_engine_agi.php forward_headers_agi.php; do
   [[ ! -f "$stage/bot_ivr/$agi" || -L "$stage/bot_ivr/$agi" ]] || chmod 0750 "$stage/bot_ivr/$agi"
 done
 [[ ! -f "$stage/marcador/amd_audit_agi.php" || -L "$stage/marcador/amd_audit_agi.php" ]] || chmod 0750 "$stage/marcador/amd_audit_agi.php"
+[[ ! -f "$stage/marcador/blacklist_agi.php" || -L "$stage/marcador/blacklist_agi.php" ]] || chmod 0750 "$stage/marcador/blacklist_agi.php"
 options=(-rcpgo --no-links --no-specials --no-devices --chown=root:apache --chmod=D750 --itemize-changes
   --exclude=runtime/ --exclude=venvs/ --exclude=secrets/ --exclude=__pycache__/ '--exclude=*.pyc'
   '--exclude=*.bak*' --exclude=.env '--exclude=.env.*' '--exclude=*.pem' '--exclude=*.key'
@@ -59,6 +60,7 @@ if [[ "$mode" = apply ]]; then
     [[ ! -f "$destination/bot_ivr/$agi" || -L "$destination/bot_ivr/$agi" ]] || chmod 0750 "$destination/bot_ivr/$agi"
   done
   [[ ! -f "$destination/marcador/amd_audit_agi.php" || -L "$destination/marcador/amd_audit_agi.php" ]] || chmod 0750 "$destination/marcador/amd_audit_agi.php"
+  [[ ! -f "$destination/marcador/blacklist_agi.php" || -L "$destination/marcador/blacklist_agi.php" ]] || chmod 0750 "$destination/marcador/blacklist_agi.php"
   # rsync recrea los inodos sin -A y el arbol no tiene ACL por defecto: se restauran las ACL de asterisk y codex-web.
   find "$destination" \( -path "$destination/venvs" -o -path "$destination/runtime" \) -prune -o \
     -exec setfacl -m u:asterisk:rX,u:codex-web:rX {} +

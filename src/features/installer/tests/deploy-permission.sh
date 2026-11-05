@@ -6,6 +6,7 @@ bash -n "$helper"
 visudo -cf - < "$ROOT/installer/codex-web-zynervoxv2-deploy.sudoers"
 grep -q 'setfacl -m u:asterisk:rX,u:codex-web:rX' "$helper" || { echo 'Falta restaurar las ACL de asterisk y codex-web tras el rsync.' >&2; exit 1; }
 grep -q 'chmod 0750 "$destination/marcador/amd_audit_agi.php"' "$helper" || { echo 'Falta el modo ejecutable del AGI amd_audit_agi.php.' >&2; exit 1; }
+grep -q 'chmod 0750 "$destination/marcador/blacklist_agi.php"' "$helper" || { echo 'Falta el modo ejecutable del AGI blacklist_agi.php.' >&2; exit 1; }
 [[ $EUID -eq 0 ]] || { echo 'Las pruebas de argumentos requieren root; no publican archivos.' >&2; exit 1; }
 reject() {
   local status=0

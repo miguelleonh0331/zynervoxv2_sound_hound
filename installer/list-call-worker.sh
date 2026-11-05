@@ -41,20 +41,6 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_zypad_words TO '
 GRANT SELECT ON zynervox_core.zynervox_blacklist TO 'zynervoxv2_bot_ivr'@'localhost';
 GRANT SELECT ON zynervox_core.zynervox_blacklist TO 'zynervoxv2_bot_ivr'@'127.0.0.1';
 SQL
-# Usuario de solo lectura de la lista negra para el dialplan (ODBC de Asterisk). La clave se crea una vez y no se imprime.
-blacklist_env=/etc/zynervox/zynervoxv2/blacklist-ro.env
-if [[ ! -f "$blacklist_env" ]]; then
-  blacklist_password="$(openssl rand -hex 24)"
-  for host in localhost 127.0.0.1; do
-    mysql <<SQL
-CREATE USER IF NOT EXISTS 'zynervoxv2_blacklist_ro'@'$host' IDENTIFIED BY '$blacklist_password';
-GRANT SELECT ON zynervox_core.zynervox_blacklist TO 'zynervoxv2_blacklist_ro'@'$host';
-SQL
-  done
-  (umask 077; printf 'DB_HOST=127.0.0.1\nDB_NAME=zynervox_core\nDB_USER=zynervoxv2_blacklist_ro\nDB_PASSWORD=%s\n' "$blacklist_password" > "$blacklist_env")
-  chown root:asterisk "$blacklist_env"
-  chmod 0640 "$blacklist_env"
-fi
 install -d -o root -g "${WEB_GROUP:-www}" -m 2770 "$runtime_root/bot_ivr/call_jobs"
 install -d -o root -g "${WEB_GROUP:-www}" -m 0750 "$runtime_root/modules/bot_ivr"
 install -o root -g "${WEB_GROUP:-www}" -m 0640 "$source_root/asterisk/synervox/modules/bot_ivr/list_call_launcher.py" "$runtime_root/modules/bot_ivr/list_call_launcher.py"
