@@ -568,6 +568,8 @@ check('lista negra por campaña: con la opción en No no consulta nada (ni el mo
 bot_cfg_save($repo, $bc, ['name'=>'BLACK', 'blacklist_enabled'=>'1', 'call_origin'=>'7308', 'lead_order'=>'UP', 'rules'=>[], 'schedules'=>[['weekday'=>1, 'start_time'=>'00:00', 'end_time'=>'23:59']]]);
 bot_cfg_save($repo, $bc, ['name'=>'BLACK', 'call_origin'=>'7308', 'lead_order'=>'UP', 'rules'=>[], 'schedules'=>[['weekday'=>1, 'start_time'=>'00:00', 'end_time'=>'23:59']]]);
 check('lista negra por campaña: guardar sin el campo conserva el Sí', (int)$repo->campaign($bc)['blacklist_enabled'] === 1);
+$bv = fn($c) => in_array('__ZV2_BLACKLIST=SI', bot_engine_variables($c, ['call_id'=>'zv2-x', 'list_id'=>1, 'lead_id'=>1], []), true);
+check('lista negra por campaña: el motor manda __ZV2_BLACKLIST=SI solo con la opción en Sí', $bv($repo->campaign($bc)) && !$bv(['blacklist_enabled'=>0] + $repo->campaign($bc)));
 $bc2 = bot_cfg_save($repo, null, ['name'=>'BLACK2', 'blacklist_enabled'=>'1', 'call_origin'=>'7308', 'lead_order'=>'UP', 'rules'=>[], 'schedules'=>[]]);
 $pdo->exec("DELETE FROM zynervox_blacklist"); $pdo->exec("INSERT INTO zynervox_blacklist (campaign_id,phone,reason,created_by) VALUES ($bc2,'900000011','otra campaña','test'),($bc,'900000041','solo esta','test'),(0,'900000042','todas','test')");
 check('lista negra por campaña: lo de otra campaña no bloquea, lo propio y lo de «todas» sí; sin campaña no consulta', !$repo->isBlacklisted('900000011', $bc) && $repo->isBlacklisted('900000011', $bc2) && $repo->isBlacklisted('900000041', $bc) && !$repo->isBlacklisted('900000041', $bc2) && $repo->isBlacklisted('900000042', $bc) && $repo->isBlacklisted('900000042', $bc2)

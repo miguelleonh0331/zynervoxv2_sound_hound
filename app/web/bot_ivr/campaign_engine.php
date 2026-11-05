@@ -17,6 +17,7 @@ const BOT_ENGINE_AMI_GRACE = 10;
 function bot_engine_variables(array $c, array $call, array $headers, array $amdActions = []): array {
     $vars = ['__ZV2_CALL_ID='.$call['call_id'], '__ZV2_LIST_ID='.$call['list_id'], '__ZV2_LEAD_ID='.$call['lead_id'], '__ZV2_CAMPAIGN_ID='.(int)$c['campaign_id']];
     $vars[] = '__ZV2_DIAL_TIMEOUT='.(int)$c['dial_timeout'];
+    if ((int)($c['blacklist_enabled'] ?? 0) === 1) $vars[] = '__ZV2_BLACKLIST=SI'; // only campaigns with the option on: the dialplan consults the blacklist (check,<phone>,<campaign>); without the variable it does not
     // Action per AMD result (transfer|hangup|retry); the dialplan applies it after AMD() and finish records the stage.
     foreach ($amdActions as $a) $vars[] = '__ZV2_AMD_ACTION_'.$a['result'].'='.$a['action'];
     // Without trunk and destination the campaign only detects (AMD) and hangs up: the dialplan sees no ZV2_XFER_TRUNK.
