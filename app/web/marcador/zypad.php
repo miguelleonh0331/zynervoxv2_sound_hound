@@ -6,6 +6,9 @@ declare(strict_types=1);
 const MARCADOR_DIAL_MODES = ['7308'=>'AMD', '7309'=>'AMD', '7314'=>'ZYPAD_SOMBRA', '7315'=>'ZYPAD_SOMBRA', '7312'=>'ZYPAD_CORTE'];
 const MARCADOR_DIAL_MODE_LABELS = ['AMD'=>'Solo AMD', 'ZYPAD_SOMBRA'=>'Zypad en sombra + AMD', 'ZYPAD_CORTE'=>'Zypad con corte + AMD'];
 
+/** Dial origins offered on the Campañas screen. Both include AMD, so saving a campaign with one of them always leaves amd_enabled = 1. */
+const MARCADOR_OFFERED_DIAL_ORIGINS = ['7308', '7314'];
+
 function marcador_dial_mode(string $origin): string { return MARCADOR_DIAL_MODES[$origin] ?? 'AMD'; }
 
 /**

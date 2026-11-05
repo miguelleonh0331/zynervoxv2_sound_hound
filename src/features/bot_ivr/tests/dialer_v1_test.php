@@ -544,5 +544,20 @@ check('detalle: Estado inválido se rechaza y las tarjetas no cambian con el fil
 $full = $rp['detail']['rows'][0]['phone'];
 check('detalle en pantalla: teléfono completo; CSV: enmascarado', !str_contains($full, '*') && strlen($full) >= 9 && !str_contains(bot_cfg_report_csv($repo, ['list_id'=>$dl, 'from'=>'2000-01-01']), $full)
     && str_contains(bot_cfg_report_csv($repo, ['list_id'=>$dl, 'from'=>'2000-01-01', 'estado'=>'ocupado']), '*') && substr_count(trim(bot_cfg_report_csv($repo, ['list_id'=>$dl, 'from'=>'2000-01-01', 'estado'=>'ocupado'])), "\n") === 2);
+// AMD is no longer a form field: 7308 and 7314 always keep amd_enabled=1, other origins never lose it in silence
+$ba7 = ['name'=>'SINAMD7308', 'active'=>'1', 'call_origin'=>'7308', 'max_channels'=>'1', 'lead_order'=>'UP', 'transfer_carrier_id'=>'', 'transfer_destination'=>''];
+$n7308 = bot_cfg_save($repo, null, $ba7);
+$n7314 = bot_cfg_save($repo, null, ['name'=>'SINAMD7314', 'call_origin'=>'7314'] + $ba7);
+check('guardar sin amd_enabled: 7308 y 7314 nuevas quedan con AMD', (int)$repo->campaign($n7308)['amd_enabled'] === 1 && (int)$repo->campaign($n7314)['amd_enabled'] === 1);
+$pdo->exec("UPDATE zynervox_bot_campaigns SET amd_enabled=0 WHERE campaign_id IN ($n7308,$n7314)");
+bot_cfg_save($repo, $n7308, $ba7); bot_cfg_save($repo, $n7314, ['call_origin'=>'7314'] + $ba7);
+check('guardar sin amd_enabled una campaña 7308/7314 que lo tenía apagado lo deja en 1', (int)$repo->campaign($n7308)['amd_enabled'] === 1 && (int)$repo->campaign($n7314)['amd_enabled'] === 1);
+bot_cfg_save($repo, $n7308, ['amd_enabled'=>'0'] + $ba7);
+check('aunque llegue amd_enabled=0 en un tipo ofrecido, queda en 1', (int)$repo->campaign($n7308)['amd_enabled'] === 1);
+$nOld = bot_cfg_save($repo, null, ['name'=>'ANTIGUA7307', 'call_origin'=>'7307', 'amd_enabled'=>'1'] + $ba7);
+bot_cfg_save($repo, $nOld, ['call_origin'=>'7307'] + $ba7);
+check('un origen no ofrecido conserva su valor al guardar sin amd_enabled', (int)$repo->campaign($nOld)['amd_enabled'] === 1);
+$pdo->exec("UPDATE zynervox_bot_campaigns SET amd_enabled=0 WHERE campaign_id=$nOld"); bot_cfg_save($repo, $nOld, ['call_origin'=>'7307'] + $ba7);
+check('un origen no ofrecido que estaba sin AMD sigue sin AMD (no se cambia en silencio)', (int)$repo->campaign($nOld)['amd_enabled'] === 0);
 echo $fail ? "$fail FALLOS\n" : "TODO OK\n";
 exit($fail ? 1 : 0);

@@ -142,7 +142,7 @@ function bot_cfg_schedules($input): array {
 
 /** $input: name, active, call_origin, max_channels, amd_enabled, transfer_carrier_id, transfer_destination, timezone, lead_order, dial_timeout, campaign_cid, headers[], rules[], amd_actions[], schedules[]. Returns the campaign id. */
 function bot_cfg_save(\ZynervoxQueries\BotIvrRepository $db, ?int $id, array $input): int {
-    $old = $id === null ? ['lead_order'=>'DOWN','dial_timeout'=>60,'campaign_cid'=>'','max_channels'=>1] : $db->campaign($id);
+    $old = $id === null ? ['lead_order'=>'DOWN','dial_timeout'=>60,'campaign_cid'=>'','max_channels'=>1,'amd_enabled'=>0] : $db->campaign($id);
     $origin = trim((string)($input['call_origin'] ?? ''));
     if (!preg_match('/^[0-9]{0,20}$/D', $origin)) throw new RuntimeException('Origen de llamada inválido.');
     $carrier = trim((string)($input['transfer_carrier_id'] ?? ''));
@@ -157,7 +157,9 @@ function bot_cfg_save(\ZynervoxQueries\BotIvrRepository $db, ?int $id, array $in
         'active'=>(string)($input['active'] ?? '') === '1' ? 1 : 0,
         'call_origin'=>$origin,
         'max_channels'=>bot_cfg_int($input['max_channels'] ?? $old['max_channels'], 1, 500, 'Canales'), // obsolete: the engine uses the list channels
-        'amd_enabled'=>(string)($input['amd_enabled'] ?? '') === '1' ? 1 : 0,
+        // AMD is not a form field any more: both offered dial modes (7308 Solo AMD, 7314 Zypad en sombra + AMD) always carry it. Any other origin (old campaigns, 7312/7315) keeps what it had
+        // unless a legacy caller sends the value explicitly: it is never switched off in silence.
+        'amd_enabled'=>in_array($origin, MARCADOR_OFFERED_DIAL_ORIGINS, true) ? 1 : (array_key_exists('amd_enabled', $input) ? ((string)$input['amd_enabled'] === '1' ? 1 : 0) : (int)$old['amd_enabled']),
         'transfer_carrier_id'=>$carrier, 'transfer_destination'=>$destination, 'timezone'=>$timezone, 'lead_order'=>$order,
         'dial_timeout'=>bot_cfg_int($input['dial_timeout'] ?? $old['dial_timeout'], 1, 255, 'Tiempo de llamada'),
         'campaign_cid'=>bot_campaign_field_value('campaign_cid', $input['campaign_cid'] ?? $old['campaign_cid'])];
