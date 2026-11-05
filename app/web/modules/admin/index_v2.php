@@ -125,7 +125,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
                 if (!st) {
                     var cv = document.createElement('canvas'); box.appendChild(cv);
                     var g = new RadialGauge({
-                        renderTo: cv, width: GSIZE, height: GSIZE, units: '% humanos', minValue: 0, maxValue: o.max, value: REDUCED ? value : 0, majorTicks: o.ticks, minorTicks: 5, strokeTicks: true,
+                        renderTo: cv, width: GSIZE, height: GSIZE, units: '', minValue: 0, maxValue: o.max, value: REDUCED ? value : 0, majorTicks: o.ticks.map(function () { return ''; }), minorTicks: 5, strokeTicks: true,
                         highlights: o.hl, highlightsWidth: 12, startAngle: 60, ticksAngle: 240, valueBox: false, needle: !noData,
                         colorPlate: '#fdfdfd', colorPlateEnd: '#e6e8ec', colorMajorTicks: '#1f2937', colorMinorTicks: '#4b5563', colorNumbers: '#1f2937', colorUnits: '#4b5563',
                         borders: true, borderShadowWidth: 0, borderOuterWidth: 6, borderMiddleWidth: 3, borderInnerWidth: 2, colorBorderOuter: '#c9ced6', colorBorderOuterEnd: '#59616e', colorBorderMiddle: '#eef0f3', colorBorderMiddleEnd: '#8b93a0', colorBorderInner: '#fafafa', colorBorderInnerEnd: '#d7dbe1',
