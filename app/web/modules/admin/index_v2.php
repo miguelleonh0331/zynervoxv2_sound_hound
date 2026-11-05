@@ -51,6 +51,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         #stpanel .row { display: flex; align-items: center; gap: 0.6rem; padding: 2px 0; border-bottom: 1px solid var(--border); } #stpanel .row:last-child { border-bottom: 0; } #stpanel .row .sp { flex: 1; }
         .dash-error { color: #dc2626; margin: 0.3rem 0; }
         @media (max-width: 1600px) { html:not(.nosb) .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } } /* con el menú abierto y poco ancho, 3 columnas para que se lea */
+        @media (max-width: 1600px) { .ch .mini-btn { padding: 0 5px; font-size: 0.66rem; } .ch .tag { display: none; } .ch a.nm { font-size: 0.76rem; } } /* a poco ancho el nombre gana sitio; el estado sigue en el color del borde y en el tooltip */
         @media (prefers-reduced-motion: reduce) { .live .pulse, .cell.hot, .live .g canvas { animation: none; } .bar span { transition: none; } }
         .live .g canvas { border-radius: 50%; animation: halo 2.2s ease-out infinite; }
         @keyframes halo { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.45); } 100% { box-shadow: 0 0 0 8px rgba(16,185,129,0); } }
@@ -163,7 +164,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             r.root.className = 'cell ' + (live ? 'live' : 'wait');
             var th = ins.thresholds || {}, hot = !!(nd && !nd.no_data && n0(th.hot_human_pct) && n0(nd.pct) >= n0(th.hot_human_pct));
             if (hot) r.root.classList.add('hot');
-            r.nm.textContent = l.name; r.nm.title = l.name + ' · ver reporte'; r.nm.href = 'reports.php?campaign_id=' + encodeURIComponent(c.campaign_id) + '&list_id=' + encodeURIComponent(l.list_id);
+            r.nm.textContent = l.name; r.nm.title = l.name + ' · ' + (live ? 'discando' : (why || 'esperando')) + ' · ver reporte'; r.nm.href = 'reports.php?campaign_id=' + encodeURIComponent(c.campaign_id) + '&list_id=' + encodeURIComponent(l.list_id);
             var why = l.reason || ''; r.tag.textContent = live ? 'Discando' : (/reintentos/i.test(why) ? 'Reintentos' : (why && why.length < 20 ? why : 'Esperando')); r.tag.title = why || 'Marcando'; r.tag.className = 'tag' + (live ? ' run' : '');
             r.stop.onclick = function () { act('stop', r.c.campaign_id, r.id, 'Se detendrá la lista «' + l.name + '». Las llamadas en curso terminan solas. ¿Continuar?'); };
             r.off.onclick = function () { act('deactivate', r.c.campaign_id, r.id, 'Se detiene la lista «' + l.name + '» y sale del panel. Para volver a usarla, actívala en Listas. ¿Continuar?'); };
