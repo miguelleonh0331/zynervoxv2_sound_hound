@@ -21,7 +21,6 @@ for agi in call_tracking_agi.php ivr_engine_agi.php; do
     context zynervox_agi_exec_t "$WEB_ROOT/bot_ivr/$agi"
 done
 context zynervox_agi_exec_t "$WEB_ROOT/marcador/amd_audit_agi.php"
-context zynervox_agi_exec_t "$WEB_ROOT/marcador/blacklist_agi.php"
 # Puerto 8765/tcp: puente AudioSocket de zypad; Asterisk (res_audiosocket) conecta a el. Por defecto es lirc_port_t.
 semanage port -a -t zynervox_audiosocket_port_t -p tcp 8765 2>/dev/null || semanage port -m -t zynervox_audiosocket_port_t -p tcp 8765
 restorecon -RF "$WEB_ROOT" "$CONFIG_DIR" "$ASTERISK_ROOT"
