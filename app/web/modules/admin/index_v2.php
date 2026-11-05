@@ -29,28 +29,33 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         .mini-btn:hover { border-color: var(--primary); color: var(--primary); } .mini-btn:disabled { opacity: .45; cursor: not-allowed; }
         .camp-h { display: flex; align-items: center; gap: 0.5rem; margin: 0.35rem 0 0.2rem; padding-bottom: 1px; border-bottom: 1px solid var(--border); font-size: 0.76rem; font-weight: 800; text-transform: uppercase; }
         .tag { font-size: 0.6rem; padding: 0 5px; background: var(--glass); color: var(--text-muted); } .tag.run { background: #064e3b; color: #6ee7b7; }
-        .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.35rem; }
+        /* Una columna por campaña (hasta 6 por fila, mínimo 300 px cada una); sus listas van una debajo de otra. */
+        #groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(max(300px, calc((100% - 2.4rem) / 6)), 1fr)); gap: 0.4rem; align-items: start; }
+        #groups > .empty { grid-column: 1 / -1; }
+        .col { min-width: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+        .col .camp-h { margin: 0; }
         .cell { display: flex; flex-direction: column; gap: 0.18rem; min-width: 0; padding: 0.25rem 0.4rem; background: var(--bg-card); border: 1px solid var(--border); border-left: 4px solid #6b7280; border-radius: 2px; }
         .cell.live { border-left-color: #10b981; } .cell.wait { border-left-color: #f59e0b; }
         .cell.hot { background: #ecfdf5; border-color: #6ee7b7; animation: hotbeat 2.2s ease-in-out infinite; }
-        .cell.free { border: 1px dashed #cbd5e1; border-left: 1px dashed #cbd5e1; background: transparent; color: #9ca3af; align-items: center; justify-content: center; font-size: 0.72rem; min-height: 110px; }
         @keyframes hotbeat { 0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } 50% { box-shadow: 0 0 0 3px rgba(16,185,129,.35); } }
         .ch { display: flex; align-items: center; gap: 0.3rem; min-width: 0; }
         .ch .pulse { width: 8px; height: 8px; border-radius: 50%; background: #6b7280; flex: none; } .live .pulse { background: #10b981; animation: pulse 1.4s ease-out infinite; } .wait .pulse { background: #f59e0b; }
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.7); } 100% { box-shadow: 0 0 0 8px rgba(16,185,129,0); } }
         .ch a.nm { font-weight: 800; font-size: 0.8rem; color: var(--text); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; } .ch a.nm:hover { text-decoration: underline; color: var(--primary); }
         .ch .sp { flex: 1; }
-        .body { display: flex; align-items: center; gap: 0.35rem; }
+        .body { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.4rem; }
         .gz { display: flex; gap: 0.2rem; flex: none; } .g { text-align: center; line-height: 0; } .g .cap { font-size: 0.56rem; text-transform: uppercase; font-weight: 700; color: #4b5563; line-height: 1.15; margin-bottom: 1px; } .g canvas { max-width: 100%; height: auto !important; }
-        .info { flex: 1; min-width: 0; font-size: 0.72rem; display: flex; flex-direction: column; gap: 0.12rem; }
+        .info { flex: 1 1 120px; min-width: 0; font-size: 0.72rem; display: flex; flex-direction: column; gap: 0.12rem; }
         .info .big { font-size: 0.95rem; font-weight: 800; line-height: 1.1; } .info .mut { color: var(--text-muted); }
         .info select { width: auto; min-width: 3.6rem; padding: 0 4px; font-size: 0.72rem; font-weight: 700; }
         .bar { height: 10px; display: flex; background: var(--glass); border-radius: 2px; overflow: hidden; } .bar span { display: block; height: 100%; transition: width .8s ease; }
+        .leg { flex: 1 1 150px; min-width: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 0 0.5rem; font-size: 0.64rem; line-height: 1.35; align-content: start; }
+        .leg > div { display: flex; align-items: center; gap: 0.25rem; min-width: 0; } .leg i { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+        .leg .lb { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .leg .pc { font-weight: 700; font-variant-numeric: tabular-nums; }
         .empty { padding: 2rem 1rem; text-align: center; color: var(--text-muted); border: 1px dashed #cbd5e1; margin-top: 0.4rem; }
         #stpanel { margin-bottom: 0.4rem; padding: 0.3rem 0.6rem; border: 1px solid var(--border); background: var(--bg-card); font-size: 0.78rem; } #stpanel[hidden] { display: none; }
         #stpanel .row { display: flex; align-items: center; gap: 0.6rem; padding: 2px 0; border-bottom: 1px solid var(--border); } #stpanel .row:last-child { border-bottom: 0; } #stpanel .row .sp { flex: 1; }
         .dash-error { color: #dc2626; margin: 0.3rem 0; }
-        @media (max-width: 1600px) { html:not(.nosb) .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } } /* con el menú abierto y poco ancho, 3 columnas para que se lea */
         @media (max-width: 1600px) { .ch .mini-btn { padding: 0 5px; font-size: 0.66rem; } .ch .tag { display: none; } .ch a.nm { font-size: 0.76rem; } } /* a poco ancho el nombre gana sitio; el estado sigue en el color del borde y en el tooltip */
         @media (prefers-reduced-motion: reduce) { .live .pulse, .cell.hot, .live .g canvas { animation: none; } .bar span { transition: none; } }
         .live .g canvas { border-radius: 50%; animation: halo 2.2s ease-out infinite; }
@@ -81,7 +86,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         var CATS = [['humano', 'Humano', '#10b981'], ['casilla_voz', 'Casilla de voz', '#3b82f6'], ['no_seguro', 'No seguro', '#8b5cf6'], ['contestada_sin_amd', 'Contestada sin AMD', '#38bdf8'],
             ['no_disponible', 'No disponible', '#f59e0b'], ['sin_respuesta', 'Sin respuesta', '#6b7280'], ['ocupado', 'Ocupado', '#f97316'], ['errores', 'Errores', '#ef4444'], ['bloqueado', 'Bloqueado', '#111827'],
             ['en_llamada', 'En llamada', '#1e3a8a'], ['sin_llamar', 'Sin llamar', '#d1d5db']];
-        var COLS = 4, GSIZE = 80;
+        var GSIZE = 80;
         var busy = false, timer = null, srvMax = 0, structSig = null, stSig = '', cards = {};
 
         function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
@@ -153,7 +158,10 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             r.gboxA.appendChild(capA); r.gboxA.appendChild(ga); r.gboxB.appendChild(capB); r.gboxB.appendChild(gbx); gz.appendChild(r.gboxA); gz.appendChild(r.gboxB); body.appendChild(gz);
             var info = el('div', 'info'); r.big = el('div', 'big'); r.l50 = el('div'); r.adv = el('div', 'mut');
             var chn = el('div'); chn.appendChild(document.createTextNode('Canales ')); r.sel = el('select'); chn.appendChild(r.sel); r.use = el('span', 'mut'); chn.appendChild(r.use);
-            info.appendChild(r.big); info.appendChild(r.l50); info.appendChild(r.adv); info.appendChild(chn); body.appendChild(info); root.appendChild(body);
+            info.appendChild(r.big); info.appendChild(r.l50); info.appendChild(r.adv); info.appendChild(chn); body.appendChild(info);
+            r.leg = el('div', 'leg'); r.legRows = {};
+            CATS.forEach(function (k) { var row = el('div'), i = el('i'), lb = el('span', 'lb', k[1]), pc = el('span', 'pc'); i.style.background = k[2]; row.appendChild(i); row.appendChild(lb); row.appendChild(pc); row.title = k[1]; r.legRows[k[0]] = { row: row, pc: pc }; r.leg.appendChild(row); });
+            body.appendChild(r.leg); root.appendChild(body);
             r.bar = el('div', 'bar'); r.bar.setAttribute('role', 'img'); r.segs = {};
             CATS.forEach(function (k) { var s = el('span'); s.style.background = k[2]; s.style.width = '0%'; r.segs[k[0]] = s; r.bar.appendChild(s); }); root.appendChild(r.bar);
             r.sel.addEventListener('change', function () { act('set_channels', r.c.campaign_id, r.id, '', { channels: r.sel.value }); });
@@ -185,7 +193,8 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             r.sel.setAttribute('aria-label', 'Canales asignados a ' + l.name);
             r.use.textContent = ' · en uso ' + n0(l.open_calls) + '/' + n0(l.channels);
             CATS.forEach(function (k) {
-                var v = dist ? n0(dist.counts[k[0]]) : 0, s = r.segs[k[0]]; s.style.width = (dist && dist.contacts ? 100 * v / dist.contacts : 0) + '%';
+                var v = dist ? n0(dist.counts[k[0]]) : 0, lr = r.legRows[k[0]]; lr.row.style.display = v ? '' : 'none'; lr.pc.textContent = dist ? fx(rp(v, dist.contacts)) + ' %' : ''; lr.row.title = dist ? k[1] + ': ' + v + ' (' + fx(rp(v, dist.contacts)) + ' %)' : k[1];
+                var s = r.segs[k[0]]; s.style.width = (dist && dist.contacts ? 100 * v / dist.contacts : 0) + '%';
                 s.title = dist ? k[1] + ': ' + v + ' (' + fx(rp(v, dist.contacts)) + ' %)' : '';
             });
         }
@@ -237,10 +246,8 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
                     b.addEventListener('click', function () { stPanel.hidden = false; stBtn.setAttribute('aria-expanded', 'true'); }); em.appendChild(b); box.appendChild(em);
                 }
                 groups.forEach(function (g) {
-                    var h = el('div', 'camp-h', g.c.name); h.appendChild(el('span', 'tag' + (g.c.started ? ' run' : ''), g.c.started ? 'En marcha' : 'Detenida')); box.appendChild(h);
-                    var grid = el('div', 'grid'); g.lists.forEach(function (l) { grid.appendChild(cards[l.list_id].root); });
-                    for (var i = (COLS - g.lists.length % COLS) % COLS; i > 0; i--) grid.appendChild(el('div', 'cell free', 'Libre'));
-                    box.appendChild(grid);
+                    var col = el('div', 'col'), h = el('div', 'camp-h', g.c.name); h.appendChild(el('span', 'tag' + (g.c.started ? ' run' : ''), g.c.started ? 'En marcha' : 'Detenida')); col.appendChild(h);
+                    g.lists.forEach(function (l) { col.appendChild(cards[l.list_id].root); }); box.appendChild(col);
                 });
             }
             renderStopped(stopped);
