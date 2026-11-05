@@ -652,9 +652,20 @@ trait CampaignConfigQueries {
             ->execute(['zv2-bl-'.bin2hex(random_bytes(10)), $listId, $leadId, $phone, $campaignId]);
         $this->db->prepare("UPDATE zynervox_bot_list SET status='BLOCKED' WHERE lead_id=?")->execute([$leadId]);
     }
-    /** The dialplan blocked the call (number in the blacklist): the attempt, if it exists, ends as BLOCKED and the lead stays blocked. Returns attempts updated. */
-    public function markCallBlocked(string $callId): int {
-        return (int)$this->callAtomic(function() use($callId) {
+    /**
+     * The dialplan did not call. Default: the number is in the blacklist, the attempt (if it exists) ends BLOCKED and the lead stays blocked (final).
+     * $checkFailed: the blacklist check itself failed (database down): the attempt is a FAILURE (errores) and the lead keeps a retryable status (rule «0»), not a definitive «Bloqueado».
+     * Returns the attempts updated.
+     */
+    public function markCallBlocked(string $callId, bool $checkFailed = false): int {
+        return (int)$this->callAtomic(function() use($callId, $checkFailed) {
+            if ($checkFailed) {
+                $u = $this->db->prepare("UPDATE zynervox_bot_call_attempts SET status='FAIL',disposition='FAILED',end_source='BLACKLIST_ERR',cause_source='agi',sip_cause='Lista negra no disponible',finished_at=COALESCE(finished_at,UTC_TIMESTAMP()) WHERE call_id=?");
+                $u->execute([$callId]);
+                $n = $u->rowCount();
+                if ($n > 0) $this->db->prepare("UPDATE zynervox_bot_list SET status='FAIL',last_sip_code=0,last_call_at=UTC_TIMESTAMP() WHERE lead_id=(SELECT lead_id FROM zynervox_bot_call_attempts WHERE call_id=?)")->execute([$callId]);
+                return $n;
+            }
             $u = $this->db->prepare("UPDATE zynervox_bot_call_attempts SET status='BLOCKED',disposition='BLOCKED',end_source='BLOCKED',finished_at=COALESCE(finished_at,UTC_TIMESTAMP()) WHERE call_id=?");
             $u->execute([$callId]);
             $n = $u->rowCount();

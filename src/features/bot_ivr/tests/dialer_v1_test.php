@@ -591,5 +591,12 @@ $errAns = marcador_blacklist_check($repo, '900000022');
 $pdo->exec("RENAME TABLE zynervox_blacklist_off TO zynervox_blacklist");
 check('AGI de lista negra: si la consulta falla responde ERROR (no llamar a ciegas)', $errAns === 'ERROR');
 $pdo->exec("DELETE FROM zynervox_blacklist");
+// The check itself failed (database down): the attempt is a retryable failure, not a definitive «Bloqueado»
+$pdo->exec("INSERT INTO zynervox_bot_list (list_id,phone,status,called_count) VALUES ($bl,'900000031','CALL',1)"); $le = (int)$pdo->lastInsertId();
+$pdo->exec("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,campaign_id,started_at,status) VALUES ('zv2-black3',$bl,$le,'900000031',$bc,UTC_TIMESTAMP(),'CALL')");
+$repo->markCallBlocked('zv2-black3', true);
+$fa = $pdo->query("SELECT CONCAT(disposition,'/',status,'/',sip_cause) FROM zynervox_bot_call_attempts WHERE call_id='zv2-black3'")->fetchColumn();
+$fl = $pdo->query("SELECT CONCAT(status,'/',last_sip_code) FROM zynervox_bot_list WHERE lead_id=$le")->fetchColumn();
+check('fallo de la comprobación: intento FALLIDO (no Bloqueado) y contacto reintentable con la regla del código 0', $fa === 'FAILED/FAIL/Lista negra no disponible' && $fl === 'FAIL/0' && !str_contains((string)$fa, 'BLOCKED'));
 echo $fail ? "$fail FALLOS\n" : "TODO OK\n";
 exit($fail ? 1 : 0);
