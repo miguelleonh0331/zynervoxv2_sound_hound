@@ -141,9 +141,9 @@ function bot_cfg_schedules($input): array {
     return $out;
 }
 
-/** $input: name, active, call_origin, max_channels, amd_enabled, transfer_carrier_id, transfer_destination, timezone, lead_order, dial_timeout, campaign_cid, headers[], rules[], amd_actions[], schedules[]. Returns the campaign id. */
+/** $input: name, active, call_origin, max_channels, amd_enabled, blacklist_enabled (0/1, absent = unchanged), transfer_carrier_id, transfer_destination, timezone, lead_order, dial_timeout, campaign_cid, headers[], rules[], amd_actions[], schedules[]. Returns the campaign id. */
 function bot_cfg_save(\ZynervoxQueries\BotIvrRepository $db, ?int $id, array $input): int {
-    $old = $id === null ? ['lead_order'=>'DOWN','dial_timeout'=>60,'campaign_cid'=>'','max_channels'=>1,'amd_enabled'=>0] : $db->campaign($id);
+    $old = $id === null ? ['lead_order'=>'DOWN','dial_timeout'=>60,'campaign_cid'=>'','max_channels'=>1,'amd_enabled'=>0,'blacklist_enabled'=>0] : $db->campaign($id);
     $origin = trim((string)($input['call_origin'] ?? ''));
     if (!preg_match('/^[0-9]{0,20}$/D', $origin)) throw new RuntimeException('Origen de llamada inválido.');
     $carrier = trim((string)($input['transfer_carrier_id'] ?? ''));
@@ -163,7 +163,9 @@ function bot_cfg_save(\ZynervoxQueries\BotIvrRepository $db, ?int $id, array $in
         'amd_enabled'=>in_array($origin, MARCADOR_OFFERED_DIAL_ORIGINS, true) ? 1 : (array_key_exists('amd_enabled', $input) ? ((string)$input['amd_enabled'] === '1' ? 1 : 0) : (int)$old['amd_enabled']),
         'transfer_carrier_id'=>$carrier, 'transfer_destination'=>$destination, 'timezone'=>$timezone, 'lead_order'=>$order,
         'dial_timeout'=>bot_cfg_int($input['dial_timeout'] ?? $old['dial_timeout'], 1, 255, 'Tiempo de llamada'),
-        'campaign_cid'=>bot_campaign_field_value('campaign_cid', $input['campaign_cid'] ?? $old['campaign_cid'])];
+        'campaign_cid'=>bot_campaign_field_value('campaign_cid', $input['campaign_cid'] ?? $old['campaign_cid']),
+        // Blacklist Sí/No: absent in the input = keeps what it had (an edit that does not send it never changes it); a new campaign starts in No.
+        'blacklist_enabled'=>array_key_exists('blacklist_enabled', $input) ? ((string)$input['blacklist_enabled'] === '1' ? 1 : 0) : (int)$old['blacklist_enabled']];
     return $db->saveCampaignConfig($id, $campaign, bot_cfg_headers($input['headers'] ?? []), ['sip'=>bot_cfg_rules($input['rules'] ?? ($id === null ? bot_cfg_default_rules() : [])), 'amd'=>bot_cfg_amd_actions($input['amd_actions'] ?? [])], bot_cfg_schedules($input['schedules'] ?? []));
 }
 

@@ -562,10 +562,22 @@ check('un origen no ofrecido que estaba sin AMD sigue sin AMD (no se cambia en s
 // --- Blacklist (023): a blocked number is never dialed; its attempt is «Bloqueado», final, and the contact counts in its own category ---
 check('lista negra: la clave son los últimos 9 dígitos', marcador_blacklist_key('+51 912 345 678') === '912345678' && marcador_blacklist_key('987654321') === '987654321' && marcador_blacklist_key('abc') === '');
 $bc = bot_cfg_save($repo, null, ['name'=>'BLACK', 'active'=>'1', 'call_origin'=>'7308', 'max_channels'=>'1', 'lead_order'=>'UP', 'transfer_carrier_id'=>'', 'transfer_destination'=>'', 'rules'=>[], 'schedules'=>[['weekday'=>1, 'start_time'=>'00:00', 'end_time'=>'23:59']]]);
+check('lista negra por campaña: una campaña nueva viene con la opción en No y guardar sin el campo no la cambia', (int)$repo->campaign($bc)['blacklist_enabled'] === 0);
+$pdo->exec("DELETE FROM zynervox_blacklist"); $pdo->exec("INSERT INTO zynervox_blacklist (campaign_id,phone,reason,created_by) VALUES (0,'900000011','prueba ficticia','test')");
+check('lista negra por campaña: con la opción en No no consulta nada (ni el motor ni el AGI)', !$repo->isBlacklisted('900000011', $bc) && marcador_blacklist_check($repo, '900000011', (string)$bc) === 'NO');
+bot_cfg_save($repo, $bc, ['name'=>'BLACK', 'blacklist_enabled'=>'1', 'call_origin'=>'7308', 'lead_order'=>'UP', 'rules'=>[], 'schedules'=>[['weekday'=>1, 'start_time'=>'00:00', 'end_time'=>'23:59']]]);
+bot_cfg_save($repo, $bc, ['name'=>'BLACK', 'call_origin'=>'7308', 'lead_order'=>'UP', 'rules'=>[], 'schedules'=>[['weekday'=>1, 'start_time'=>'00:00', 'end_time'=>'23:59']]]);
+check('lista negra por campaña: guardar sin el campo conserva el Sí', (int)$repo->campaign($bc)['blacklist_enabled'] === 1);
+$bc2 = bot_cfg_save($repo, null, ['name'=>'BLACK2', 'blacklist_enabled'=>'1', 'call_origin'=>'7308', 'lead_order'=>'UP', 'rules'=>[], 'schedules'=>[]]);
+$pdo->exec("DELETE FROM zynervox_blacklist"); $pdo->exec("INSERT INTO zynervox_blacklist (campaign_id,phone,reason,created_by) VALUES ($bc2,'900000011','otra campaña','test'),($bc,'900000041','solo esta','test'),(0,'900000042','todas','test')");
+check('lista negra por campaña: lo de otra campaña no bloquea, lo propio y lo de «todas» sí; sin campaña no consulta', !$repo->isBlacklisted('900000011', $bc) && $repo->isBlacklisted('900000011', $bc2) && $repo->isBlacklisted('900000041', $bc) && !$repo->isBlacklisted('900000041', $bc2) && $repo->isBlacklisted('900000042', $bc) && $repo->isBlacklisted('900000042', $bc2)
+    && marcador_blacklist_check($repo, '900000042', '') === 'NO' && marcador_blacklist_check($repo, '900000042', '0') === 'NO' && marcador_blacklist_check($repo, '900000042', (string)$bc) === 'SI');
+check('lista negra por campaña: el mismo número en varias campañas y en «todas» no duplica y la clave rechaza el duplicado', throws(fn() => $pdo->exec("INSERT INTO zynervox_blacklist (campaign_id,phone) VALUES ($bc,'900000041')")) !== '' && $pdo->exec("INSERT INTO zynervox_blacklist (campaign_id,phone) VALUES ($bc2,'900000041'),(0,'900000041')") === 2);
+$pdo->exec("DELETE FROM zynervox_blacklist"); $pdo->exec("DELETE FROM zynervox_bot_campaigns WHERE campaign_id=$bc2");
 $pdo->exec("INSERT INTO zynervox_bot_lists (campaign_id,name,active,max_channels,dialer_state) VALUES ($bc,'BL',1,1,'running')"); $bl = (int)$pdo->lastInsertId();
 $pdo->exec("INSERT INTO zynervox_bot_list (list_id,phone,status) VALUES ($bl,'900000011','NEW'),($bl,'900000012','NEW'),($bl,'900000013','NEW')");
-$pdo->exec("DELETE FROM zynervox_blacklist"); $pdo->exec("INSERT INTO zynervox_blacklist (phone,reason,created_by) VALUES ('900000011','prueba ficticia','test')");
-check('lista negra: isBlacklisted ve el número ficticio y no los otros', $repo->isBlacklisted('900000011') && $repo->isBlacklisted('+51 900000011') && !$repo->isBlacklisted('900000012'));
+$pdo->exec("DELETE FROM zynervox_blacklist"); $pdo->exec("INSERT INTO zynervox_blacklist (campaign_id,phone,reason,created_by) VALUES ($bc,'900000011','prueba ficticia','test')");
+check('lista negra: isBlacklisted ve el número ficticio y no los otros', $repo->isBlacklisted('900000011', $bc) && $repo->isBlacklisted('+51 900000011', $bc) && !$repo->isBlacklisted('900000012', $bc));
 $cl = $repo->claimCampaignLead($bc, 'UP', 'zv2-black1', fn($lead) => ['ok'=>1]);
 check('lista negra: el bloqueado no se marca y el motor pasa al siguiente contacto', $cl !== null && $cl['phone'] === '900000012');
 $ba = $pdo->query("SELECT status,disposition,end_source,finished_at IS NOT NULL fin FROM zynervox_bot_call_attempts WHERE list_id=$bl AND disposition='BLOCKED'")->fetch();
@@ -582,12 +594,12 @@ $pdo->exec("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phon
 check('AGI «blocked»: el dialplan cierra el intento como Bloqueado y el contacto queda final', $repo->markCallBlocked('zv2-black2') === 1 && $pdo->query("SELECT CONCAT(disposition,'/',status) FROM zynervox_bot_call_attempts WHERE call_id='zv2-black2'")->fetchColumn() === 'BLOCKED/BLOCKED'
     && $pdo->query("SELECT status FROM zynervox_bot_list WHERE list_id=$bl AND phone='900000013'")->fetchColumn() === 'BLOCKED' && $repo->markCallBlocked('zv2-no-existe') === 0);
 $pdo->exec("DELETE FROM zynervox_blacklist");
-check('lista negra: borrar el número lo deja marcable otra vez (los nuevos contactos)', !$repo->isBlacklisted('900000011'));
+check('lista negra: borrar el número lo deja marcable otra vez (los nuevos contactos)', !$repo->isBlacklisted('900000011', $bc));
 // Strict check used by the dialplan AGI: SI / NO / ERROR (fail closed when the table or the database fail)
-$pdo->exec("INSERT INTO zynervox_blacklist (phone,reason,created_by) VALUES ('900000021','prueba ficticia','test')");
-check('AGI de lista negra: SI para un bloqueado (con prefijo o formato), NO para otro, ERROR sin dígitos', marcador_blacklist_check($repo, '51900000021') === 'SI' && marcador_blacklist_check($repo, '900000021') === 'SI' && marcador_blacklist_check($repo, '900000022') === 'NO' && marcador_blacklist_check($repo, 'xx') === 'ERROR' && marcador_blacklist_check($repo, '12345') === 'NO');
+$pdo->exec("INSERT INTO zynervox_blacklist (campaign_id,phone,reason,created_by) VALUES ($bc,'900000021','prueba ficticia','test')");
+check('AGI de lista negra: SI para un bloqueado (con prefijo o formato), NO para otro, ERROR sin dígitos', marcador_blacklist_check($repo, '51900000021', (string)$bc) === 'SI' && marcador_blacklist_check($repo, '900000021', (string)$bc) === 'SI' && marcador_blacklist_check($repo, '900000022', (string)$bc) === 'NO' && marcador_blacklist_check($repo, 'xx', (string)$bc) === 'ERROR' && marcador_blacklist_check($repo, '12345', (string)$bc) === 'NO');
 $pdo->exec("RENAME TABLE zynervox_blacklist TO zynervox_blacklist_off");
-$errAns = marcador_blacklist_check($repo, '900000022');
+$errAns = marcador_blacklist_check($repo, '900000022', (string)$bc);
 $pdo->exec("RENAME TABLE zynervox_blacklist_off TO zynervox_blacklist");
 check('AGI de lista negra: si la consulta falla responde ERROR (no llamar a ciegas)', $errAns === 'ERROR');
 $pdo->exec("DELETE FROM zynervox_blacklist");

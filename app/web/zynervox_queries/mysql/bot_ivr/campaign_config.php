@@ -3,7 +3,7 @@ declare(strict_types=1);
 namespace ZynervoxQueries\Mysql\BotIvr;
 // Dialer v1 campaign configuration and engine queries (migration 014). Validation lives in bot_ivr/campaign_config_service.php.
 trait CampaignConfigQueries {
-    private const CONFIG_COLUMNS = ['name','active','call_origin','max_channels','amd_enabled','transfer_carrier_id','transfer_destination','timezone','lead_order','dial_timeout','campaign_cid'];
+    private const CONFIG_COLUMNS = ['name','active','call_origin','max_channels','amd_enabled','transfer_carrier_id','transfer_destination','timezone','lead_order','dial_timeout','campaign_cid','blacklist_enabled'];
     public function campaignConfig(int $id): array {
         $config = ['campaign'=>$this->campaign($id)];
         foreach (['headers'=>['campaign_headers','position','position,header_name,lead_field'],
@@ -30,6 +30,7 @@ trait CampaignConfigQueries {
             $assignments = [];
             $bindings = [];
             foreach (self::CONFIG_COLUMNS as $column) {
+                if ($column === 'blacklist_enabled' && !array_key_exists($column, $campaign)) continue; // callers that do not know the option never change it
                 if (!array_key_exists($column, $campaign)) throw new \RuntimeException('Falta un campo de campaña validado.');
                 $assignments[] = $column.'=?';
                 $bindings[] = $campaign[$column];
@@ -614,7 +615,7 @@ trait CampaignConfigQueries {
                 $s->execute([$id]);
                 $lead = $s->fetch(\PDO::FETCH_ASSOC);
                 if (!$lead) return null;
-                if ($this->isBlacklisted((string)$lead['phone'])) { // global blacklist: never dialed, recorded as «Bloqueado», final (no retry rule) and the next candidate is tried
+                if ($this->isBlacklisted((string)$lead['phone'], $id)) { // campaign blacklist (option «Sí» only): never dialed, recorded as «Bloqueado», final (no retry rule) and the next candidate is tried
                     $this->recordBlockedAttempt((int)$lead['list_id'], (int)$lead['lead_id'], (string)$lead['phone'], $id);
                     return false;
                 }
@@ -631,19 +632,19 @@ trait CampaignConfigQueries {
         }
         return null;
     }
-    /** True when the number (last 9 digits) is in zynervox_blacklist. A missing table (migration 023 pending) counts as not blocked. */
-    public function isBlacklisted(string $phone): bool {
+    /** True when the campaign has the Blacklist option on AND the number (last 9 digits) is listed for it (campaign_id = its id) or for all (campaign_id = 0). A missing table counts as not blocked (engine only). */
+    public function isBlacklisted(string $phone, int $campaignId): bool {
         $key = marcador_blacklist_key($phone);
-        if ($key === '') return false;
-        try {
-            $s = $this->db->prepare('SELECT 1 FROM zynervox_blacklist WHERE phone=? LIMIT 1'); $s->execute([$key]);
-            return (bool)$s->fetchColumn();
-        } catch (\PDOException $e) { error_log('ZV2 lista negra (migración 023 pendiente?): '.$e->getMessage()); return false; }
+        if ($key === '' || $campaignId <= 0) return false;
+        try { return $this->blacklistLookup($key, $campaignId); }
+        catch (\PDOException $e) { error_log('ZV2 lista negra (migración 024 pendiente?): '.$e->getMessage()); return false; }
     }
-    /** Strict lookup for the dialplan AGI: true/false, and it THROWS when the database or the table fails (the dialplan must not call blind). */
-    public function blacklistLookup(string $key): bool {
+    /** Strict lookup for the dialplan AGI: false when the campaign has the option off (nothing else is read), true/false otherwise, and it THROWS when the database or the table fails (the dialplan must not call blind). */
+    public function blacklistLookup(string $key, int $campaignId): bool {
         $this->db->exec('SET SESSION max_statement_time=2'); // MariaDB: a stuck query never holds a call for long
-        $s = $this->db->prepare('SELECT 1 FROM zynervox_blacklist WHERE phone=? LIMIT 1'); $s->execute([$key]);
+        $s = $this->db->prepare('SELECT blacklist_enabled FROM zynervox_bot_campaigns WHERE campaign_id=?'); $s->execute([$campaignId]);
+        if ((int)$s->fetchColumn() !== 1) return false;
+        $s = $this->db->prepare('SELECT 1 FROM zynervox_blacklist WHERE phone=? AND campaign_id IN (0,?) LIMIT 1'); $s->execute([$key, $campaignId]);
         return (bool)$s->fetchColumn();
     }
     /** Leaves a finished attempt «BLOCKED» (no call was made) and the lead in the final status BLOCKED. Does not count as a call of the lead. */

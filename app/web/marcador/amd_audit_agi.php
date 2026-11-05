@@ -4,7 +4,7 @@ declare(strict_types=1);
 // AGI called once per answered call from the closing of the 7308 dialplan, after finish:
 //   AGI(amd_audit_agi.php,audit,<call_id>,<amd_ms>,<audio_path>,<audio_ms>,<9 effective AMD parameters>,<contact_audio_path>)
 //   AGI(amd_audit_agi.php,zypad,<call_id>,<detectado_por>,<momento>,<palabra>,<segundo>,<corte_por>,<preanswer_audio>,<zypad_call_id>[,<palabra_epoch_ms>,<first_audio_epoch_ms>,<answer_epoch_ms>,<preanswer_bytes>])  (dialplans 7314/7315, every call)
-//   AGI(amd_audit_agi.php,check,<digits>)  blacklist lookup before the Dial: sets ZV2_BLOQ = NO | SI | ERROR (ERROR: database down, table missing or no digits; the dialplan must not dial)
+//   AGI(amd_audit_agi.php,check,<digits>,<campaign_id>)  blacklist lookup before the Dial (no campaign id or option off in the campaign: NO): sets ZV2_BLOQ = NO | SI | ERROR (ERROR: database down, table missing or no digits; the dialplan must not dial)
 //   AGI(amd_audit_agi.php,blocked,<call_id>[,ERROR])  (ERROR: the check itself failed, the attempt is a failure that can be retried, not a definitive «Bloqueado»)
 //   AGI(amd_audit_agi.php,blocked,<call_id>)  the dialplan found the number in zynervox_blacklist and did not call: the attempt, if there is one, ends as «Bloqueado»
 //   (older format) audit arguments 15..23 (zypad, dialplans 7314/7315): zypad_call_id, palabra, palabra_epoch_ms, palabra_audio_ms, preanswer_audio, preanswer_bytes, first_audio_epoch_ms, answer_epoch_ms, dial_mode. Called for every call, answered or not.
@@ -24,7 +24,7 @@ try {
     try { $repo = bot_ivr_repository(); } catch (Throwable $e) { if ($action !== 'check') throw $e; error_log('ZV2 amd_audit_agi check: '.$e->getMessage()); }
     if ($action === 'check') {
         $answer = 'ERROR';
-        try { require_once __DIR__.'/blacklist.php'; if ($repo !== null) $answer = marcador_blacklist_check($repo, (string)($args[1] ?? '')); } catch (Throwable $e) { error_log('ZV2 amd_audit_agi check: '.$e->getMessage()); }
+        try { require_once __DIR__.'/blacklist.php'; if ($repo !== null) $answer = marcador_blacklist_check($repo, (string)($args[1] ?? ''), (string)($args[2] ?? '')); } catch (Throwable $e) { error_log('ZV2 amd_audit_agi check: '.$e->getMessage()); }
         echo 'SET VARIABLE ZV2_BLOQ '.$answer."\n"; fflush(STDOUT); $answered = true; fgets(STDIN); // the AGI answer line
     }
     elseif ($action === 'blocked') { if (preg_match('/^[0-9A-Za-z._-]{1,80}$/D', (string)($args[1] ?? ''))) $repo->markCallBlocked((string)$args[1], strtoupper((string)($args[2] ?? '')) === 'ERROR'); }
