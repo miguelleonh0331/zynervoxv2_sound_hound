@@ -9,6 +9,7 @@ require_once __DIR__.'/../marcador/amd_audit.php';
 require_once __DIR__.'/../marcador/list_summary.php';
 require_once __DIR__.'/../marcador/zypad.php';
 require_once __DIR__.'/../marcador/contact_distribution.php';
+require_once __DIR__.'/../marcador/blacklist.php';
 
 const BOT_CFG_MAX_HEADERS = 16;
 

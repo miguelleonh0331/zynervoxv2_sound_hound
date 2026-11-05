@@ -559,5 +559,29 @@ bot_cfg_save($repo, $nOld, ['call_origin'=>'7307'] + $ba7);
 check('un origen no ofrecido conserva su valor al guardar sin amd_enabled', (int)$repo->campaign($nOld)['amd_enabled'] === 1);
 $pdo->exec("UPDATE zynervox_bot_campaigns SET amd_enabled=0 WHERE campaign_id=$nOld"); bot_cfg_save($repo, $nOld, ['call_origin'=>'7307'] + $ba7);
 check('un origen no ofrecido que estaba sin AMD sigue sin AMD (no se cambia en silencio)', (int)$repo->campaign($nOld)['amd_enabled'] === 0);
+// --- Blacklist (023): a blocked number is never dialed; its attempt is «Bloqueado», final, and the contact counts in its own category ---
+check('lista negra: la clave son los últimos 9 dígitos', marcador_blacklist_key('+51 912 345 678') === '912345678' && marcador_blacklist_key('987654321') === '987654321' && marcador_blacklist_key('abc') === '');
+$bc = bot_cfg_save($repo, null, ['name'=>'BLACK', 'active'=>'1', 'call_origin'=>'7308', 'max_channels'=>'1', 'lead_order'=>'UP', 'transfer_carrier_id'=>'', 'transfer_destination'=>'', 'rules'=>[], 'schedules'=>[['weekday'=>1, 'start_time'=>'00:00', 'end_time'=>'23:59']]]);
+$pdo->exec("INSERT INTO zynervox_bot_lists (campaign_id,name,active,max_channels,dialer_state) VALUES ($bc,'BL',1,1,'running')"); $bl = (int)$pdo->lastInsertId();
+$pdo->exec("INSERT INTO zynervox_bot_list (list_id,phone,status) VALUES ($bl,'900000011','NEW'),($bl,'900000012','NEW'),($bl,'900000013','NEW')");
+$pdo->exec("DELETE FROM zynervox_blacklist"); $pdo->exec("INSERT INTO zynervox_blacklist (phone,reason,created_by) VALUES ('900000011','prueba ficticia','test')");
+check('lista negra: isBlacklisted ve el número ficticio y no los otros', $repo->isBlacklisted('900000011') && $repo->isBlacklisted('+51 900000011') && !$repo->isBlacklisted('900000012'));
+$cl = $repo->claimCampaignLead($bc, 'UP', 'zv2-black1', fn($lead) => ['ok'=>1]);
+check('lista negra: el bloqueado no se marca y el motor pasa al siguiente contacto', $cl !== null && $cl['phone'] === '900000012');
+$ba = $pdo->query("SELECT status,disposition,end_source,finished_at IS NOT NULL fin FROM zynervox_bot_call_attempts WHERE list_id=$bl AND disposition='BLOCKED'")->fetch();
+check('lista negra: intento BLOQUEADO terminado, sin cuenta de llamada y contacto en estado final', $ba && $ba['status'] === 'BLOCKED' && $ba['end_source'] === 'BLOCKED' && (int)$ba['fin'] === 1
+    && $pdo->query("SELECT CONCAT(status,'/',called_count) FROM zynervox_bot_list WHERE list_id=$bl AND phone='900000011'")->fetchColumn() === 'BLOCKED/0');
+check('lista negra: no se reintenta (ni con reglas) y no queda elegible', $repo->listEligibleCount($bc, $bl, 'UP') === 1);
+$pdo->exec("UPDATE zynervox_bot_call_attempts SET finished_at=UTC_TIMESTAMP(),status='X',disposition='NOANSWER',sip_cause='SIP 487 Request Terminated' WHERE call_id='zv2-black1'");
+$repo->refreshListSummary($bl, 'stopped', marcador_amd_valid_from_utc());
+$bd = bot_cfg_contact_distribution($repo, ['list_id'=>$bl])['lists'][0];
+check('distribución: «Bloqueado» es una categoría propia y todo suma el total de contactos', $bd['counts']['bloqueado'] === 1 && $bd['counts']['sin_respuesta'] === 1 && $bd['counts']['sin_llamar'] === 1 && array_sum($bd['counts']) === 3 && abs(array_sum($bd['pct']) - 100.0) < 0.0001);
+$rb = bot_cfg_report($repo, ['list_id'=>$bl, 'from'=>'2000-01-01', 'estado'=>'bloqueado'], 1, 10)['detail'];
+check('detalle: el Estado «Bloqueado» existe en el filtro y en las etiquetas', $rb['total'] === 1 && $rb['rows'][0]['estado_label'] === 'Bloqueado' && in_array('bloqueado', array_column($rb['estado_list'], 'key'), true));
+$pdo->exec("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,campaign_id,started_at,status) SELECT 'zv2-black2',list_id,lead_id,phone,$bc,UTC_TIMESTAMP(),'CALL' FROM zynervox_bot_list WHERE list_id=$bl AND phone='900000013'");
+check('AGI «blocked»: el dialplan cierra el intento como Bloqueado y el contacto queda final', $repo->markCallBlocked('zv2-black2') === 1 && $pdo->query("SELECT CONCAT(disposition,'/',status) FROM zynervox_bot_call_attempts WHERE call_id='zv2-black2'")->fetchColumn() === 'BLOCKED/BLOCKED'
+    && $pdo->query("SELECT status FROM zynervox_bot_list WHERE list_id=$bl AND phone='900000013'")->fetchColumn() === 'BLOCKED' && $repo->markCallBlocked('zv2-no-existe') === 0);
+$pdo->exec("DELETE FROM zynervox_blacklist");
+check('lista negra: borrar el número lo deja marcable otra vez (los nuevos contactos)', !$repo->isBlacklisted('900000011'));
 echo $fail ? "$fail FALLOS\n" : "TODO OK\n";
 exit($fail ? 1 : 0);

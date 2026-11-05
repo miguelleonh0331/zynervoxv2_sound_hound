@@ -467,7 +467,7 @@ trait CampaignConfigQueries {
                 $dialed = array_sum($cnt); $total = max($contacts, $dialed);
                 $cnt['sin_llamar'] = $total - $dialed;
                 $sets = []; $vals = [];
-                foreach (['humano','casilla_voz','no_seguro','contestada_sin_amd','no_disponible','sin_respuesta','ocupado','errores','en_llamada','sin_llamar'] as $k) { $sets[] = "dist_$k=?"; $vals[] = (int)($cnt[$k] ?? 0); }
+                foreach (['humano','casilla_voz','no_seguro','contestada_sin_amd','no_disponible','sin_respuesta','ocupado','errores','bloqueado','en_llamada','sin_llamar'] as $k) { $sets[] = "dist_$k=?"; $vals[] = (int)($cnt[$k] ?? 0); }
                 $vals[] = $total; $vals[] = $listId;
                 $this->db->prepare('UPDATE zynervox_bot_list_summary SET '.implode(',', $sets).',dist_at=UTC_TIMESTAMP(),contacts=? WHERE list_id=?')->execute($vals);
             } catch (\PDOException $e) { error_log('ZV2 distribución por contacto (migración 022 pendiente?): '.$e->getMessage()); } // never stops the dialing
@@ -614,6 +614,10 @@ trait CampaignConfigQueries {
                 $s->execute([$id]);
                 $lead = $s->fetch(\PDO::FETCH_ASSOC);
                 if (!$lead) return null;
+                if ($this->isBlacklisted((string)$lead['phone'])) { // global blacklist: never dialed, recorded as «Bloqueado», final (no retry rule) and the next candidate is tried
+                    $this->recordBlockedAttempt((int)$lead['list_id'], (int)$lead['lead_id'], (string)$lead['phone'], $id);
+                    return false;
+                }
                 try { $payload = $resolve($lead); }
                 catch (\InvalidArgumentException|\RuntimeException $e) {
                     $this->db->prepare('UPDATE zynervox_bot_list SET status=? WHERE lead_id=?')->execute([$rejectStatus,$lead['lead_id']]);
@@ -626,6 +630,31 @@ trait CampaignConfigQueries {
             if ($claimed !== false) return $claimed;
         }
         return null;
+    }
+    /** True when the number (last 9 digits) is in zynervox_blacklist. A missing table (migration 023 pending) counts as not blocked. */
+    public function isBlacklisted(string $phone): bool {
+        $key = marcador_blacklist_key($phone);
+        if ($key === '') return false;
+        try {
+            $s = $this->db->prepare('SELECT 1 FROM zynervox_blacklist WHERE phone=? LIMIT 1'); $s->execute([$key]);
+            return (bool)$s->fetchColumn();
+        } catch (\PDOException $e) { error_log('ZV2 lista negra (migración 023 pendiente?): '.$e->getMessage()); return false; }
+    }
+    /** Leaves a finished attempt «BLOCKED» (no call was made) and the lead in the final status BLOCKED. Does not count as a call of the lead. */
+    private function recordBlockedAttempt(int $listId, int $leadId, string $phone, int $campaignId): void {
+        $this->db->prepare("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,campaign_id,started_at,finished_at,status,disposition,end_source) VALUES (?,?,?,?,?,UTC_TIMESTAMP(),UTC_TIMESTAMP(),'BLOCKED','BLOCKED','BLOCKED')")
+            ->execute(['zv2-bl-'.bin2hex(random_bytes(10)), $listId, $leadId, $phone, $campaignId]);
+        $this->db->prepare("UPDATE zynervox_bot_list SET status='BLOCKED' WHERE lead_id=?")->execute([$leadId]);
+    }
+    /** The dialplan blocked the call (number in the blacklist): the attempt, if it exists, ends as BLOCKED and the lead stays blocked. Returns attempts updated. */
+    public function markCallBlocked(string $callId): int {
+        return (int)$this->callAtomic(function() use($callId) {
+            $u = $this->db->prepare("UPDATE zynervox_bot_call_attempts SET status='BLOCKED',disposition='BLOCKED',end_source='BLOCKED',finished_at=COALESCE(finished_at,UTC_TIMESTAMP()) WHERE call_id=?");
+            $u->execute([$callId]);
+            $n = $u->rowCount();
+            if ($n > 0) $this->db->prepare("UPDATE zynervox_bot_list SET status='BLOCKED' WHERE lead_id=(SELECT lead_id FROM zynervox_bot_call_attempts WHERE call_id=?)")->execute([$callId]);
+            return $n;
+        });
     }
     public function rejectCampaignClaim(string $callId): void {
         $this->callAtomic(function() use($callId) {
