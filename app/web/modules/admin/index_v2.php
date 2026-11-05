@@ -50,7 +50,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         #stpanel { margin-bottom: 0.4rem; padding: 0.3rem 0.6rem; border: 1px solid var(--border); background: var(--bg-card); font-size: 0.78rem; } #stpanel[hidden] { display: none; }
         #stpanel .row { display: flex; align-items: center; gap: 0.6rem; padding: 2px 0; border-bottom: 1px solid var(--border); } #stpanel .row:last-child { border-bottom: 0; } #stpanel .row .sp { flex: 1; }
         .dash-error { color: #dc2626; margin: 0.3rem 0; }
-        @media (max-width: 1400px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+        @media (max-width: 1600px) { html:not(.nosb) .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } } /* con el menú abierto y poco ancho, 3 columnas para que se lea */
         @media (prefers-reduced-motion: reduce) { .live .pulse, .cell.hot, .live .g canvas { animation: none; } .bar span { transition: none; } }
         .live .g canvas { border-radius: 50%; animation: halo 2.2s ease-out infinite; }
         @keyframes halo { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.45); } 100% { box-shadow: 0 0 0 8px rgba(16,185,129,0); } }
@@ -81,7 +81,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             ['no_disponible', 'No disponible', '#f59e0b'], ['sin_respuesta', 'Sin respuesta', '#6b7280'], ['ocupado', 'Ocupado', '#f97316'], ['errores', 'Errores', '#ef4444'],
             ['en_llamada', 'En llamada', '#1e3a8a'], ['sin_llamar', 'Sin llamar', '#d1d5db']];
         var COLS = 4, GSIZE = 80;
-        var busy = false, timer = null, srvMax = 0, structSig = '', stSig = '', cards = {};
+        var busy = false, timer = null, srvMax = 0, structSig = null, stSig = '', cards = {};
 
         function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
         function n0(v) { return Number(v) || 0; }
