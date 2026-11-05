@@ -107,7 +107,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         var busy = false, timer = null;
         // Categorías por contacto, en el orden y con los colores del contrato (Distribución por contacto).
         var CATS = [['humano', 'Humano', '#10b981'], ['casilla_voz', 'Casilla de voz', '#3b82f6'], ['no_seguro', 'No seguro', '#8b5cf6'], ['contestada_sin_amd', 'Contestada sin AMD', '#38bdf8'],
-            ['no_disponible', 'No disponible', '#f59e0b'], ['sin_respuesta', 'Sin respuesta', '#6b7280'], ['ocupado', 'Ocupado', '#f97316'], ['errores', 'Errores', '#ef4444'],
+            ['no_disponible', 'No disponible', '#f59e0b'], ['sin_respuesta', 'Sin respuesta', '#6b7280'], ['ocupado', 'Ocupado', '#f97316'], ['errores', 'Errores', '#ef4444'], ['bloqueado', 'Bloqueado', '#111827'],
             ['en_llamada', 'En llamada', '#1e3a8a'], ['sin_llamar', 'Sin llamar', '#d1d5db']];
         var TEMP = { 'Caliente': 'hot', 'Tibia': 'warm', 'Fría': 'cold' };
         var SVGNS = 'http://www.w3.org/2000/svg';

@@ -211,7 +211,7 @@ Auth::checkAccess(9);
 
 
         // ---- Resultado por contacto (cada contacto cuenta una vez, por su último intento) ----
-        var CC = { humano: '#10b981', casilla_voz: '#3b82f6', no_seguro: '#8b5cf6', contestada_sin_amd: '#38bdf8', no_disponible: '#f59e0b', sin_respuesta: '#6b7280', ocupado: '#f97316', errores: '#ef4444', en_llamada: '#1e3a8a', sin_llamar: '#d1d5db' };
+        var CC = { humano: '#10b981', casilla_voz: '#3b82f6', no_seguro: '#8b5cf6', contestada_sin_amd: '#38bdf8', no_disponible: '#f59e0b', sin_respuesta: '#6b7280', ocupado: '#f97316', errores: '#ef4444', bloqueado: '#111827', en_llamada: '#1e3a8a', sin_llamar: '#d1d5db' };
         function fx(v) { return String(v).replace('.', ','); }
         function rp(v, t) { return fx(t > 0 ? (Math.round(1000 * v / t) / 10).toFixed(1) : '0.0'); } // porcentaje real redondeado, sin ajustar para cuadrar
         function stack(counts, pcts, cats, total) {
@@ -230,7 +230,7 @@ Auth::checkAccess(9);
             if (!ct || !ct.total || !ct.total.contacts) { box.appendChild(el('p', 'muted', 'No hay contactos con resultado en este rango.')); return; }
             var t = ct.total;
             ct.categories.forEach(function (c) {
-                var v = n(t.counts[c.key]); if (!v && (c.key === 'sin_llamar' || c.key === 'en_llamada') && ct.source === 'attempts') return;
+                var v = n(t.counts[c.key]); if (!v && ((c.key === 'sin_llamar' || c.key === 'en_llamada') && ct.source === 'attempts' || c.key === 'bloqueado')) return;
                 var k = el('div', 'c' + (v ? '' : ' zero')); k.style.setProperty('--kc', CC[c.key]);
                 k.appendChild(el('div', 'num', String(v))); k.appendChild(el('div', 'nm', c.label)); k.appendChild(el('div', 'pc', rp(v, t.contacts) + ' % de los contactos')); box.appendChild(k);
             });
@@ -439,7 +439,7 @@ Auth::checkAccess(9);
             Array.from(box.querySelectorAll('tbody tr')).forEach(function (tr) { var td = tr.children[3]; if (td) { td.style.whiteSpace = 'nowrap'; td.style.userSelect = 'all'; td.style.fontVariantNumeric = 'tabular-nums'; } });
             var sel = document.getElementById('f_estado'), est = d.estados || {}, sum = Object.keys(est).reduce(function (a, k) { return a + n(est[k]); }, 0);
             sel.textContent = ''; var o0 = el('option', '', 'Todos (' + sum + ')'); o0.value = ''; sel.appendChild(o0);
-            (d.estado_list || []).forEach(function (e) { if (!n(est[e.key]) && e.key !== detailEstado && (e.key === 'transferencia_fallida' || e.key === 'contesto')) return; var o = el('option', '', e.label + ' (' + n(est[e.key]) + ')'); o.value = e.key; sel.appendChild(o); });
+            (d.estado_list || []).forEach(function (e) { if (!n(est[e.key]) && e.key !== detailEstado && (e.key === 'transferencia_fallida' || e.key === 'contesto' || e.key === 'bloqueado')) return; var o = el('option', '', e.label + ' (' + n(est[e.key]) + ')'); o.value = e.key; sel.appendChild(o); });
             sel.value = detailEstado;
             lastPages = Math.max(1, n(d.pages) || Math.ceil(d.total / d.per_page));
             document.getElementById('pageinfo').textContent = 'Página ' + d.page + ' de ' + lastPages + ' · ' + d.total + ' llamadas' + (detailEstado ? ' con ese estado' : '');
