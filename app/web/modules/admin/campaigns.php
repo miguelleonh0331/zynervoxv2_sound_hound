@@ -88,7 +88,7 @@ try {
 }
 
 if ($isNew && $form === null) {
-    $form = ['campaign'=>['campaign_id'=>null, 'name'=>'', 'active'=>0, 'call_origin'=>'', 'max_channels'=>10, 'amd_enabled'=>0,
+    $form = ['campaign'=>['campaign_id'=>null, 'name'=>'', 'active'=>0, 'call_origin'=>'', 'max_channels'=>10,
         'transfer_carrier_id'=>'', 'transfer_destination'=>'', 'timezone'=>'America/Lima', 'lead_order'=>'DOWN', 'dial_timeout'=>60, 'campaign_cid'=>'', 'dialer_state'=>'stopped'],
         'headers'=>[], 'rules'=>bot_cfg_default_rules(), 'amd_actions'=>[], 'schedules'=>[], 'lead_fields'=>['phone', 'customer_name'], 'active_calls'=>0];
 }
@@ -168,7 +168,7 @@ function campaigns_schedule_row(array $r, array $days): string {
         <div class="card">
             <h2>Listado de campañas</h2>
             <table class="table-compact">
-                <thead><tr><th>ID</th><th>Nombre</th><th>Activa</th><th>Marcador</th><th>AMD</th><th>Listas</th><th></th></tr></thead>
+                <thead><tr><th>ID</th><th>Nombre</th><th>Activa</th><th>Marcador</th><th>Listas</th><th></th></tr></thead>
                 <tbody>
                 <?php foreach ($campaigns as $row): ?>
                     <tr>
@@ -176,7 +176,6 @@ function campaigns_schedule_row(array $r, array $days): string {
                         <td><?php echo h($row['name']); ?></td>
                         <td><?php echo (int)$row['active'] ? 'Sí' : 'No'; ?></td>
                         <td style="color: <?php echo ($row['dialer_state'] ?? '') === 'running' ? '#10b981' : '#9ca3af'; ?>;"><?php echo ($row['dialer_state'] ?? '') === 'running' ? 'En marcha' : 'Detenido'; ?></td>
-                        <td><?php echo (int)($row['amd_enabled'] ?? 0) ? 'Sí' : 'No'; ?></td>
                         <td><?php echo (int)$row['lists_count']; ?></td>
                         <td style="white-space: nowrap;">
                             <a class="btn-action" href="campaigns.php?id=<?php echo (int)$row['campaign_id']; ?>">Editar</a>
@@ -222,8 +221,6 @@ function campaigns_schedule_row(array $r, array $days): string {
                         <?php if (($c['call_origin'] ?? '') !== '' && !isset($dialTypes[(string)$c['call_origin']])): ?><option value="<?php echo h($c['call_origin']); ?>" selected><?php echo h($c['call_origin']); ?> (valor existente)</option><?php endif; ?>
                         </select></label>
                     
-                    <label>AMD
-                        <select name="amd_enabled"><option value="1"<?php echo (string)($c['amd_enabled'] ?? '0') === '1' ? ' selected' : ''; ?>>Sí</option><option value="0"<?php echo (string)($c['amd_enabled'] ?? '0') === '1' ? '' : ' selected'; ?>>No</option></select></label>
                     <label>Troncal de transferencia
                         <select name="transfer_carrier_id"><option value="">— elegir —</option>
                         <?php $carrierKnown = false; foreach ($carriers as $t): $sel = (string)($c['transfer_carrier_id'] ?? '') === (string)$t['carrier_id']; $carrierKnown = $carrierKnown || $sel; ?>
@@ -251,7 +248,7 @@ function campaigns_schedule_row(array $r, array $days): string {
 
             <div class="card">
                 <h2>Acción según el resultado del AMD</h2>
-                <p style="color: var(--text-muted); font-size: 0.8rem;">Se aplica al contestar la llamada. Con el AMD apagado, todo lo contestado se transfiere. «Reintentar» vuelve a llamar según los intentos y la espera indicados.</p>
+                <p style="color: var(--text-muted); font-size: 0.8rem;">Se aplica al contestar la llamada. «Reintentar» vuelve a llamar según los intentos y la espera indicados.</p>
                 <table class="table-compact cfg-table"><thead><tr><th>Resultado</th><th>Acción</th><th>Intentos máx.</th><th>Espera (min)</th></tr></thead><tbody>
                 <?php foreach ($amdResults as $i => $ar): $cur = $amdSaved[$ar['result']] ?? $amdDefaults[$ar['result']] ?? ['action'=>'hangup', 'max_attempts'=>0, 'retry_delay_min'=>0]; ?>
                     <tr>
