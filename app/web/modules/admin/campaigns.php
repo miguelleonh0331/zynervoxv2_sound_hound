@@ -220,7 +220,8 @@ function campaigns_schedule_row(array $r, array $days): string {
                         <?php endforeach; ?>
                         <?php if (($c['call_origin'] ?? '') !== '' && !isset($dialTypes[(string)$c['call_origin']])): ?><option value="<?php echo h($c['call_origin']); ?>" selected><?php echo h($c['call_origin']); ?> (valor existente)</option><?php endif; ?>
                         </select></label>
-                    
+                    <label>Blacklist
+                        <select name="blacklist_enabled"><option value="1"<?php echo (string)($c['blacklist_enabled'] ?? '0') === '1' ? ' selected' : ''; ?>>Sí</option><option value="0"<?php echo (string)($c['blacklist_enabled'] ?? '0') === '1' ? '' : ' selected'; ?>>No</option></select></label>
                     <label>Troncal de transferencia
                         <select name="transfer_carrier_id"><option value="">— elegir —</option>
                         <?php $carrierKnown = false; foreach ($carriers as $t): $sel = (string)($c['transfer_carrier_id'] ?? '') === (string)$t['carrier_id']; $carrierKnown = $carrierKnown || $sel; ?>
