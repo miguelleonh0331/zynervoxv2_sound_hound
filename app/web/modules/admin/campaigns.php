@@ -204,6 +204,13 @@ function campaigns_schedule_row(array $r, array $days): string {
         </div>
 <?php else: ?>
         <form method="POST" action="campaigns.php<?php echo $c['campaign_id'] ? '?id=' . (int)$c['campaign_id'] : '?view=new'; ?>" id="cfg">
+            <div class="card" style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem;">
+                <button type="submit" name="action" value="save" class="btn-primary">Guardar</button>
+                <a class="btn-action" href="campaigns.php">Volver</a>
+                <?php if ($c['campaign_id']): ?>
+                    <a class="btn-action" href="lists.php?campaign_id=<?php echo (int)$c['campaign_id']; ?>">Listas</a>
+                <?php endif; ?>
+            </div>
             <input type="hidden" name="csrf" value="<?php echo h($_SESSION['campaigns_csrf']); ?>">
             <input type="hidden" name="campaign_id" value="<?php echo h($c['campaign_id'] ?? ''); ?>">
 
@@ -279,11 +286,9 @@ function campaigns_schedule_row(array $r, array $days): string {
                 <button type="button" class="btn-action" data-add="schedule">+ Franja</button>
             </div>
 
+            <?php if ($c['campaign_id']): ?>
             <div class="card" style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
-                <button type="submit" name="action" value="save" class="btn-primary">Guardar</button>
-                <a class="btn-action" href="campaigns.php">Volver</a>
                 <?php if ($c['campaign_id']): ?>
-                    <a class="btn-action" href="lists.php?campaign_id=<?php echo (int)$c['campaign_id']; ?>">Listas</a>
                     <span style="margin-left: auto; color: <?php echo $running ? '#10b981' : '#9ca3af'; ?>;">
                         Marcador: <?php echo $running ? 'en marcha' : 'detenido'; ?> · llamadas activas: <?php echo (int)($form['active_calls'] ?? 0); ?>
                     </span>
@@ -294,6 +299,7 @@ function campaigns_schedule_row(array $r, array $days): string {
                     <?php endif; ?>
                 <?php endif; ?>
             </div>
+            <?php endif; ?>
         </form>
 
         <template id="tpl-headers"><?php echo campaigns_headers_row([]); ?></template>
