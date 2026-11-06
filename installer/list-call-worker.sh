@@ -14,6 +14,7 @@ mysql zynervox_core < "$source_root/src/features/bot_ivr/models/021-zypad.sql"
 mysql zynervox_core < "$source_root/src/features/bot_ivr/models/022-contact-distribution.sql"
 mysql zynervox_core < "$source_root/src/features/bot_ivr/models/023-blacklist.sql"
 mysql zynervox_core < "$source_root/src/features/bot_ivr/models/024-blacklist-campaign.sql"
+mysql zynervox_core < "$source_root/src/features/bot_ivr/models/025-test-lists.sql"
 mysql <<'SQL'
 GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_dial_runs TO 'zynervoxv2_bot_ivr'@'localhost';
 GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_dial_runs TO 'zynervoxv2_bot_ivr'@'127.0.0.1';
