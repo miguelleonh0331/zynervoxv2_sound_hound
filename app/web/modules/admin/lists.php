@@ -12,6 +12,15 @@ require_once __DIR__ . '/../../bot_ivr/list_call_service.php';
 use Includes\Auth;
 
 Auth::checkAccess(9);
+
+// «Plantilla»: archivo demo con el formato real de la carga (cabecera + una fila inventada con el número vacío). Se genera aquí, sin ficheros ni consultas.
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && ($_GET['plantilla'] ?? '') === '1') {
+    header('Content-Type: text/plain; charset=utf-8');
+    header('Content-Disposition: attachment; filename="plantilla_lista.txt"');
+    header('Cache-Control: no-store');
+    echo "id_contacto,nombre,numero,monto,local,direccion\n1001,Cliente Ejemplo,,150.00,Local Ejemplo,Av. Ejemplo 123\n";
+    exit;
+}
 if (empty($_SESSION['lists_csrf'])) $_SESSION['lists_csrf'] = bin2hex(random_bytes(32));
 if (!function_exists('h')) { function h($value): string { return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); } }
 
@@ -218,6 +227,7 @@ try {
                 <label id="lb_name_wrap" hidden>Nombre de la lista nueva <input name="list_name" id="lb_name" maxlength="120"></label>
                 <label>Archivo (TXT/CSV) <input type="file" name="clients_txt" accept=".txt,.csv,text/plain,text/csv" required></label>
                 <button type="submit" class="btn-primary">Cargar base</button>
+                <a class="btn-action" href="lists.php?plantilla=1" title="Descarga un archivo de ejemplo: escribe el número en la columna numero y cárgalo">Plantilla</a>
             </div>
             <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 0.75rem;">
                 Primera línea: cabecera de 2 a 10 columnas separadas por comas; <code>numero</code> es obligatoria y el resto se conserva como variables del contacto
