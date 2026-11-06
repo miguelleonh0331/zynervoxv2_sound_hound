@@ -80,7 +80,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             <h2>Crear lista de prueba</h2>
             <div class="cfg-grid">
                 <label>Campaña <select id="campaign" required><option value="">— elegir —</option></select></label>
-                <label>Número <input id="phone" inputmode="tel" maxlength="30" placeholder="Con código de país, p. ej. 51999999999" required></label>
+                <label>Número <input id="phone" inputmode="tel" maxlength="30" placeholder="9 dígitos, sin 51, p. ej. 999999999" required></label>
                 <button type="submit" class="btn-primary" id="create">Crear lista de prueba</button>
             </div>
             <p class="muted">Crear la lista no llama a nadie. Solo se llama cuando pulsas «Iniciar» y confirmas.</p>
