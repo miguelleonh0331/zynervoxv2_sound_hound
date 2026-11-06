@@ -24,7 +24,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         .top .m { display: flex; gap: 0.3rem; align-items: baseline; color: var(--text-muted); } .top .m b { color: var(--text); font-size: 0.9rem; }
         .top .m.warn b { color: #d97706; } .top .m.crit b { color: #dc2626; }
         .top .sv { display: flex; align-items: center; gap: 0.25rem; } .dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; display: inline-block; } .dot.on { background: #10b981; } .dot.off { background: #ef4444; }
-        .top .sp { flex: 1; }
+        .top .sp { flex: 1; } .top .grp { display: flex; gap: 0.5rem; flex-wrap: nowrap; } /* las tres acciones se mueven juntas si la línea no cabe */
         .mini-btn { font-size: 0.72rem; padding: 2px 8px; border-radius: 2px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); cursor: pointer; }
         .mini-btn:hover { border-color: var(--primary); color: var(--primary); } .mini-btn:disabled { opacity: .45; cursor: not-allowed; }
         .camp-h { display: flex; align-items: center; gap: 0.5rem; margin: 0.35rem 0 0.2rem; padding-bottom: 1px; border-bottom: 1px solid var(--border); font-size: 0.76rem; font-weight: 800; text-transform: uppercase; }
@@ -71,9 +71,11 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             <span id="tele" style="display: contents;"></span>
             <span class="sp"></span>
             <span id="svcs" style="display: contents;"></span>
-            <button type="button" class="mini-btn" id="stbtn" aria-expanded="false">Listas detenidas (0)</button>
-            <button type="button" class="mini-btn" id="startall" disabled>Iniciar todas</button>
-            <button type="button" class="mini-btn" id="stopall" disabled>Parar todas</button>
+            <span class="grp">
+                <button type="button" class="mini-btn" id="stbtn" aria-expanded="false">Listas detenidas (0)</button>
+                <button type="button" class="mini-btn" id="startall" disabled>Iniciar todas</button>
+                <button type="button" class="mini-btn" id="stopall" disabled>Parar todas</button>
+            </span>
             <span class="m" id="updated"></span>
         </div>
         <div id="notice"></div>
