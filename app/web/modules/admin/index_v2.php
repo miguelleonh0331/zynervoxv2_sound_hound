@@ -30,10 +30,10 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         .camp-h { display: flex; align-items: center; gap: 0.5rem; margin: 0.35rem 0 0.2rem; padding-bottom: 1px; border-bottom: 1px solid var(--border); font-size: 0.76rem; font-weight: 800; text-transform: uppercase; }
         .tag { font-size: 0.6rem; padding: 0 5px; background: var(--glass); color: var(--text-muted); } .tag.run { background: #064e3b; color: #6ee7b7; }
         /* Una columna por campaña (hasta 6 por fila, mínimo 300 px cada una); sus listas van una debajo de otra. */
-        #groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(max(300px, calc((100% - 2.4rem) / 6)), 1fr)); gap: 0.4rem; align-items: start; }
+        #groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(max(310px, calc((100% - 2.4rem) / 6)), 1fr)); gap: 0.4rem; align-items: start; }
         #groups > .empty { grid-column: 1 / -1; }
-        .col { min-width: 0; display: flex; flex-direction: column; gap: 0.35rem; }
-        .col .camp-h { margin: 0; }
+        .col { min-width: 0; display: flex; flex-direction: column; gap: 0.35rem; padding: 3px; border: 2px solid #1f2937; border-radius: 3px; background: rgba(31,41,55,.04); }
+        .col .camp-h { margin: 0; justify-content: center; padding-bottom: 3px; border-bottom: 2px solid #1f2937; }
         .cell { display: flex; flex-direction: column; gap: 0.18rem; min-width: 0; padding: 0.25rem 0.4rem; background: var(--bg-card); border: 1px solid var(--border); border-left: 4px solid #6b7280; border-radius: 2px; }
         .cell.live { border-left-color: #10b981; } .cell.wait { border-left-color: #f59e0b; }
         .cell.hot { background: #ecfdf5; border-color: #6ee7b7; animation: hotbeat 2.2s ease-in-out infinite; }
@@ -55,6 +55,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         .empty { padding: 2rem 1rem; text-align: center; color: var(--text-muted); border: 1px dashed #cbd5e1; margin-top: 0.4rem; }
         #stpanel { margin-bottom: 0.4rem; padding: 0.3rem 0.6rem; border: 1px solid var(--border); background: var(--bg-card); font-size: 0.78rem; } #stpanel[hidden] { display: none; }
         #stpanel .row { display: flex; align-items: center; gap: 0.6rem; padding: 2px 0; border-bottom: 1px solid var(--border); } #stpanel .row:last-child { border-bottom: 0; } #stpanel .row .sp { flex: 1; }
+        #bulkres { margin-bottom: 0.4rem; padding: 0.3rem 0.6rem; border: 1px solid var(--border); border-left: 4px solid #6b7280; background: var(--bg-card); font-size: 0.78rem; } #bulkres[hidden] { display: none; } #bulkres ul { margin: 0.2rem 0 0 1rem; padding: 0; } #bulkres .bad { color: #dc2626; }
         .dash-error { color: #dc2626; margin: 0.3rem 0; }
         @media (max-width: 1600px) { .ch .mini-btn { padding: 0 5px; font-size: 0.66rem; } .ch .tag { display: none; } .ch a.nm { font-size: 0.76rem; } } /* a poco ancho el nombre gana sitio; el estado sigue en el color del borde y en el tooltip */
         @media (prefers-reduced-motion: reduce) { .live .pulse, .cell.hot, .live .g canvas { animation: none; } .bar span { transition: none; } }
@@ -71,9 +72,12 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             <span class="sp"></span>
             <span id="svcs" style="display: contents;"></span>
             <button type="button" class="mini-btn" id="stbtn" aria-expanded="false">Listas detenidas (0)</button>
+            <button type="button" class="mini-btn" id="startall" disabled>Iniciar todas</button>
+            <button type="button" class="mini-btn" id="stopall" disabled>Parar todas</button>
             <span class="m" id="updated"></span>
         </div>
         <div id="notice"></div>
+        <div id="bulkres" hidden></div>
         <div id="stpanel" hidden></div>
         <div id="groups"></div>
     </main>
@@ -216,6 +220,37 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             });
         }
 
+        // ---- acciones masivas: reutilizan start/stop de dashboard_api.php, una petición por lista, en serie; si una falla sigue con las demás ----
+        var runningList = [], stoppedAll = [], bulkBusy = false;
+        var startAllBtn = document.getElementById('startall'), stopAllBtn = document.getElementById('stopall'), bulkBox = document.getElementById('bulkres');
+        function paintBulk() {
+            startAllBtn.textContent = 'Iniciar todas (' + stoppedAll.length + ')'; stopAllBtn.textContent = 'Parar todas (' + runningList.length + ')';
+            startAllBtn.disabled = bulkBusy || !stoppedAll.length; stopAllBtn.disabled = bulkBusy || !runningList.length;
+        }
+        function bulk(action, items, verb) {
+            if (bulkBusy || !items.length) return;
+            var text = action === 'start'
+                ? 'Vas a INICIAR ' + items.length + (items.length === 1 ? ' lista detenida' : ' listas detenidas') + '. El marcador llamará de verdad a los contactos de ' + (items.length === 1 ? 'esa lista' : 'esas listas') + '. ¿Continuar?'
+                : 'Vas a DETENER ' + items.length + (items.length === 1 ? ' lista que está discando' : ' listas que están discando') + ' (incluidas las que esperan reintentos). Las llamadas en curso terminan solas. ¿Continuar?';
+            if (!window.confirm(text)) return;
+            bulkBusy = true; paintBulk(); showNotice(''); bulkBox.hidden = false; bulkBox.textContent = verb + '… 0 de ' + items.length;
+            var ok = 0, bad = [], todo = items.slice();
+            (function next() {
+                var it = todo.shift();
+                if (!it) {
+                    bulkBusy = false; bulkBox.textContent = '';
+                    bulkBox.appendChild(el('b', '', verb + ': ' + ok + ' de ' + items.length + ' aplicadas' + (bad.length ? ', ' + bad.length + ' con error:' : '.')));
+                    if (bad.length) { var ul = el('ul', 'bad'); bad.forEach(function (b) { ul.appendChild(el('li', '', b)); }); bulkBox.appendChild(ul); }
+                    var x = el('button', 'mini-btn', 'Cerrar'); x.type = 'button'; x.style.marginLeft = '0.5rem'; x.addEventListener('click', function () { bulkBox.hidden = true; }); bulkBox.appendChild(x);
+                    paintBulk(); refresh(true); return;
+                }
+                bulkBox.textContent = verb + '… ' + (items.length - todo.length - 1) + ' de ' + items.length + ' (' + it.l.name + ')';
+                post(action, it.c.campaign_id, it.l.list_id).then(function () { ok++; }).catch(function (e) { bad.push(it.c.name + ' · ' + it.l.name + ' (#' + it.l.list_id + '): ' + e.message); }).then(next);
+            })();
+        }
+        startAllBtn.addEventListener('click', function () { bulk('start', stoppedAll.slice(), 'Iniciar todas'); });
+        stopAllBtn.addEventListener('click', function () { bulk('stop', runningList.slice(), 'Parar todas'); });
+
         function telemetry(d) {
             var s = d.server, t = document.getElementById('tele'); t.textContent = '';
             function m(label, pct, text) { var e = el('span', 'm' + (pct == null ? '' : pct >= 90 ? ' crit' : pct >= 75 ? ' warn' : '')); e.appendChild(document.createTextNode(label + ' ')); e.appendChild(el('b', '', text)); t.appendChild(e); }
@@ -235,6 +270,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
                 c.lists.forEach(function (l) { if (l.active && !l.started) stopped.push({ c: c, l: l }); });
                 if (live.length) groups.push({ c: c, lists: live });
             });
+            stoppedAll = stopped; runningList = []; groups.forEach(function (g) { g.lists.forEach(function (l) { runningList.push({ c: g.c, l: l }); }); }); paintBulk();
             groups.forEach(function (g) { g.lists.forEach(function (l) { seen[l.list_id] = true; if (!cards[l.list_id]) cards[l.list_id] = mkCard(g.c, l); updateCard(cards[l.list_id], g.c, l); }); });
             Object.keys(cards).forEach(function (id) { if (!seen[id]) { destroyCard(cards[id]); delete cards[id]; } });
             var sig = groups.map(function (g) { return g.c.campaign_id + '[' + g.lists.map(function (l) { return l.list_id; }).join(',') + ']:' + g.c.started; }).join('|');
