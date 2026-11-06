@@ -521,6 +521,25 @@ trait CampaignConfigQueries {
         $r = $s->fetch(\PDO::FETCH_ASSOC);
         return ['calls'=>(int)$r['calls'], 'human'=>(int)$r['human']];
     }
+    /** Test list (screen «Test»): active, stopped, 1 channel, flagged is_test so the candidate query never retries it. The caller imports its single contact. */
+    public function createTestList(int $campaignId, string $name): int {
+        $listId = $this->createList($campaignId, $name, true);
+        $this->db->prepare('UPDATE zynervox_bot_lists SET is_test=1 WHERE list_id=?')->execute([$listId]);
+        return $listId;
+    }
+    /** Last test lists, newest first: one row each with its contact and its last attempt (index list_id, attempt_id). */
+    public function recentTestLists(int $limit): array {
+        $state = marcador_attempt_state_sql();
+        $s = $this->db->prepare("SELECT p.list_id,p.campaign_id,c.name campaign_name,p.created_at,p.active,p.dialer_state,l.phone,l.status lead_status,l.called_count,l.last_sip_code,
+                a.attempt_id,a.started_at,a.finished_at,a.disposition,a.dial_status,a.amd_status,a.sip_cause,a.billsec,
+                IF(a.attempt_id IS NULL, NULL, $state) estado
+            FROM zynervox_bot_lists p JOIN zynervox_bot_campaigns c ON c.campaign_id=p.campaign_id
+            LEFT JOIN zynervox_bot_list l ON l.list_id=p.list_id
+            LEFT JOIN zynervox_bot_call_attempts a ON a.attempt_id=(SELECT MAX(x.attempt_id) FROM zynervox_bot_call_attempts x WHERE x.list_id=p.list_id)
+            WHERE p.is_test=1 ORDER BY p.list_id DESC LIMIT ".max(1, min(100, $limit)));
+        $s->execute();
+        return $s->fetchAll(\PDO::FETCH_ASSOC);
+    }
     public function deactivateList(int $campaignId, int $listId): void {
         $this->db->prepare('UPDATE zynervox_bot_lists SET active=0 WHERE list_id=? AND campaign_id=?')->execute([$listId, $campaignId]);
     }
@@ -578,9 +597,9 @@ trait CampaignConfigQueries {
         $orderBy = $order === 'RANDOM' ? 'RAND()' : 'l.lead_id '.($order === 'DOWN' ? 'DESC' : 'ASC');
         $OPEN = "a2.finished_at IS NULL AND a2.end_source<>'RECOVERY' AND a2.status<>'LOST'";
         return "SELECT $select FROM zynervox_bot_list l JOIN zynervox_bot_lists p ON p.list_id=l.list_id AND p.campaign_id=? AND p.active=1".($onlyStarted ? " AND p.dialer_state='running'" : '').($listId !== null ? ' AND p.list_id='.$listId : '')."
-            LEFT JOIN zynervox_bot_campaign_sip_rules sr ON sr.campaign_id=p.campaign_id AND sr.active=1 AND l.status IN ('B','NA','UNAV','CONG','CANCEL','FAIL')
+            LEFT JOIN zynervox_bot_campaign_sip_rules sr ON sr.campaign_id=p.campaign_id AND p.is_test=0 AND sr.active=1 AND l.status IN ('B','NA','UNAV','CONG','CANCEL','FAIL')
                 AND sr.sip_code=IF(l.last_sip_code BETWEEN 100 AND 199,487,l.last_sip_code)
-            LEFT JOIN zynervox_bot_campaign_amd_actions aa ON aa.campaign_id=p.campaign_id AND aa.action='retry' AND aa.result IN (
+            LEFT JOIN zynervox_bot_campaign_amd_actions aa ON aa.campaign_id=p.campaign_id AND p.is_test=0 AND aa.action='retry' AND aa.result IN (
                 (SELECT IF(x.corte_por='ZYPAD','MACHINE',NULL) FROM zynervox_bot_call_attempts x WHERE x.lead_id=l.lead_id AND x.finished_at IS NOT NULL ORDER BY x.attempt_id DESC LIMIT 1),
                 IF(l.status IN ('AA','ANSWER'), (SELECT x.amd_status FROM zynervox_bot_call_attempts x WHERE x.lead_id=l.lead_id AND x.finished_at IS NOT NULL ORDER BY x.attempt_id DESC LIMIT 1), NULL),
                 IF(l.status IN ('AA','ANSWER'), (SELECT x.amd_cause FROM zynervox_bot_call_attempts x WHERE x.lead_id=l.lead_id AND x.finished_at IS NOT NULL ORDER BY x.attempt_id DESC LIMIT 1), NULL))

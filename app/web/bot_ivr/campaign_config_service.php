@@ -10,6 +10,7 @@ require_once __DIR__.'/../marcador/list_summary.php';
 require_once __DIR__.'/../marcador/zypad.php';
 require_once __DIR__.'/../marcador/contact_distribution.php';
 require_once __DIR__.'/../marcador/blacklist.php';
+require_once __DIR__.'/list_service.php';
 
 const BOT_CFG_MAX_HEADERS = 16;
 
@@ -719,4 +720,44 @@ function bot_cfg_contact_weekday_hour(\ZynervoxQueries\BotIvrRepository $db, arr
     $cells = array_map(fn($r) => ['weekday'=>(int)$r['weekday'], 'hour_local'=>(int)$r['hour_local'], 'contacts'=>(int)$r['contacts'], 'answered'=>(int)$r['answered'], 'human'=>(int)$r['human'], 'casilla'=>(int)$r['casilla']], $db->contactWeekdayHour($f));
     return ['filters'=>['from_utc'=>$f['from_utc'], 'to_utc'=>$f['to_utc'], 'campaign_id'=>$f['campaign_id'], 'list_id'=>$f['list_id'], 'timezone'=>'America/Lima'], 'basis'=>'contactos (último intento de cada contacto)', 'cells'=>$cells,
         'total'=>['contacts'=>array_sum(array_column($cells, 'contacts')), 'answered'=>array_sum(array_column($cells, 'answered')), 'human'=>array_sum(array_column($cells, 'human'))]];
+}
+
+/**
+ * Screen «Test»: creates a list of ONE contact (the number, normalized like every contact) for the chosen campaign: active, stopped, 1 channel, flagged as test.
+ * The name is generated (test-YYYYMMDD-HHMMSS, Lima time) and never holds the number. Every call creates a new list. The list makes a single call whatever the result
+ * (the candidate query ignores the campaign retry rules for test lists) and closes itself when done. Starting it is the normal bot_cfg_list_start. Returns list_id, campaign_id, name.
+ */
+function bot_cfg_test_create(\ZynervoxQueries\BotIvrRepository $db, int $campaignId, string $phone, string $actor): array {
+    if (!preg_match('/^[+0-9 ().-]{6,30}$/D', trim($phone))) throw new RuntimeException('Número inválido: usa solo dígitos (puede llevar +, espacios, guiones o paréntesis).');
+    $db->campaign($campaignId); // throws when the campaign does not exist
+    $parsed = bot_list_parse_txt("numero,id_contacto\n".preg_replace('/\D+/', '', $phone).",TEST\n");
+    $digits = $parsed['rows'][0]['phone'] ?? '';
+    if (count($parsed['rows']) !== 1 || strlen($digits) < 7) throw new RuntimeException('Número inválido: debe tener entre 7 y 20 dígitos.');
+    $name = 'test-'.(new DateTimeImmutable('now', new DateTimeZone('America/Lima')))->format('Ymd-His');
+    $listId = $db->createTestList($campaignId, $name);
+    try { $db->importLeads($listId, $campaignId, $parsed); }
+    catch (Throwable $e) { try { bot_list_delete($db, $listId, $campaignId, $actor); } catch (Throwable $x) { error_log('ZV2 test list cleanup: '.$x->getMessage()); } throw $e; }
+    error_log('ZV2 test_list_created '.json_encode(['list_id'=>$listId, 'campaign_id'=>$campaignId, 'actor'=>$actor, 'at'=>gmdate('c')], JSON_UNESCAPED_UNICODE));
+    return ['list_id'=>$listId, 'campaign_id'=>$campaignId, 'name'=>$name];
+}
+/**
+ * Last test lists for the screen, newest first (default 20, max 100): list_id, campaign_id, campaign (name), phone (full: the user typed it), created_at (UTC),
+ * state: 'sin_iniciar' | 'en_curso' | 'terminada' | 'detenida', estado/estado_label (Estado of the last attempt, null before the call), resultado (text: AMD, SIP, seconds). One light query.
+ */
+function bot_cfg_test_recent(\ZynervoxQueries\BotIvrRepository $db, int $limit = 20): array {
+    $rows = [];
+    foreach ($db->recentTestLists($limit) as $r) {
+        $called = (int)$r['called_count'] > 0 || $r['attempt_id'] !== null;
+        $open = $r['attempt_id'] !== null && $r['finished_at'] === null;
+        $state = $open ? 'en_curso' : ($called ? 'terminada' : ($r['dialer_state'] === 'running' ? 'en_curso' : ((int)$r['active'] ? 'sin_iniciar' : 'detenida')));
+        $parts = [];
+        if ($r['attempt_id'] !== null && $r['finished_at'] !== null) {
+            if ((string)$r['amd_status'] !== '') $parts[] = 'AMD '.$r['amd_status'];
+            if ((string)$r['sip_cause'] !== '') $parts[] = $r['sip_cause'];
+            if ((int)$r['billsec'] > 0) $parts[] = (int)$r['billsec'].' s';
+        }
+        $rows[] = ['list_id'=>(int)$r['list_id'], 'campaign_id'=>(int)$r['campaign_id'], 'campaign'=>$r['campaign_name'], 'phone'=>$r['phone'], 'created_at'=>$r['created_at'],
+            'state'=>$state, 'estado'=>$r['estado'], 'estado_label'=>$r['estado'] === null ? null : (MARCADOR_ATTEMPT_STATES[$r['estado']] ?? $r['estado']), 'resultado'=>implode(' · ', $parts)];
+    }
+    return $rows;
 }

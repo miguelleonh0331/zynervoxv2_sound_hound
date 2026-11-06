@@ -597,6 +597,28 @@ check('AGI «blocked»: el dialplan cierra el intento como Bloqueado y el contac
     && $pdo->query("SELECT status FROM zynervox_bot_list WHERE list_id=$bl AND phone='900000013'")->fetchColumn() === 'BLOCKED' && $repo->markCallBlocked('zv2-no-existe') === 0);
 $pdo->exec("DELETE FROM zynervox_blacklist");
 check('lista negra: borrar el número lo deja marcable otra vez (los nuevos contactos)', !$repo->isBlacklisted('900000011', $bc));
+// --- Screen «Test» (025): one-contact list, one call whatever the result, no retries, closes itself ---
+$tc = bot_cfg_save($repo, null, ['name'=>'TESTSCREEN', 'active'=>'1', 'call_origin'=>'7308', 'lead_order'=>'UP', 'transfer_carrier_id'=>'', 'transfer_destination'=>'', 'schedules'=>[['weekday'=>1, 'start_time'=>'00:00', 'end_time'=>'23:59']],
+    'rules'=>[['sip_code'=>486, 'max_attempts'=>5, 'retry_delay_min'=>0, 'active'=>1], ['sip_code'=>0, 'max_attempts'=>5, 'retry_delay_min'=>0, 'active'=>1]]]);
+$t1 = bot_cfg_test_create($repo, $tc, '+51 900 000 051', 'test');
+$t2 = bot_cfg_test_create($repo, $tc, '900000051', 'test');
+$tl = $pdo->query("SELECT CONCAT(is_test,'/',active,'/',dialer_state,'/',max_channels,'/',name) FROM zynervox_bot_lists WHERE list_id={$t1['list_id']}")->fetchColumn();
+check('Test: lista de 1 contacto, 1 canal, activa, detenida, marcada de prueba y con nombre generado sin el número', preg_match('#^1/1/stopped/1/test-\d{8}-\d{6}$#', (string)$tl) === 1
+    && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_list WHERE list_id={$t1['list_id']} AND phone='51900000051'")->fetchColumn() === 1 && $t2['list_id'] !== $t1['list_id']);
+check('Test: número inválido se rechaza sin crear lista', throws(fn() => bot_cfg_test_create($repo, $tc, 'abc', 'test')) !== '' && throws(fn() => bot_cfg_test_create($repo, $tc, '12345', 'test')) !== '' && throws(fn() => bot_cfg_test_create($repo, 999999, '900000052', 'test')) !== ''
+    && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_lists WHERE campaign_id=$tc AND is_test=1")->fetchColumn() === 2);
+$rowsT = bot_cfg_test_recent($repo, 5);
+check('Test: la lista de pruebas recientes trae las dos listas, la más nueva primero, sin llamada todavía', count($rowsT) === 2 && $rowsT[0]['list_id'] === $t2['list_id'] && $rowsT[0]['state'] === 'sin_iniciar' && $rowsT[0]['estado'] === null && $rowsT[0]['phone'] === '900000051');
+bot_cfg_list_start($repo, $tc, $t1['list_id'], 'test', ['7308']);
+$cl = $repo->claimCampaignLead($tc, 'UP', 'zv2-testscr1', fn($lead) => ['ok'=>1]);
+check('Test: el motor marca el contacto de la lista de prueba', $cl !== null && $cl['list_id'] === $t1['list_id']);
+$repo->finishUnansweredCall('zv2-testscr1', 'BUSY', 17, 'SIP 486 Busy Here', 'BUSY');
+check('Test: con 486 y una regla de reintento de 5 en la campaña, la lista de prueba NO reintenta', $repo->claimCampaignLead($tc, 'UP', 'zv2-testscr2', fn($lead) => ['ok'=>1]) === null && $repo->listEligibleCount($tc, $t1['list_id'], 'UP') === 0);
+$ft = marcador_list_finish_if_done($repo, $tc, $t1['list_id']);
+$rt = array_values(array_filter(bot_cfg_test_recent($repo, 5), fn($r) => $r['list_id'] === $t1['list_id']))[0];
+check('Test: al terminar la lista se cierra sola y la pantalla ve su estado y resultado', $ft && $rt['state'] === 'terminada' && $rt['estado'] === 'ocupado' && $rt['estado_label'] === 'Ocupado' && str_contains($rt['resultado'], '486')
+    && (int)$pdo->query("SELECT active FROM zynervox_bot_lists WHERE list_id={$t1['list_id']}")->fetchColumn() === 0);
+check('Test: una lista normal de la misma campaña sí conserva sus reintentos', $repo->campaignConfig($tc)['rules'] !== []);
 // Strict check used by the dialplan AGI: SI / NO / ERROR (fail closed when the table or the database fail)
 $pdo->exec("INSERT INTO zynervox_blacklist (campaign_id,phone,reason,created_by) VALUES ($bc,'900000021','prueba ficticia','test')");
 check('AGI de lista negra: SI para un bloqueado (con prefijo o formato), NO para otro, ERROR sin dígitos', marcador_blacklist_check($repo, '51900000021', (string)$bc) === 'SI' && marcador_blacklist_check($repo, '900000021', (string)$bc) === 'SI' && marcador_blacklist_check($repo, '900000022', (string)$bc) === 'NO' && marcador_blacklist_check($repo, 'xx', (string)$bc) === 'ERROR' && marcador_blacklist_check($repo, '12345', (string)$bc) === 'NO');
