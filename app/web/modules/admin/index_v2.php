@@ -278,8 +278,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             if (sig !== structSig) {
                 structSig = sig; box.textContent = '';
                 if (!groups.length) {
-                    var em = el('div', 'empty'); em.appendChild(el('p', '', 'Ninguna lista está discando ahora.')); var b = el('button', 'mini-btn', 'Ver listas detenidas (' + stopped.length + ')'); b.type = 'button';
-                    b.addEventListener('click', function () { stPanel.hidden = false; stBtn.setAttribute('aria-expanded', 'true'); }); em.appendChild(b); box.appendChild(em);
+                    var em = el('div', 'empty'); em.appendChild(el('p', '', 'Ninguna lista está discando ahora.')); box.appendChild(em);
                 }
                 groups.forEach(function (g) {
                     var col = el('div', 'col'), h = el('div', 'camp-h', g.c.name); h.appendChild(el('span', 'tag' + (g.c.started ? ' run' : ''), g.c.started ? 'En marcha' : 'Detenida')); col.appendChild(h);
