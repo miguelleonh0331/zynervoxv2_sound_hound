@@ -602,10 +602,13 @@ $tc = bot_cfg_save($repo, null, ['name'=>'TESTSCREEN', 'active'=>'1', 'call_orig
     'rules'=>[['sip_code'=>486, 'max_attempts'=>5, 'retry_delay_min'=>0, 'active'=>1], ['sip_code'=>0, 'max_attempts'=>5, 'retry_delay_min'=>0, 'active'=>1]]]);
 $t1 = bot_cfg_test_create($repo, $tc, '+51 900 000 051', 'test');
 $t2 = bot_cfg_test_create($repo, $tc, '900000051', 'test');
+$t3 = bot_cfg_test_create($repo, $tc, '51-900-000-051', 'test'); $t4 = bot_cfg_test_create($repo, $tc, '51900000051', 'test');
+check('Test: 9 dígitos, 51…, +51…, con espacios o guiones guardan siempre los 9 dígitos', $pdo->query("SELECT GROUP_CONCAT(DISTINCT phone) FROM zynervox_bot_list WHERE list_id IN ({$t1['list_id']},{$t2['list_id']},{$t3['list_id']},{$t4['list_id']})")->fetchColumn() === '900000051');
+$pdo->exec("DELETE FROM zynervox_bot_list WHERE list_id IN ({$t3['list_id']},{$t4['list_id']})"); $pdo->exec("DELETE FROM zynervox_bot_lists WHERE list_id IN ({$t3['list_id']},{$t4['list_id']})");
 $tl = $pdo->query("SELECT CONCAT(is_test,'/',active,'/',dialer_state,'/',max_channels,'/',name) FROM zynervox_bot_lists WHERE list_id={$t1['list_id']}")->fetchColumn();
 check('Test: lista de 1 contacto, 1 canal, activa, detenida, marcada de prueba y con nombre generado sin el número', preg_match('#^1/1/stopped/1/test-\d{8}-\d{6}$#', (string)$tl) === 1
-    && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_list WHERE list_id={$t1['list_id']} AND phone='51900000051'")->fetchColumn() === 1 && $t2['list_id'] !== $t1['list_id']);
-check('Test: número inválido se rechaza sin crear lista', throws(fn() => bot_cfg_test_create($repo, $tc, 'abc', 'test')) !== '' && throws(fn() => bot_cfg_test_create($repo, $tc, '12345', 'test')) !== '' && throws(fn() => bot_cfg_test_create($repo, 999999, '900000052', 'test')) !== ''
+    && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_list WHERE list_id={$t1['list_id']} AND phone='900000051'")->fetchColumn() === 1 && $t2['list_id'] !== $t1['list_id']);
+check('Test: número inválido se rechaza sin crear lista', throws(fn() => bot_cfg_test_create($repo, $tc, 'abc', 'test')) !== '' && throws(fn() => bot_cfg_test_create($repo, $tc, '12345', 'test')) !== '' && str_contains(throws(fn() => bot_cfg_test_create($repo, $tc, '5190000005112', 'test')), '9 dígitos') && str_contains(throws(fn() => bot_cfg_test_create($repo, $tc, '90000005', 'test')), '9 dígitos') && throws(fn() => bot_cfg_test_create($repo, 999999, '900000052', 'test')) !== ''
     && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_lists WHERE campaign_id=$tc AND is_test=1")->fetchColumn() === 2);
 $rowsT = bot_cfg_test_recent($repo, 5);
 check('Test: la lista de pruebas recientes trae las dos listas, la más nueva primero, sin llamada todavía', count($rowsT) === 2 && $rowsT[0]['list_id'] === $t2['list_id'] && $rowsT[0]['state'] === 'sin_iniciar' && $rowsT[0]['estado'] === null && $rowsT[0]['phone'] === '900000051');

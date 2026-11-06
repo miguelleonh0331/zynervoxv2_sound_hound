@@ -728,11 +728,14 @@ function bot_cfg_contact_weekday_hour(\ZynervoxQueries\BotIvrRepository $db, arr
  * (the candidate query ignores the campaign retry rules for test lists) and closes itself when done. Starting it is the normal bot_cfg_list_start. Returns list_id, campaign_id, name.
  */
 function bot_cfg_test_create(\ZynervoxQueries\BotIvrRepository $db, int $campaignId, string $phone, string $actor): array {
-    if (!preg_match('/^[+0-9 ().-]{6,30}$/D', trim($phone))) throw new RuntimeException('Número inválido: usa solo dígitos (puede llevar +, espacios, guiones o paréntesis).');
+    if (!preg_match('/^[+0-9 ().-]{1,30}$/D', trim($phone))) throw new RuntimeException('Número inválido: usa solo dígitos (puede llevar +, espacios, guiones o paréntesis).');
+    $digits = preg_replace('/\D+/', '', $phone) ?? '';
+    // The dialplan adds the carrier prefix (883651), so the contact is stored with the 9 digits of the number: the country code 51 is accepted in the input and dropped.
+    if (strlen($digits) === 11 && str_starts_with($digits, '51')) $digits = substr($digits, 2);
+    if (!preg_match('/^[0-9]{9}$/D', $digits)) throw new RuntimeException('El número debe tener 9 dígitos (se acepta con prefijo 51 o +51, espacios o guiones).');
     $db->campaign($campaignId); // throws when the campaign does not exist
-    $parsed = bot_list_parse_txt("numero,id_contacto\n".preg_replace('/\D+/', '', $phone).",TEST\n");
-    $digits = $parsed['rows'][0]['phone'] ?? '';
-    if (count($parsed['rows']) !== 1 || strlen($digits) < 7) throw new RuntimeException('Número inválido: debe tener entre 7 y 20 dígitos.');
+    $parsed = bot_list_parse_txt("numero,id_contacto\n$digits,TEST\n");
+    if (count($parsed['rows']) !== 1 || $parsed['rows'][0]['phone'] !== $digits) throw new RuntimeException('Número inválido.');
     $name = 'test-'.(new DateTimeImmutable('now', new DateTimeZone('America/Lima')))->format('Ymd-His');
     $listId = $db->createTestList($campaignId, $name);
     try { $db->importLeads($listId, $campaignId, $parsed); }
