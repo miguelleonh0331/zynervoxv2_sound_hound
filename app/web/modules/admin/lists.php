@@ -15,8 +15,8 @@ Auth::checkAccess(9);
 
 // «Plantilla»: archivo demo con el formato real de la carga (cabecera + una fila inventada con el número vacío). Se genera aquí, sin ficheros ni consultas.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && ($_GET['plantilla'] ?? '') === '1') {
-    header('Content-Type: text/plain; charset=utf-8');
-    header('Content-Disposition: attachment; filename="plantilla_lista.txt"');
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="plantilla_lista.csv"');
     header('Cache-Control: no-store');
     echo "id_contacto,nombre,numero,monto,local,direccion\n1001,Cliente Ejemplo,,150.00,Local Ejemplo,Av. Ejemplo 123\n";
     exit;
