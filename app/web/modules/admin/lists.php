@@ -91,6 +91,7 @@ try {
                 if ($isNew) $listId = bot_campaign_list_create($db, $campaignId, (string)$_POST['list_name'], true);
                 $result = bot_list_import($db, $listId, $campaignId, $parsed);
                 $summary = 'Lista #' . $listId . ($isNew ? ' creada' : ' · base reemplazada') . '. Importados: ' . $result['saved'] . '. Duplicados: ' . $result['duplicates'] . '. Rechazados: ' . $result['rejected'] . '.';
+                if ((int)($result['blocked'] ?? 0) > 0) $summary .= ' ' . (int)$result['blocked'] . ' bloqueados por la lista global ' . (string)($result['blocked_list'] ?? '') . '.';
                 if ($result['errors']) $summary .= ' Motivos: ' . implode(' · ', $result['errors']);
                 $_SESSION['lists_message'] = $summary;
             } else {

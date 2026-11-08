@@ -36,6 +36,9 @@ try {
             $fromList = ($_POST['from'] ?? '') === 'list';
             if ($action === 'save') {
                 $savedId = bot_cfg_save($db, $postId, $_POST);
+                $wantGlobal = (int)($_POST['global_blacklist_id'] ?? 0);
+                $curGlobal = $postId === null ? 0 : (int)(bot_cfg_get($db, $savedId)['campaign']['global_blacklist_id'] ?? 0);
+                if ($wantGlobal !== $curGlobal) bot_bl_assign_global($db, $savedId, $wantGlobal ?: null, $actor);
                 $_SESSION['campaigns_message'] = $postId === null ? 'Campaña creada.' : 'Cambios guardados.';
             } elseif ($action === 'start' && $postId !== null) {
                 bot_cfg_start($db, $postId, $actor);
@@ -94,6 +97,7 @@ if ($isNew && $form === null) {
 }
 $c = $form['campaign'] ?? [];
 $running = ($c['dialer_state'] ?? '') === 'running';
+try { $globalLists = ($id !== null || $isNew) && $db ? bot_bl_lists($db) : []; } catch (Throwable $e) { $globalLists = []; }
 $sipCodes = bot_cfg_sip_codes();
 $amdResults = bot_cfg_amd_results();
 $amdDefaults = bot_cfg_amd_defaults();
@@ -234,8 +238,13 @@ function campaigns_schedule_row(array $r, array $days): string {
                         <?php endforeach; ?>
                         <?php if (($c['call_origin'] ?? '') !== '' && !isset($dialTypes[(string)$c['call_origin']])): ?><option value="<?php echo h($c['call_origin']); ?>" selected><?php echo h($c['call_origin']); ?> (valor existente)</option><?php endif; ?>
                         </select></label>
-                    <label>Blacklist
+                    <label>Blacklist regular
                         <select name="blacklist_enabled"><option value="1"<?php echo (string)($c['blacklist_enabled'] ?? '0') === '1' ? ' selected' : ''; ?>>Sí</option><option value="0"<?php echo (string)($c['blacklist_enabled'] ?? '0') === '1' ? '' : ' selected'; ?>>No</option></select></label>
+                    <label>Lista global
+                        <select name="global_blacklist_id"><option value="">Ninguna</option>
+                        <?php foreach ($globalLists as $gl): ?><option value="<?php echo (int)$gl['list_id']; ?>"<?php echo (string)($c['global_blacklist_id'] ?? '') === (string)$gl['list_id'] ? ' selected' : ''; ?>><?php echo h($gl['name']); ?></option><?php endforeach; ?>
+                        </select>
+                        <small style="font-weight:400;text-transform:none;color:var(--text-muted)">Se aplica al cargar una base: sus números quedan bloqueados.</small></label>
                     <label>Troncal de transferencia
                         <select name="transfer_carrier_id"><option value="">— elegir —</option>
                         <?php $carrierKnown = false; foreach ($carriers as $t): $sel = (string)($c['transfer_carrier_id'] ?? '') === (string)$t['carrier_id']; $carrierKnown = $carrierKnown || $sel; ?>

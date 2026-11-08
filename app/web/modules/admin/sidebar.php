@@ -56,6 +56,7 @@ function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
         ['key' => 'phones',      'href' => 'modules/admin/phones.php',       'icon' => 'phones',     'label' => 'Anexos/Teléfonos',   'in_scope' => true],
         ['key' => 'admin',       'href' => 'modules/admin/carriers.php',     'icon' => 'admin',      'label' => 'Troncales SIP',      'in_scope' => true],
         ['key' => 'dialplan',    'href' => 'modules/admin/dialplan.php',     'icon' => 'scripts',    'label' => 'Dialplan',           'in_scope' => true],
+        ['key' => 'blacklist',   'href' => 'modules/admin/blacklist.php',    'icon' => 'checklist',  'label' => 'Blacklist',          'in_scope' => true],
         ['key' => 'test',        'href' => 'modules/admin/test.php',         'icon' => 'bot',        'label' => 'Test',               'in_scope' => true],
         ['key' => 'guia',        'href' => 'modules/admin/guia.php',         'icon' => 'wizard',     'label' => 'Guía',               'in_scope' => true],
     ];
