@@ -19,7 +19,7 @@ class Permissions {
     /** clave => niveles permitidos. */
     private const MAP = [
         // Pantallas (la clave es 'page.' + la clave del menú)
-        'page.home'            => [9, 8, 7],   // Dashboard (index.php e index_v2.php)
+        'page.home'            => [9, 8, 7],   // Dashboard (index.php; index_v2.php solo redirige)
         'page.reports'         => [9, 8, 7],   // Reportes, solo consulta
         'page.guia'            => [9, 8, 7],   // Guía (cada perfil ve sus temas, ver GUIDE_TOPICS)
         'page.lists'           => [9, 7],      // Listas
