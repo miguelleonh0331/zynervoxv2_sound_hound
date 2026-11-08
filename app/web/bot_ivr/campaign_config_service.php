@@ -12,6 +12,7 @@ require_once __DIR__.'/../marcador/contact_distribution.php';
 require_once __DIR__.'/../marcador/blacklist.php';
 require_once __DIR__.'/list_service.php';
 require_once __DIR__.'/../marcador/blacklist_admin.php';
+require_once __DIR__.'/../marcador/channels.php';
 
 const BOT_CFG_MAX_HEADERS = 16;
 
@@ -174,7 +175,7 @@ function bot_cfg_save(\ZynervoxQueries\BotIvrRepository $db, ?int $id, array $in
 /** Channels of one list (1..server max). Safe while the campaign runs: the engine re-reads it on every pass. */
 function bot_cfg_set_list_channels(\ZynervoxQueries\BotIvrRepository $db, int $campaignId, int $listId, $channels): void {
     $max = $db->dialerMaxTotalChannels();
-    $db->setListChannels($campaignId, $listId, bot_cfg_int($channels, 1, $max, 'Canales de la lista (máximo del servidor '.$max.')'));
+    $db->setListChannelsWithinLimit($campaignId, $listId, bot_cfg_int($channels, 1, $max, 'Canales de la lista (máximo del servidor '.$max.')')); // a started list cannot push the started total over the maximum (BotChannelsException)
 }
 /** All lists with max_channels and open_calls (live). */
 function bot_cfg_lists_channels(\ZynervoxQueries\BotIvrRepository $db): array { return $db->listsChannels(); }
@@ -214,7 +215,7 @@ function bot_cfg_start(\ZynervoxQueries\BotIvrRepository $db, int $id, string $a
     $c = $db->campaignConfig($id)['campaign'];
     bot_cfg_check_startable($db, $c, $origins);
     if ($db->countEligibleLeads($id, (string)$c['lead_order']) < 1) throw new RuntimeException('No hay leads elegibles en las listas activas de la campaña.');
-    $db->setCampaignListsState($id, 'running', $actor);
+    $db->startListsWithinLimit(array_map(fn($l) => [$id, (int)$l['list_id']], array_filter($db->listsChannels(), fn($l) => (int)$l['campaign_id'] === $id && (int)$l['active'] === 1)), $actor); // all or nothing, same channel control
     $db->setDialerState($id, 'running', $actor);
 }
 /** Stops the campaign and all its lists; calls in progress finish by themselves. */
@@ -230,8 +231,33 @@ function bot_cfg_list_start(\ZynervoxQueries\BotIvrRepository $db, int $campaign
     $c = $db->campaignConfig($campaignId)['campaign'];
     bot_cfg_check_startable($db, $c, $origins);
     if ($db->listEligibleCount($campaignId, $listId, (string)$c['lead_order']) < 1) throw new RuntimeException('No hay contactos por llamar en la lista.');
-    $db->setListDialerState($campaignId, $listId, 'running', $actor);
+    $db->startListsWithinLimit([[$campaignId, $listId]], $actor); // channel control: throws BotChannelsException (with figures) when the started total would pass the maximum
     if ($c['dialer_state'] !== 'running') $db->setDialerState($campaignId, 'running', $actor);
+}
+/**
+ * «Iniciar todas»: starts the lists [['campaign_id'=>, 'list_id'=>], ...] ALL OR NOTHING. Each one is validated like bot_cfg_list_start (active, startable campaign, contacts to call); if
+ * the channels of all of them together with the other started lists do not fit in the server maximum, none is started and BotChannelsException carries the figures
+ * (discando, maximo, pedidos, libres, faltan = channels missing). Returns the ids of the lists started.
+ */
+function bot_cfg_list_start_many(\ZynervoxQueries\BotIvrRepository $db, array $lists, string $actor, ?array $origins = null): array {
+    $pairs = []; $campaigns = [];
+    foreach ($lists as $l) {
+        $campaignId = (int)($l['campaign_id'] ?? 0); $listId = (int)($l['list_id'] ?? 0);
+        $row = $db->listState($campaignId, $listId);
+        if (!(int)$row['active']) throw new RuntimeException('Activa la lista «'.$row['name'].'» antes de iniciarla.');
+        $c = $campaigns[$campaignId] ??= $db->campaignConfig($campaignId)['campaign'];
+        bot_cfg_check_startable($db, $c, $origins);
+        if ($db->listEligibleCount($campaignId, $listId, (string)$c['lead_order']) < 1) throw new RuntimeException('No hay contactos por llamar en la lista «'.$row['name'].'».');
+        $pairs[$listId] = [$campaignId, $listId];
+    }
+    $db->startListsWithinLimit(array_values($pairs), $actor);
+    foreach ($campaigns as $campaignId => $c) if ($c['dialer_state'] !== 'running') $db->setDialerState($campaignId, 'running', $actor);
+    return array_keys($pairs);
+}
+/** Channel figures for a warning in the screen: discando (assigned to started lists), maximo, libres. */
+function bot_cfg_channels_status(\ZynervoxQueries\BotIvrRepository $db): array {
+    $max = $db->dialerMaxTotalChannels(); $d = $db->startedChannels();
+    return ['discando'=>$d, 'maximo'=>$max, 'libres'=>max(0, $max - $d)];
 }
 /** Stops ONE list; stopping the last started list stops the campaign. Calls in progress finish by themselves. */
 function bot_cfg_list_stop(\ZynervoxQueries\BotIvrRepository $db, int $campaignId, int $listId, string $actor): void {

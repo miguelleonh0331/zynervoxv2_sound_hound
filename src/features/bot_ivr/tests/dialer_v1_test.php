@@ -678,6 +678,58 @@ check('una campaña puede quitar su lista global', $repo->importLeads($mk($gc), 
 $tg = bot_cfg_test_create($repo, $go, '900000084', 'tester');
 check('Test con la campaña que tiene global: la lista de prueba nace bloqueada y lo informa', $tg['blocked'] === 1 && $tg['blocked_list'] === 'IBK-T');
 $pdo->exec("DELETE FROM zynervox_blacklist"); $pdo->exec("DELETE FROM zynervox_blacklist_global"); $pdo->exec("UPDATE zynervox_bot_campaigns SET global_blacklist_id=NULL"); $pdo->exec("DELETE FROM zynervox_blacklist_lists"); $pdo->exec("DELETE FROM zynervox_blacklist_audit");
+// --- Channel control when dialing (max_total_channels vs channels of the STARTED lists) ---
+$pdo->exec("UPDATE zynervox_bot_lists SET dialer_state='stopped'"); $pdo->exec("UPDATE zynervox_bot_dialer_settings SET value=10 WHERE name='max_total_channels'");
+$cc = bot_cfg_save($repo, null, ['name'=>'CANALES', 'active'=>'1', 'call_origin'=>'7308', 'lead_order'=>'UP', 'rules'=>[], 'schedules'=>[]]);
+$mkc = function(int $ch, string $phone) use($pdo, $cc) { $pdo->exec("INSERT INTO zynervox_bot_lists (campaign_id,name,active,max_channels) VALUES ($cc,'CH$ch',1,$ch)"); $id = (int)$pdo->lastInsertId(); $pdo->exec("INSERT INTO zynervox_bot_list (list_id,phone,status) VALUES ($id,'$phone','NEW')"); return $id; };
+$chErr = function(callable $f): ?array { try { $f(); return null; } catch (BotChannelsException $e) { return $e->figures + ['msg'=>$e->getMessage()]; } };
+$l6 = $mkc(6, '900000201'); $l4 = $mkc(4, '900000202'); $l1 = $mkc(1, '900000203'); $l50 = $mkc(50, '900000204');
+bot_cfg_list_start($repo, $cc, $l6, 'test', ['7308']); bot_cfg_list_start($repo, $cc, $l4, 'test', ['7308']);
+check('canales: 6 + 4 = 10 de 10 cabe justo', bot_cfg_channels_status($repo) === ['discando'=>10, 'maximo'=>10, 'libres'=>0]);
+$e = $chErr(fn() => bot_cfg_list_start($repo, $cc, $l1, 'test', ['7308']));
+check('canales: pasarse por 1 se rechaza con cifras y mensaje claro, y la lista no queda iniciada', $e !== null && $e['discando'] === 10 && $e['maximo'] === 10 && $e['pedidos'] === 1 && $e['libres'] === 0 && $e['faltan'] === 1
+    && str_contains($e['msg'], 'Sobredimensionamiento de canales: discando 10 de 10; esta lista pide 1 y solo quedan 0 libres') && $repo->listState($cc, $l1)['dialer_state'] === 'stopped');
+bot_cfg_list_stop($repo, $cc, $l4, 'test');
+$repo->setListChannels($cc, $l50, 50);
+check('canales: una lista activa SIN iniciar con muchos canales no cuenta', bot_cfg_channels_status($repo)['discando'] === 6 && $chErr(fn() => bot_cfg_list_start($repo, $cc, $l4, 'test', ['7308'])) === null);
+bot_cfg_set_list_channels($repo, $cc, $l50, 9);
+check('canales: cambiar los canales de una lista no iniciada se guarda como siempre (aunque sobrepase)', (int)$repo->listState($cc, $l50)['max_channels'] === 9);
+$e = $chErr(fn() => bot_cfg_set_list_channels($repo, $cc, $l6, 7));
+check('canales: subir los de una lista iniciada por encima del máximo se rechaza sin guardar', $e !== null && $e['discando'] === 4 && $e['pedidos'] === 7 && $e['libres'] === 6 && (int)$repo->listState($cc, $l6)['max_channels'] === 6 && str_contains($e['msg'], 'sin contar esta lista'));
+bot_cfg_set_list_channels($repo, $cc, $l6, 6); bot_cfg_set_list_channels($repo, $cc, $l4, 2); bot_cfg_set_list_channels($repo, $cc, $l6, 8);
+check('canales: bajar siempre se puede y subir hasta que cabe también', bot_cfg_channels_status($repo)['discando'] === 10 && (int)$repo->listState($cc, $l6)['max_channels'] === 8);
+$pdo->exec("UPDATE zynervox_bot_lists SET dialer_state='stopped'"); $pdo->exec("UPDATE zynervox_bot_lists SET max_channels=5 WHERE list_id=$l6"); $pdo->exec("UPDATE zynervox_bot_lists SET max_channels=4 WHERE list_id=$l4"); $pdo->exec("UPDATE zynervox_bot_lists SET max_channels=3 WHERE list_id=$l1"); $pdo->exec("UPDATE zynervox_bot_lists SET active=0 WHERE list_id=$l50");
+$e = $chErr(fn() => bot_cfg_list_start_many($repo, [['campaign_id'=>$cc, 'list_id'=>$l6], ['campaign_id'=>$cc, 'list_id'=>$l4], ['campaign_id'=>$cc, 'list_id'=>$l1]], 'test', ['7308']));
+check('canales: bloque que no cabe (5+4+3 > 10) no inicia ninguna y dice cuántos canales faltan', $e !== null && $e['pedidos'] === 12 && $e['faltan'] === 2 && $e['libres'] === 10 && str_contains($e['msg'], 'faltan 2 canales')
+    && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_lists WHERE dialer_state='running'")->fetchColumn() === 0);
+$started = bot_cfg_list_start_many($repo, [['campaign_id'=>$cc, 'list_id'=>$l6], ['campaign_id'=>$cc, 'list_id'=>$l4]], 'test', ['7308']);
+check('canales: bloque que sí cabe (5+4) inicia todas', $started === [$l6, $l4] && bot_cfg_channels_status($repo)['discando'] === 9 && $repo->campaign($cc)['dialer_state'] === 'running');
+$e = $chErr(fn() => bot_cfg_start($repo, $cc, 'test', ['7308']));
+$pdo->exec("UPDATE zynervox_bot_lists SET active=1,max_channels=10 WHERE list_id=$l50"); $pdo->exec("UPDATE zynervox_bot_lists SET dialer_state='stopped' WHERE campaign_id=$cc");
+check('canales: iniciar la campaña entera pasa por el mismo control (todo o nada)', $chErr(fn() => bot_cfg_start($repo, $cc, 'test', ['7308'])) !== null && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_lists WHERE campaign_id=$cc AND dialer_state='running'")->fetchColumn() === 0);
+// Two starts at the same time (two real processes, same instant): only one may pass
+$pdo->exec("UPDATE zynervox_bot_lists SET dialer_state='stopped', active=1"); $pdo->exec("UPDATE zynervox_bot_lists SET max_channels=6 WHERE list_id IN ($l6,$l4)");
+$wins = []; 
+for ($round = 0; $round < 4; $round++) {
+    $pdo->exec("UPDATE zynervox_bot_lists SET dialer_state='stopped' WHERE campaign_id=$cc");
+    $t0 = microtime(true) + 1.0; $procs = [];
+    foreach ([$l6, $l4] as $lid) {
+        $code = 'require "'.$web.'/zynervox_queries/contracts/BotIvrRepository.php"; require "'.$web.'/zynervox_queries/mysql/bot_ivr/repository.php"; require "'.$web.'/marcador/channels.php";'
+            .'$p=new PDO("mysql:unix_socket=/var/lib/mysql/mysql.sock;dbname='.$database.';charset=utf8mb4","root","",[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]); $r=new ZynervoxQueries\\Mysql\\BotIvr\\Repository($p);'
+            .'while(microtime(true)<'.$t0.') usleep(100); try { $r->startListsWithinLimit([['.$cc.','.$lid.']], "race"); echo "OK"; } catch (BotChannelsException $e) { echo "CHAN"; } catch (Throwable $e) { echo "ERR ".$e->getMessage(); }';
+        $procs[] = proc_open([PHP_BINARY, '-r', $code], [1=>['pipe','w'], 2=>['pipe','w']], $pipes); $pp[] = $pipes;
+        $procs[count($procs)-1] = [$procs[count($procs)-1], $pipes];
+    }
+    $out = []; foreach ($procs as [$pr, $pipes]) { $out[] = trim(stream_get_contents($pipes[1])); proc_close($pr); }
+    sort($out); $wins[] = implode('+', $out);
+}
+check('canales: dos inicios a la vez (6+6 con máximo 10), en 4 rondas, pasa solo uno cada vez', $wins === ['CHAN+OK', 'CHAN+OK', 'CHAN+OK', 'CHAN+OK']);
+$pdo->exec("UPDATE zynervox_bot_lists SET dialer_state='stopped'");
+// Test lists (1 channel) follow the same rule
+$pdo->exec("UPDATE zynervox_bot_lists SET dialer_state='running' WHERE list_id=$l6"); $pdo->exec("UPDATE zynervox_bot_lists SET max_channels=4,dialer_state='running' WHERE list_id=$l4");
+$tt = bot_cfg_test_create($repo, $cc, '900000205', 'test');
+check('canales: la lista de la pantalla Test (1 canal) también se rechaza cuando ya se disca el máximo', $chErr(fn() => bot_cfg_list_start($repo, $cc, $tt['list_id'], 'test', ['7308'])) !== null);
+$pdo->exec("UPDATE zynervox_bot_lists SET dialer_state='stopped'"); $pdo->exec("UPDATE zynervox_bot_dialer_settings SET value=10 WHERE name='max_total_channels'");
 // Strict check used by the dialplan AGI: SI / NO / ERROR (fail closed when the table or the database fail)
 $pdo->exec("INSERT INTO zynervox_blacklist (campaign_id,phone,reason,created_by) VALUES ($bc,'900000021','prueba ficticia','test')");
 check('AGI de lista negra: SI para un bloqueado (con prefijo o formato), NO para otro, ERROR sin dígitos', marcador_blacklist_check($repo, '51900000021', (string)$bc) === 'SI' && marcador_blacklist_check($repo, '900000021', (string)$bc) === 'SI' && marcador_blacklist_check($repo, '900000022', (string)$bc) === 'NO' && marcador_blacklist_check($repo, 'xx', (string)$bc) === 'ERROR' && marcador_blacklist_check($repo, '12345', (string)$bc) === 'NO');

@@ -582,6 +582,47 @@ trait CampaignConfigQueries {
         $e->execute([$listId,$campaignId]);
         if (!(int)$e->fetchColumn()) throw new \RuntimeException('Lista inexistente en la campaña.');
     }
+    /** Channels assigned to the STARTED lists (active + running), optionally leaving some lists out. Open calls are not counted. */
+    public function startedChannels(array $exceptListIds = []): int {
+        $in = $exceptListIds ? ' AND list_id NOT IN ('.implode(',', array_fill(0, count($exceptListIds), '?')).')' : '';
+        $s = $this->db->prepare("SELECT COALESCE(SUM(max_channels),0) FROM zynervox_bot_lists WHERE active=1 AND dialer_state='running'$in");
+        $s->execute(array_values(array_map('intval', $exceptListIds)));
+        return (int)$s->fetchColumn();
+    }
+    /** Serializes every change that can add started channels (named lock: two starts at once cannot both pass the check). */
+    private function withChannelsLock(callable $f) {
+        if ((int)$this->db->query("SELECT GET_LOCK('zv2_channels',5)")->fetchColumn() !== 1) throw new \RuntimeException('Otro cambio de canales está en curso; inténtalo de nuevo.');
+        try { return $this->callAtomic($f); }
+        finally { $this->db->query("SELECT RELEASE_LOCK('zv2_channels')")->fetchColumn(); }
+    }
+    /**
+     * Starts the lists [[campaign_id, list_id], ...] ALL OR NOTHING if they fit in max_total_channels together with the other started lists. Lists already running are not counted twice.
+     * @throws \BotChannelsException when they do not fit (nothing is started)
+     */
+    public function startListsWithinLimit(array $pairs, string $actor): void {
+        $ids = array_values(array_map(fn($p) => (int)$p[1], $pairs));
+        if (!$ids) return;
+        $this->withChannelsLock(function() use($pairs,$ids,$actor) {
+            $max = $this->dialerMaxTotalChannels();
+            $others = $this->startedChannels($ids);
+            $in = implode(',', array_fill(0, count($ids), '?'));
+            $q = $this->db->prepare("SELECT COALESCE(SUM(max_channels),0) FROM zynervox_bot_lists WHERE list_id IN ($in)"); $q->execute($ids);
+            $asked = (int)$q->fetchColumn();
+            if ($others + $asked > $max) throw new \BotChannelsException($others, $max, $asked, count($ids) > 1 ? 'batch' : 'start');
+            foreach ($pairs as [$campaignId, $listId]) $this->setListDialerState((int)$campaignId, (int)$listId, 'running', $actor);
+        });
+    }
+    /** Changes the channels of a list. A STARTED list may not push the sum of started channels over the maximum; a list that is not started saves as always. */
+    public function setListChannelsWithinLimit(int $campaignId, int $listId, int $n): void {
+        $this->withChannelsLock(function() use($campaignId,$listId,$n) {
+            $l = $this->listState($campaignId, $listId);
+            if ((int)$l['active'] === 1 && $l['dialer_state'] === 'running') {
+                $max = $this->dialerMaxTotalChannels(); $others = $this->startedChannels([$listId]);
+                if ($others + $n > $max) throw new \BotChannelsException($others, $max, $n, 'edit');
+            }
+            $this->setListChannels($campaignId, $listId, $n);
+        });
+    }
     /** Every list with its channel limit and the calls open right now. */
     public function listsChannels(): array {
         return $this->db->query("SELECT p.list_id,p.campaign_id,p.name,p.active,p.dial_prefix,p.max_channels,p.dialer_state,
