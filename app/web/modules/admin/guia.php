@@ -36,7 +36,7 @@ Auth::checkAccess(9);
         #gpanel { position: fixed; z-index: 1000; box-sizing: border-box; background: #111827; color: #f9fafb; border: 1px solid #374151; border-radius: 6px; padding: 0.6rem 0.7rem; box-shadow: 0 8px 24px rgba(0,0,0,.45); font-size: 0.82rem; line-height: 1.4; display: flex; flex-direction: column; gap: 0.4rem; overflow: hidden; }
         #gpanel[hidden] { display: none; } .g-tip-h { display: flex; justify-content: space-between; align-items: baseline; gap: 0.4rem; } .g-count { color: #9ca3af; font-size: 0.74rem; }
         .g-tip-t { margin: 0; flex: 1; min-height: 0; overflow-y: auto; } .g-tip-n { margin: 0; color: #fbbf24; font-size: 0.74rem; }
-        .g-tip-b { display: flex; gap: 0.25rem; flex-wrap: nowrap; } #gpanel .g-btn { background: #1f2937; color: #f9fafb; border-color: #374151; padding: 3px 5px; font-size: 0.72rem; white-space: nowrap; } #gpanel .g-primary { background: var(--primary); border-color: var(--primary); }
+        .g-tip-b { display: flex; gap: 0.25rem; flex-wrap: wrap; } #gpanel .g-btn { background: #1f2937; color: #f9fafb; border-color: #374151; padding: 3px 5px; font-size: 0.72rem; white-space: nowrap; } #gpanel .g-primary { background: var(--primary); border-color: var(--primary); }
         .g-ripple { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; border: 3px solid var(--primary); pointer-events: none; z-index: 7; animation: ripple .65s ease-out forwards; }
         @keyframes ripple { to { transform: scale(4); opacity: 0; } }
         .g-sim { position: absolute; z-index: 8; background: #b91c1c; color: #fff; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.03em; padding: 3px 8px; border-radius: 3px; pointer-events: none; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
@@ -59,7 +59,7 @@ Auth::checkAccess(9);
             <h2 style="font-size: 1rem; margin: 0 0 0.5rem;">Elige un tema</h2>
             <div class="g-grid" id="topics"></div>
             <h2 style="font-size: 1rem; margin: 1.2rem 0 0.3rem;">Voz del narrador</h2>
-            <p style="margin: 0 0 0.5rem; color: var(--text-muted); font-size: 0.82rem;">Aún no hay narración en la guía. Escucha estas muestras (el inicio del tema Dashboard) y di cuál prefieres. Aquí solo se escucha: no se guarda ninguna elección.</p>
+            <p style="margin: 0 0 0.5rem; color: var(--text-muted); font-size: 0.82rem;">La guía se narra con «Voz Serena» (activable con el botón «Voz» del panel). Estas son las muestras que se escucharon para elegirla (el inicio del tema Dashboard).</p>
             <div class="g-grid" id="voices">
                 <div class="g-voice"><b>Nagi</b><span>Profesional, segura y clara</span><audio controls preload="none" src="vendor/guia/muestras/nagi.mp3"></audio></div>
                 <div class="g-voice"><b>Verity</b><span>Conversacional y didáctica</span><audio controls preload="none" src="vendor/guia/muestras/verity.mp3"></audio></div>
@@ -67,7 +67,7 @@ Auth::checkAccess(9);
                 <div class="g-voice"><b>Colombiana</b><span>Narración cálida, acento latino</span><audio controls preload="none" src="vendor/guia/muestras/colombiana.mp3"></audio></div>
                 <div class="g-voice"><b>Voz Femenina Latino</b><span>Profesional y educativa</span><audio controls preload="none" src="vendor/guia/muestras/voz-femenina-latino.mp3"></audio></div>
                 <div class="g-voice"><b>Voz Femenina Clara</b><span>Narración educativa, cálida</span><audio controls preload="none" src="vendor/guia/muestras/voz-femenina-clara.mp3"></audio></div>
-                <div class="g-voice"><b>Voz Serena</b><span>Calmada y profesional</span><audio controls preload="none" src="vendor/guia/muestras/voz-serena.mp3"></audio></div>
+                <div class="g-voice"><b>Voz Serena · la elegida ✓</b><span>Calmada y profesional</span><audio controls preload="none" src="vendor/guia/muestras/voz-serena.mp3"></audio></div>
                 <div class="g-voice"><b>Voz de Mujer Real</b><span>Natural, nada artificial</span><audio controls preload="none" src="vendor/guia/muestras/voz-real.mp3"></audio></div>
             </div>
         </section>

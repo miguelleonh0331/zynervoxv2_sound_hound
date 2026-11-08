@@ -102,6 +102,16 @@
         return new Promise(function (res) { (function tick() { if (my !== token || i >= value.length) return res(); input.value += value[i++]; setTimeout(tick, REDUCED ? 0 : 70); })(); });
     }
 
+    // ---- narración: un MP3 por paso (vendor/guia/audio/<tema>/<paso>.mp3, misma carpeta de la guía, sin red externa); si falta el archivo, silencio ----
+    var voiceOn = true, snd = null;
+    try { voiceOn = localStorage.getItem('guiaVoz') !== 'off'; } catch (e) {}
+    function stopAudio() { if (snd) { snd.pause(); snd.onerror = null; snd = null; } }
+    function playStep(i) {
+        stopAudio(); if (!voiceOn || !topic) return;
+        var a = new Audio(BASE + 'vendor/guia/audio/' + topic.id + '/' + (i + 1) + '.mp3'); snd = a; a.onerror = function () { if (snd === a) snd = null; };
+        var pr = a.play(); if (pr && pr.catch) pr.catch(function () {});
+    }
+
     // ---- panel fijo en el menú izquierdo: entre la última entrada y «Cerrar Sesión»; si no cabe o el menú no se ve, abajo a la izquierda ----
     var lastStep = null;
     function placePanel() {
@@ -125,14 +135,15 @@
         btn('g-btn', 'Anterior', function () { go(idx - 1); }).disabled = n === 0;
         btn('g-btn g-primary', n === total - 1 ? 'Terminar' : 'Siguiente', function () { if (idx === total - 1) showIndex(); else go(idx + 1); });
         btn('g-btn', 'Índice', showIndex);
-        btn('g-btn', 'Salir', function () { location.href = 'index.php'; });
+        btn('g-btn', 'Salir', function () { stopAudio(); location.href = 'index.php'; });
+        btn('g-btn', voiceOn ? 'Voz: sí' : 'Voz: no', function () { voiceOn = !voiceOn; try { localStorage.setItem('guiaVoz', voiceOn ? 'on' : 'off'); } catch (e) {} if (voiceOn) playStep(idx); else stopAudio(); renderPanel(lastStep, idx); }).title = 'Activar o silenciar la narración';
         panel.appendChild(row); panel.hidden = false; placePanel();
     }
 
     async function show(i) {
         var my = ++token, step = topic.steps[i]; idx = i;
         document.querySelectorAll('.g-step-dot').forEach(function (d, k) { d.classList.toggle('on', k === i); });
-        renderPanel(step, i);
+        renderPanel(step, i); playStep(i);
         try {
             if (step.page && step.page !== loaded) { stage.classList.add('loading'); await loadPage(step.page); stage.classList.remove('loading'); if (my !== token) return; }
             var doc = frame.contentDocument; if (topic.prep) topic.prep(doc, i);
@@ -164,7 +175,7 @@
         var dots = $('dots'); dots.textContent = ''; t.steps.forEach(function (s, k) { var d = el('span', 'g-step-dot'); d.title = 'Paso ' + (k + 1); d.addEventListener('click', function () { go(k); }); dots.appendChild(d); });
         $('tour-title').textContent = 'Guía · ' + t.title; show(0);
     }
-    function showIndex() { token++; topic = null; loaded = ''; frame.removeAttribute('srcdoc'); frame.src = 'about:blank'; $('tour').hidden = true; $('index').hidden = false; panel.hidden = true; }
+    function showIndex() { token++; stopAudio(); topic = null; loaded = ''; frame.removeAttribute('srcdoc'); frame.src = 'about:blank'; $('tour').hidden = true; $('index').hidden = false; panel.hidden = true; }
 
     function buildIndex() {
         var box = $('topics'); box.textContent = '';
