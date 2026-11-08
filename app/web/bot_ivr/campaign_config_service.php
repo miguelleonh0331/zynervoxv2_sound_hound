@@ -142,7 +142,7 @@ function bot_cfg_schedules($input): array {
     return $out;
 }
 
-/** $input: name, active, call_origin, max_channels, amd_enabled, blacklist_enabled (0/1, absent = unchanged), transfer_carrier_id, transfer_destination, timezone, lead_order, dial_timeout, campaign_cid, headers[], rules[], amd_actions[], schedules[]. Returns the campaign id. */
+/** $input: name, active, call_origin, max_channels, amd_enabled, blacklist_enabled (0/1, absent = unchanged), transfer_carrier_id, transfer_destination (shown as «ID CAMPAÑA»: the identifier the transferred call carries to the receiver), timezone, lead_order, dial_timeout, campaign_cid, headers[], rules[], amd_actions[], schedules[]. Returns the campaign id. */
 function bot_cfg_save(\ZynervoxQueries\BotIvrRepository $db, ?int $id, array $input): int {
     $old = $id === null ? ['lead_order'=>'DOWN','dial_timeout'=>60,'campaign_cid'=>'','max_channels'=>1,'amd_enabled'=>0,'blacklist_enabled'=>0] : $db->campaign($id);
     $origin = trim((string)($input['call_origin'] ?? ''));
@@ -150,7 +150,7 @@ function bot_cfg_save(\ZynervoxQueries\BotIvrRepository $db, ?int $id, array $in
     $carrier = trim((string)($input['transfer_carrier_id'] ?? ''));
     if (!preg_match('/^[A-Za-z0-9_.-]{0,80}$/D', $carrier)) throw new RuntimeException('Troncal de transferencia inválido.');
     $destination = trim((string)($input['transfer_destination'] ?? ''));
-    if (!preg_match('/^[+0-9*#]{0,40}$/D', $destination)) throw new RuntimeException('Destino de transferencia inválido: solo dígitos, +, * y #.');
+    if (!preg_match('/^[+0-9*#]{0,40}$/D', $destination)) throw new RuntimeException('ID de campaña inválido: solo dígitos, +, * y #.');
     $timezone = (string)($input['timezone'] ?? 'America/Lima');
     if (!in_array($timezone, DateTimeZone::listIdentifiers(), true)) throw new RuntimeException('Zona horaria inválida.');
     $order = (string)($input['lead_order'] ?? $old['lead_order']);
@@ -205,7 +205,7 @@ function bot_cfg_check_startable(\ZynervoxQueries\BotIvrRepository $db, array $c
     require_once __DIR__.'/../includes/Carriers.php';
     $origins ??= array_column(\Includes\Carriers::dialOrigins(), 'dial_prefix');
     if (!in_array($c['call_origin'], $origins, true)) throw new RuntimeException('El origen de llamada ya no está disponible.');
-    if (($c['transfer_carrier_id'] === '') !== ($c['transfer_destination'] === '')) throw new RuntimeException('Define el troncal y el destino de la transferencia, o deja ambos vacíos para solo detectar.');
+    if (($c['transfer_carrier_id'] === '') !== ($c['transfer_destination'] === '')) throw new RuntimeException('Define el troncal y el ID de campaña de la transferencia, o deja ambos vacíos para solo detectar.');
 }
 
 /** Starts the campaign and its ACTIVE lists. The engine (campaign_engine.php) does the dialing; nothing is launched here. */
