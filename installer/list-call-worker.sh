@@ -15,6 +15,7 @@ mysql zynervox_core < "$source_root/src/features/bot_ivr/models/022-contact-dist
 mysql zynervox_core < "$source_root/src/features/bot_ivr/models/023-blacklist.sql"
 mysql zynervox_core < "$source_root/src/features/bot_ivr/models/024-blacklist-campaign.sql"
 mysql zynervox_core < "$source_root/src/features/bot_ivr/models/025-test-lists.sql"
+mysql zynervox_core < "$source_root/src/features/bot_ivr/models/026-blacklist-global.sql"
 mysql <<'SQL'
 GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_dial_runs TO 'zynervoxv2_bot_ivr'@'localhost';
 GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_dial_runs TO 'zynervoxv2_bot_ivr'@'127.0.0.1';
@@ -40,8 +41,14 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_amd_global_versi
 GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_list_summary TO 'zynervoxv2_bot_ivr'@'127.0.0.1';
 GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_zypad_words TO 'zynervoxv2_bot_ivr'@'localhost';
 GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_bot_zypad_words TO 'zynervoxv2_bot_ivr'@'127.0.0.1';
-GRANT SELECT ON zynervox_core.zynervox_blacklist TO 'zynervoxv2_bot_ivr'@'localhost';
-GRANT SELECT ON zynervox_core.zynervox_blacklist TO 'zynervoxv2_bot_ivr'@'127.0.0.1';
+GRANT SELECT,INSERT,UPDATE ON zynervox_core.zynervox_blacklist_lists TO 'zynervoxv2_bot_ivr'@'localhost';
+GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_blacklist_global TO 'zynervoxv2_bot_ivr'@'localhost';
+GRANT SELECT,INSERT ON zynervox_core.zynervox_blacklist_audit TO 'zynervoxv2_bot_ivr'@'localhost';
+GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_blacklist TO 'zynervoxv2_bot_ivr'@'localhost';
+GRANT SELECT,INSERT,UPDATE ON zynervox_core.zynervox_blacklist_lists TO 'zynervoxv2_bot_ivr'@'127.0.0.1';
+GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_blacklist_global TO 'zynervoxv2_bot_ivr'@'127.0.0.1';
+GRANT SELECT,INSERT ON zynervox_core.zynervox_blacklist_audit TO 'zynervoxv2_bot_ivr'@'127.0.0.1';
+GRANT SELECT,INSERT,UPDATE,DELETE ON zynervox_core.zynervox_blacklist TO 'zynervoxv2_bot_ivr'@'127.0.0.1';
 SQL
 install -d -o root -g "${WEB_GROUP:-www}" -m 2770 "$runtime_root/bot_ivr/call_jobs"
 install -d -o root -g "${WEB_GROUP:-www}" -m 0750 "$runtime_root/modules/bot_ivr"
