@@ -38,6 +38,7 @@ $listsUrl = 'lists.php' . ($filterCampaign !== null ? '?campaign_id=' . $filterC
 $allLists = [];
 $startedMap = [];
 $limits = null;
+$chStatus = null;
 try {
     $db = bot_ivr_repository();
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
@@ -110,6 +111,7 @@ try {
     $allLists = $lists;
     try { foreach (bot_cfg_dashboard($db)['campaigns'] as $dc) foreach ($dc['lists'] as $dl) $startedMap[(int)$dl['list_id']] = (bool)$dl['started']; } catch (Throwable $e) { $startedMap = []; }
     if ($filterCampaign !== null) $lists = array_values(array_filter($lists, fn($l) => (int)$l['campaign_id'] === $filterCampaign));
+    try { $chStatus = bot_cfg_channels_status($db); } catch (Throwable $e) { $chStatus = null; }
     try { $limits = bot_cfg_server_limits($db); $maxTotal = $limits['max_channels_server']; } catch (Throwable $e) { $error = $error ?: 'No se pudo leer el máximo de canales del servidor: ' . $e->getMessage(); }
     try { $origins = array_column(\Includes\Carriers::dialOrigins(), 'name', 'dial_prefix'); } catch (Throwable $e) { $origins = []; }
 } catch (Throwable $e) {
@@ -155,10 +157,8 @@ try {
                 <button type="submit" class="btn-primary">Guardar máximo</button>
             </div>
             <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 0.5rem;">Los canales de cada lista no pueden superar este valor.
-                <?php if ($limits !== null): ?>Llamadas abiertas ahora: <strong><?php echo (int)$limits['open_calls']; ?></strong>. Suma de canales de las listas activas: <strong><?php echo (int)$limits['lists_sum']; ?></strong>.<?php endif; ?></p>
-            <?php if ($limits !== null && (int)$limits['lists_sum'] > (int)$limits['max_channels_server']): ?>
-                <p class="msg-err" style="font-size: 0.8rem;">La suma de canales de las listas activas supera el máximo del servidor: el motor nunca abre más llamadas que el máximo y las reparte por orden de llegada.</p>
-            <?php endif; ?>
+                <?php if ($limits !== null): ?>Llamadas abiertas ahora: <strong><?php echo (int)$limits['open_calls']; ?></strong>.<?php endif; ?>
+                <?php if ($chStatus !== null): ?>Discando ahora: <strong><?php echo (int)$chStatus['discando']; ?></strong> de <strong><?php echo (int)$chStatus['maximo']; ?></strong> canales (libres: <strong><?php echo (int)$chStatus['libres']; ?></strong>).<?php endif; ?></p>
         </form>
 
         <div class="card" style="margin-top: 1rem;">
