@@ -15,7 +15,7 @@ function bl_json(int $code, array $body): void {
     exit;
 }
 
-$isApi = isset($_GET['data']) || isset($_GET['search']) || ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
+$isApi = isset($_GET['data']) || isset($_GET['search']) || isset($_GET['count']) || ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
 if ($isApi) {
     if (session_status() === PHP_SESSION_NONE) session_start();
     if (empty($_SESSION['user']) || (int)($_SESSION['user_level'] ?? 0) !== 9) bl_json(401, ['ok' => false, 'error' => 'Sesión requerida.']);
@@ -43,6 +43,10 @@ if ($isApi) {
                 bl_json(422, ['ok' => false, 'error' => $e->getMessage()]);
             }
             bl_json(200, ['ok' => true] + $r);
+        }
+        if (isset($_GET['count'])) {
+            try { bl_json(200, ['ok' => true, 'count' => bot_bl_count_regular($db, (int)$_GET['count'])]); }
+            catch (RuntimeException $e) { bl_json(422, ['ok' => false, 'error' => $e->getMessage()]); }
         }
         if (isset($_GET['search'])) {
             try { bl_json(200, ['ok' => true, 'rows' => bot_bl_search($db, (string)$_GET['search']), 'audit' => bot_bl_audit($db, 20, (string)$_GET['search'])]); }
@@ -125,7 +129,8 @@ if (empty($_SESSION['blacklist_csrf'])) $_SESSION['blacklist_csrf'] = bin2hex(ra
             <p class="muted">Aplica a la campaña elegida o a todas. Vaciarla solo borra las filas de ese ámbito.</p>
             <form id="fclear" class="cfg-grid">
                 <label>Ámbito <select id="c_camp"></select></label>
-                <button type="submit" class="btn-danger">Vaciar lista regular</button>
+                <span class="muted" id="c_count" aria-live="polite"></span>
+                <button type="submit" class="btn-danger" id="c_btn" disabled>Vaciar lista regular</button>
             </form>
         </section>
 
@@ -178,7 +183,20 @@ if (empty($_SESSION['blacklist_csrf'])) $_SESSION['blacklist_csrf'] = bin2hex(ra
             var o0 = el('option', '', 'Solo la de «Todas las campañas»'); o0.value = '0'; cs.appendChild(o0);
             state.campaigns.forEach(function (c) { var o = el('option', '', c.name); o.value = c.campaign_id; cs.appendChild(o); });
             if (keepC) cs.value = keepC;
+            countRegular();
         }
+
+        var countSeq = 0, regularCount = 0;
+        function fmt(n) { return new Intl.NumberFormat('es-PE').format(n); }
+        function countRegular() {
+            var id = document.getElementById('c_camp').value, out = document.getElementById('c_count'), btn = document.getElementById('c_btn'), seq = ++countSeq;
+            btn.disabled = true; regularCount = 0; out.textContent = 'Contando…';
+            return get('blacklist.php?count=' + encodeURIComponent(id)).then(function (j) {
+                if (seq !== countSeq) return;
+                regularCount = j.count; out.textContent = j.count === 1 ? 'Contiene 1 número' : 'Contiene ' + fmt(j.count) + ' números'; btn.disabled = j.count === 0;
+            }).catch(function (e) { if (seq === countSeq) out.textContent = 'No se pudo contar: ' + e.message; });
+        }
+        document.getElementById('c_camp').addEventListener('change', countRegular);
 
         function renderResult(rows, q) {
             var box = document.getElementById('result'); box.textContent = '';
@@ -229,9 +247,11 @@ if (empty($_SESSION['blacklist_csrf'])) $_SESSION['blacklist_csrf'] = bin2hex(ra
         });
         document.getElementById('fclear').addEventListener('submit', function (e) {
             e.preventDefault(); msg(''); var id = document.getElementById('c_camp').value, name = campName(id);
-            if (!window.confirm((id === '0' ? 'Vas a VACIAR los números de la lista regular marcados para TODAS las campañas (las listas propias de cada campaña no se tocan). ¿Continuar?' : 'Vas a VACIAR la lista regular de «' + name + '». Se borran todos sus números. ¿Continuar?'))) return;
+            if (regularCount === 0) return;
+            var cifra = regularCount === 1 ? 'Se borrará 1 número' : 'Se borrarán ' + fmt(regularCount) + ' números';
+            if (!window.confirm(cifra + (id === '0' ? ' de la lista regular marcados para TODAS las campañas (las listas propias de cada campaña no se tocan). ¿Continuar?' : ' de la lista regular de «' + name + '». ¿Continuar?'))) return;
             post({ action: 'clear_regular', target: id, confirm: '1' })
-                .then(function (j) { msg('Lista regular vaciada: ' + j.cleared + ' números.', 'msg-ok'); return load(); })
+                .then(function (j) { msg('Lista regular vaciada: ' + j.cleared + ' números.', 'msg-ok'); return load().then(countRegular); })
                 .catch(function (e2) { msg(e2.message); });
         });
         load();
