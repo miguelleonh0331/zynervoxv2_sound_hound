@@ -186,7 +186,7 @@ function bot_cfg_server_limits(\ZynervoxQueries\BotIvrRepository $db): array {
 }
 function bot_cfg_get_max_total_channels(\ZynervoxQueries\BotIvrRepository $db): int { return $db->dialerMaxTotalChannels(); }
 function bot_cfg_set_max_total_channels(\ZynervoxQueries\BotIvrRepository $db, $channels): void {
-    $db->setDialerMaxTotalChannels(bot_cfg_int($channels, 1, 500, 'Máximo de canales del servidor'));
+    $db->setDialerMaxTotalChannelsWithinLimit(bot_cfg_int($channels, 1, 500, 'Máximo de canales del servidor')); // below the channels of the started lists: BotChannelsException (figures: discando, maximo = the new one, faltan)
 }
 
 /** Last attempts (newest first) with the AMD result and the hangup causes, for the test reports. */

@@ -725,6 +725,16 @@ for ($round = 0; $round < 4; $round++) {
 }
 check('canales: dos inicios a la vez (6+6 con máximo 10), en 4 rondas, pasa solo uno cada vez', $wins === ['CHAN+OK', 'CHAN+OK', 'CHAN+OK', 'CHAN+OK']);
 $pdo->exec("UPDATE zynervox_bot_lists SET dialer_state='stopped'");
+// Lowering the server maximum: never below the channels of the started lists
+$pdo->exec("UPDATE zynervox_bot_lists SET dialer_state='stopped'");
+bot_cfg_set_max_total_channels($repo, 3);
+check('máximo: sin listas iniciadas se puede bajar a cualquier valor y subir', bot_cfg_get_max_total_channels($repo) === 3 && (bot_cfg_set_max_total_channels($repo, 10) ?? true) && bot_cfg_get_max_total_channels($repo) === 10);
+$pdo->exec("UPDATE zynervox_bot_lists SET max_channels=6,dialer_state='running' WHERE list_id=$l6"); $pdo->exec("UPDATE zynervox_bot_lists SET max_channels=4,dialer_state='running' WHERE list_id=$l4");
+$e = $chErr(fn() => bot_cfg_set_max_total_channels($repo, 9));
+check('máximo: bajarlo por debajo de lo que se disca (9 con 10 iniciados) se rechaza con cifras y no se guarda', $e !== null && $e['discando'] === 10 && $e['maximo'] === 9 && $e['faltan'] === 1 && str_contains($e['msg'], 'discando 10 de nuevo 9') && bot_cfg_get_max_total_channels($repo) === 10);
+bot_cfg_set_max_total_channels($repo, 10);
+check('máximo: bajarlo justo a la suma (10) y subirlo siguen permitidos', bot_cfg_get_max_total_channels($repo) === 10 && (bot_cfg_set_max_total_channels($repo, 12) ?? true) && bot_cfg_get_max_total_channels($repo) === 12 && (bot_cfg_set_max_total_channels($repo, 10) ?? true));
+$pdo->exec("UPDATE zynervox_bot_lists SET dialer_state='stopped'"); $pdo->exec("UPDATE zynervox_bot_dialer_settings SET value=10 WHERE name='max_total_channels'");
 // Test lists (1 channel) follow the same rule
 $pdo->exec("UPDATE zynervox_bot_lists SET dialer_state='running' WHERE list_id=$l6"); $pdo->exec("UPDATE zynervox_bot_lists SET max_channels=4,dialer_state='running' WHERE list_id=$l4");
 $tt = bot_cfg_test_create($repo, $cc, '900000205', 'test');

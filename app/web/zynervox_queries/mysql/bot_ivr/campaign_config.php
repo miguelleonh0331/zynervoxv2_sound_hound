@@ -612,6 +612,14 @@ trait CampaignConfigQueries {
             foreach ($pairs as [$campaignId, $listId]) $this->setListDialerState((int)$campaignId, (int)$listId, 'running', $actor);
         });
     }
+    /** Saves the server maximum. Raising it, or lowering it down to the channels of the started lists, is allowed; below that sum it is rejected (nothing saved). */
+    public function setDialerMaxTotalChannelsWithinLimit(int $n): void {
+        $this->withChannelsLock(function() use($n) {
+            $started = $this->startedChannels();
+            if ($n < $started) throw new \BotChannelsException($started, $n, 0, 'max');
+            $this->setDialerMaxTotalChannels($n);
+        });
+    }
     /** Changes the channels of a list. A STARTED list may not push the sum of started channels over the maximum; a list that is not started saves as always. */
     public function setListChannelsWithinLimit(int $campaignId, int $listId, int $n): void {
         $this->withChannelsLock(function() use($campaignId,$listId,$n) {
