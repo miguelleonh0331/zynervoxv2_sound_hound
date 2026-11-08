@@ -7,13 +7,18 @@
  *     window.open, confirm/alert/prompt y localStorage: la pantalla NUNCA hace peticiones de red; sus lecturas se responden con datos
  *     inventados (guia_data.js) y cualquier método distinto de GET se rechaza y se cuenta.
  *  3) Los enlaces de la pantalla se bloquean. Los clics que la guía «hace» son visuales; solo se despacha un clic real en una lista
- *     blanca de controles de interfaz sin red (REAL_OK).
+ *     blanca de controles de interfaz (REAL_OK: abrir/cerrar paneles). Excepciones EXPLÍCITAS y sin red:
+ *     - REAL_CHANGE_OK: cambiar el filtro «Estado» del detalle de Reportes: la pantalla hace un GET que el escudo responde con datos de ejemplo.
+ *     - REAL_SUBMIT_OK: enviar el formulario de Test: la pantalla hace un POST que el escudo responde ÉL MISMO con una lista de ejemplo
+ *       (D.respondPost, solo test.php/create); no sale ninguna petición y no se crea nada.
  * Los HTML de las pantallas se leen con un GET normal (como si el administrador abriera la pantalla). */
 (function () {
     'use strict';
     var BASE = location.href.replace(/[?#].*$/, '').replace(/[^/]*$/, '');
     var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    var REAL_OK = ['#stbtn']; // únicos controles donde se despacha un clic real: solo abren/cierran un panel de la interfaz
+    var REAL_OK = ['#stbtn', 'details.tech > summary']; // clics reales: solo abren/cierran un panel de la interfaz
+    var REAL_CHANGE_OK = ['#f_estado']; // cambio real: el filtro Estado del detalle (GET con datos de ejemplo)
+    var REAL_SUBMIT_OK = ['#form'];      // envío real: formulario de Test, respondido por el escudo con una lista de ejemplo
     window.__guiaLog = []; window.__guiaBlocked = 0;
 
     function $(id) { return document.getElementById(id); }
@@ -29,6 +34,10 @@
         function json(status, body) { return new Response(JSON.stringify(body), { status: status, headers: { 'Content-Type': 'application/json' } }); }
         window.fetch = function (u, o) {
             var url = String((u && u.url) || u), m = String((o && o.method) || (u && u.method) || 'GET').toUpperCase();
+            if (m === 'POST' && /(^|\/)test\.php(\?|$)/.test(url)) { // única escritura «simulada»: crear la lista de ejemplo de la pantalla Test (sin red, sin base)
+                var sim = P.GUIA_DEMO.respondPost(url, String((o && o.body) || ''));
+                if (sim) { note('simulado', 'crear lista de prueba (de ejemplo)'); return Promise.resolve(json(200, sim)); }
+            }
             if (m !== 'GET') { note('BLOQUEADO', m + ' ' + url); return Promise.resolve(json(403, { ok: false, error: 'Modo demostración: no se guarda, inicia ni detiene nada.' })); }
             var r = P.GUIA_DEMO.respond(url); note('demo', 'GET ' + url.split('?')[0].split('/').pop());
             return Promise.resolve(json(r.status, r.body));
@@ -38,7 +47,10 @@
         navigator.sendBeacon = function (u) { note('BLOQUEADO', 'beacon ' + u); return false; };
         HTMLFormElement.prototype.submit = function () { note('BLOQUEADO', 'submit'); };
         HTMLFormElement.prototype.requestSubmit = function () { note('BLOQUEADO', 'submit'); };
-        document.addEventListener('submit', function (e) { e.preventDefault(); e.stopImmediatePropagation(); note('BLOQUEADO', 'submit'); }, true);
+        document.addEventListener('submit', function (e) {
+            if (window.__allowSubmit && e.target && e.target.id === window.__allowSubmit) { window.__allowSubmit = null; note('simulado', 'envío de #' + e.target.id); return; } // lo despacha la guía; el handler de la pantalla solo hace fetch (que el escudo controla)
+            e.preventDefault(); e.stopImmediatePropagation(); note('BLOQUEADO', 'submit');
+        }, true);
         document.addEventListener('click', function (e) { var a = e.target && e.target.closest && e.target.closest('a[href]'); if (a) { e.preventDefault(); note('bloqueado', 'enlace ' + a.getAttribute('href')); } }, true);
         window.open = function () { note('BLOQUEADO', 'open'); return null; };
         window.confirm = function () { return false; }; window.alert = function () {}; window.prompt = function () { return null; };
@@ -84,6 +96,7 @@
 
     function place(node, x, y, w, h) { node.style.transform = 'translate(' + Math.round(x) + 'px,' + Math.round(y) + 'px)'; if (w !== undefined) { node.style.width = Math.round(w) + 'px'; node.style.height = Math.round(h) + 'px'; } }
     function ripple(x, y) { var r = el('div', 'g-ripple'); r.style.left = x + 'px'; r.style.top = y + 'px'; stage.appendChild(r); setTimeout(function () { r.remove(); }, 700); }
+    function badge(x, y) { var b = el('div', 'g-sim', 'CLIC SIMULADO · no llama a nadie'); b.style.left = Math.min(x + 18, stage.clientWidth - 230) + 'px'; b.style.top = (y + 22) + 'px'; stage.appendChild(b); setTimeout(function () { b.remove(); }, 3500); }
     function typeInto(input, value, my) {
         input.value = ''; var i = 0;
         return new Promise(function (res) { (function tick() { if (my !== token || i >= value.length) return res(); input.value += value[i++]; setTimeout(tick, REDUCED ? 0 : 70); })(); });
@@ -118,6 +131,7 @@
         try {
             if (step.page && step.page !== loaded) { stage.classList.add('loading'); await loadPage(step.page); stage.classList.remove('loading'); if (my !== token) return; }
             var doc = frame.contentDocument; if (topic.prep) topic.prep(doc, i);
+            if (step.none) { hl.style.opacity = 0; ptr.style.opacity = 0; showTip(step, null, i, topic.steps.length); return; }
             var e = await waitFor(step); if (my !== token) return;
             if (!e) { hl.style.opacity = 0; showTip({ text: step.text + ' (Este elemento no está visible en esta pantalla ahora.)' }, null, i, topic.steps.length); return; }
             e.scrollIntoView({ block: 'center', inline: 'nearest' }); await sleep(120); if (my !== token) return;
@@ -126,8 +140,10 @@
             var big = r.width > 320 || r.height > 120, tx = big ? r.left + 46 : r.left + r.width / 2, ty = big ? r.top + 26 : r.top + r.height / 2;
             ptr.style.opacity = 1; place(ptr, tx, ty); ptrPos = [tx, ty];
             await sleep(950); if (my !== token) return;
-            if (step.action === 'click' || step.action === 'real') ripple(tx, ty);
+            if (step.action === 'click' || step.action === 'real' || step.action === 'submit-demo') { ripple(tx, ty); if (step.sim) badge(tx, ty); }
             if (step.action === 'real' && REAL_OK.indexOf(step.sel) >= 0) { await sleep(250); e.click(); await sleep(450); }
+            else if (step.action === 'real-change' && REAL_CHANGE_OK.indexOf(step.sel) >= 0) { e.value = step.value; e.dispatchEvent(new Event('change', { bubbles: true })); await sleep(900); }
+            else if (step.action === 'submit-demo' && REAL_SUBMIT_OK.indexOf(step.sel) >= 0) { var w = frame.contentWindow; w.__allowSubmit = e.id; e.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await sleep(1100); }
             else if (step.action === 'type') { await typeInto(e, step.value || '', my); }
             else if (step.action === 'select') { if (step.value !== undefined) e.value = step.value; ripple(tx, ty); await sleep(250); }
             if (my !== token) return;

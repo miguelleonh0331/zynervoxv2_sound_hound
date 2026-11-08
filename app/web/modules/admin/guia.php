@@ -37,6 +37,7 @@ Auth::checkAccess(9);
         .g-tip-b { display: flex; gap: 0.4rem; flex-wrap: wrap; } #tip .g-btn { background: #1f2937; color: #f9fafb; border-color: #374151; } #tip .g-primary { background: var(--primary); border-color: var(--primary); }
         .g-ripple { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; border: 3px solid var(--primary); pointer-events: none; z-index: 7; animation: ripple .65s ease-out forwards; }
         @keyframes ripple { to { transform: scale(4); opacity: 0; } }
+        .g-sim { position: absolute; z-index: 8; background: #b91c1c; color: #fff; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.03em; padding: 3px 8px; border-radius: 3px; pointer-events: none; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
         @media (prefers-reduced-motion: reduce) { #hl, #ptr, #tip { transition: none; } .g-ripple { animation: none; opacity: 0; } }
     </style>
 </head>
