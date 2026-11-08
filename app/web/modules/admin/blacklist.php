@@ -15,7 +15,7 @@ function bl_json(int $code, array $body): void {
     exit;
 }
 
-$isApi = isset($_GET['data']) || ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
+$isApi = isset($_GET['data']) || isset($_GET['search']) || ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
 if ($isApi) {
     if (session_status() === PHP_SESSION_NONE) session_start();
     if (empty($_SESSION['user']) || (int)($_SESSION['user_level'] ?? 0) !== 9) bl_json(401, ['ok' => false, 'error' => 'Sesión requerida.']);
