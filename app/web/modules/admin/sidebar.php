@@ -57,6 +57,7 @@ function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
         ['key' => 'admin',       'href' => 'modules/admin/carriers.php',     'icon' => 'admin',      'label' => 'Troncales SIP',      'in_scope' => true],
         ['key' => 'dialplan',    'href' => 'modules/admin/dialplan.php',     'icon' => 'scripts',    'label' => 'Dialplan',           'in_scope' => true],
         ['key' => 'test',        'href' => 'modules/admin/test.php',         'icon' => 'bot',        'label' => 'Test',               'in_scope' => true],
+        ['key' => 'guia',        'href' => 'modules/admin/guia.php',         'icon' => 'wizard',     'label' => 'Guía',               'in_scope' => true],
     ];
 
     // "Dev" es un checklist interno de roadmap, visible SOLO para el
