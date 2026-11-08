@@ -665,6 +665,7 @@ check('retirar exige confirmación y retira solo un número', throws(fn() => bot
     && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_blacklist WHERE campaign_id=$gn")->fetchColumn() === 1);
 check('vaciar la regular exige confirmación y vacía solo la campaña pedida (ni las otras ni «todas»)', throws(fn() => bot_bl_clear_regular($repo, $gn, 'tester', false)) !== '' && bot_bl_clear_regular($repo, $gn, 'tester', true) === 1
     && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_blacklist WHERE campaign_id=$gc")->fetchColumn() === 1 && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_blacklist WHERE campaign_id=0")->fetchColumn() === 1);
+check('conteo de la regular por ámbito: la campaña, otra campaña y «todas» (0) por separado', bot_bl_count_regular($repo, $gc) === 1 && bot_bl_count_regular($repo, $gn) === 0 && bot_bl_count_regular($repo, 0) === 1 && throws(fn() => bot_bl_count_regular($repo, -1)) !== '');
 check('vaciar «todas» quita solo las filas de «todas»', bot_bl_clear_regular($repo, 0, 'tester', true) === 1 && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_blacklist WHERE campaign_id=$gc")->fetchColumn() === 1);
 bot_bl_remove($repo, 'global', $gA, '900000086', 'tester', true);
 check('la global no se puede vaciar por el servicio: no existe esa operación y quitar un número deja los demás', !function_exists('bot_bl_clear_global') && !method_exists($repo, 'blacklistClearGlobal') && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_blacklist_global WHERE list_id=$gA")->fetchColumn() === 3);

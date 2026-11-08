@@ -735,6 +735,11 @@ trait CampaignConfigQueries {
             return $d->rowCount();
         });
     }
+    /** Rows of the REGULAR blacklist with this campaign_id (0 = the «all campaigns» rows only). Primary key (campaign_id, phone): an index range count. */
+    public function blacklistCountRegular(int $campaignId): int {
+        $s = $this->db->prepare('SELECT COUNT(*) FROM zynervox_blacklist WHERE campaign_id=?'); $s->execute([$campaignId]);
+        return (int)$s->fetchColumn();
+    }
     /** Empties the REGULAR blacklist of one campaign (campaign_id = $campaignId; 0 = the «all campaigns» rows only). Returns the rows removed. Global lists have no equivalent. */
     public function blacklistClearRegular(int $campaignId, string $actor): int {
         return (int)$this->callAtomic(function() use($campaignId,$actor) {

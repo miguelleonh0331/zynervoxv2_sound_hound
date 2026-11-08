@@ -57,6 +57,11 @@ function bot_bl_remove(\ZynervoxQueries\BotIvrRepository $db, string $scope, int
     if ($target < 0 || ($scope === 'global' && $target < 1)) throw new RuntimeException('Elige la lista.');
     return $db->blacklistRemove($scope, $target, marcador_blacklist_phone9($phone), marcador_blacklist_actor($actor));
 }
+/** Numbers in the REGULAR blacklist of one campaign (0 = only the «all campaigns» rows, same scope as bot_bl_clear_regular). Read only. */
+function bot_bl_count_regular(\ZynervoxQueries\BotIvrRepository $db, int $campaignId): int {
+    if ($campaignId < 0) throw new RuntimeException('Campaña inválida.');
+    return $db->blacklistCountRegular($campaignId);
+}
 /** Empties the REGULAR blacklist of one campaign (0 = the «all campaigns» rows only; other campaigns are untouched). $confirm must be true. Returns the rows removed. There is no such operation for global lists. */
 function bot_bl_clear_regular(\ZynervoxQueries\BotIvrRepository $db, int $campaignId, string $actor, bool $confirm): int {
     if (!$confirm) throw new RuntimeException('Confirma antes de vaciar la lista.');
