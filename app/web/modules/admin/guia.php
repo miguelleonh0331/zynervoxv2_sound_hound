@@ -32,13 +32,14 @@ Auth::checkAccess(9);
         #stage.loading::after { content: 'Cargando pantalla…'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.8); font-weight: 700; }
         #hl { position: absolute; left: 0; top: 0; width: 0; height: 0; border: 3px solid var(--primary); border-radius: 4px; box-shadow: 0 0 0 9999px rgba(17,24,39,.35); pointer-events: none; opacity: 0; transition: transform .6s ease, width .6s ease, height .6s ease, opacity .3s; }
         #ptr { position: absolute; left: 0; top: 0; width: 28px; height: 28px; margin: -3px 0 0 -3px; pointer-events: none; opacity: 0; transition: transform .9s cubic-bezier(.45,.05,.25,1), opacity .3s; filter: drop-shadow(0 2px 3px rgba(0,0,0,.5)); z-index: 5; }
-        #tip { position: absolute; left: 0; top: 0; background: #111827; color: #f9fafb; border-radius: 6px; padding: 0.7rem 0.8rem; box-shadow: 0 8px 24px rgba(0,0,0,.45); z-index: 6; font-size: 0.86rem; line-height: 1.45; transition: transform .35s ease; }
-        #tip[hidden] { display: none; } .g-tip-h { display: flex; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.3rem; } .g-count { color: #9ca3af; font-size: 0.74rem; } .g-tip-t { margin: 0 0 0.6rem; }
-        .g-tip-b { display: flex; gap: 0.4rem; flex-wrap: wrap; } #tip .g-btn { background: #1f2937; color: #f9fafb; border-color: #374151; } #tip .g-primary { background: var(--primary); border-color: var(--primary); }
+        #gpanel { position: fixed; z-index: 1000; box-sizing: border-box; background: #111827; color: #f9fafb; border: 1px solid #374151; border-radius: 6px; padding: 0.6rem 0.7rem; box-shadow: 0 8px 24px rgba(0,0,0,.45); font-size: 0.82rem; line-height: 1.4; display: flex; flex-direction: column; gap: 0.4rem; overflow: hidden; }
+        #gpanel[hidden] { display: none; } .g-tip-h { display: flex; flex-direction: column; gap: 0.1rem; } .g-count { color: #9ca3af; font-size: 0.74rem; }
+        .g-tip-t { margin: 0; flex: 1; min-height: 0; overflow-y: auto; } .g-tip-n { margin: 0; color: #fbbf24; font-size: 0.74rem; }
+        .g-tip-b { display: flex; gap: 0.3rem; flex-wrap: wrap; } #gpanel .g-btn { background: #1f2937; color: #f9fafb; border-color: #374151; padding: 3px 8px; } #gpanel .g-primary { background: var(--primary); border-color: var(--primary); }
         .g-ripple { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; border: 3px solid var(--primary); pointer-events: none; z-index: 7; animation: ripple .65s ease-out forwards; }
         @keyframes ripple { to { transform: scale(4); opacity: 0; } }
         .g-sim { position: absolute; z-index: 8; background: #b91c1c; color: #fff; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.03em; padding: 3px 8px; border-radius: 3px; pointer-events: none; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
-        @media (prefers-reduced-motion: reduce) { #hl, #ptr, #tip { transition: none; } .g-ripple { animation: none; opacity: 0; } }
+        @media (prefers-reduced-motion: reduce) { #hl, #ptr { transition: none; } .g-ripple { animation: none; opacity: 0; } }
     </style>
 </head>
 <body>
@@ -64,10 +65,10 @@ Auth::checkAccess(9);
                 <iframe id="frame" title="Pantalla de ejemplo" sandbox="allow-same-origin allow-scripts"></iframe>
                 <div id="hl"></div>
                 <div id="ptr"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path d="M3 2l7 19 3-8 8-3z" fill="#fff" stroke="#111827" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
-                <div id="tip" hidden></div>
             </div>
         </section>
     </main>
+    <div id="gpanel" hidden role="region" aria-label="Panel de la guía"></div>
     <script src="vendor/guia/guia_data.js"></script>
     <script src="vendor/guia/guia.js"></script>
 </body>

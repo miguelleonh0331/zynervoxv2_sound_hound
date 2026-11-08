@@ -59,7 +59,7 @@
     var SHIELD_CSS = '.sidebar{display:none!important}.main-content{margin-left:0!important}a,button,select,input{cursor:default!important}';
 
     // ---- estado ----
-    var stage, frame, hl, ptr, tip, topic = null, idx = 0, loaded = '', token = 0, ptrPos = null;
+    var stage, frame, hl, ptr, panel, topic = null, idx = 0, loaded = '', token = 0, ptrPos = null;
 
     function loadPage(page) {
         return fetch(BASE + page, { credentials: 'same-origin', cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }).then(function (html) {
@@ -102,38 +102,58 @@
         return new Promise(function (res) { (function tick() { if (my !== token || i >= value.length) return res(); input.value += value[i++]; setTimeout(tick, REDUCED ? 0 : 70); })(); });
     }
 
-    function showTip(step, rect, n, total) {
-        tip.textContent = '';
-        var head = el('div', 'g-tip-h'); head.appendChild(el('b', '', topic.title)); head.appendChild(el('span', 'g-count', 'Paso ' + (n + 1) + ' de ' + total)); tip.appendChild(head);
-        tip.appendChild(el('p', 'g-tip-t', step.text));
-        var row = el('div', 'g-tip-b');
-        var prev = el('button', 'g-btn', 'Anterior'); prev.type = 'button'; prev.disabled = n === 0; prev.addEventListener('click', function () { go(idx - 1); });
-        var next = el('button', 'g-btn g-primary', n === total - 1 ? 'Terminar' : 'Siguiente'); next.type = 'button'; next.addEventListener('click', function () { if (idx === total - 1) showIndex(); else go(idx + 1); });
-        var ind = el('button', 'g-btn', 'Índice'); ind.type = 'button'; ind.addEventListener('click', showIndex);
-        var out = el('button', 'g-btn', 'Salir'); out.type = 'button'; out.addEventListener('click', function () { location.href = 'index.php'; });
-        row.appendChild(prev); row.appendChild(next); row.appendChild(ind); row.appendChild(out); tip.appendChild(row);
-        tip.hidden = false;
-        var sw = stage.clientWidth, sh = stage.clientHeight, tw = Math.min(380, sw - 24); tip.style.width = tw + 'px';
-        var th = tip.offsetHeight, x, y;
-        if (!rect) { x = (sw - tw) / 2; y = (sh - th) / 2; }
-        else if (rect.height > sh * 0.55 || rect.width > sw * 0.9) { x = sw - tw - 16; y = sh - th - 16; }
-        else {
-            x = Math.min(Math.max(12, rect.left + rect.width / 2 - tw / 2), sw - tw - 12);
-            y = rect.bottom + 18; if (y + th > sh - 8) y = rect.top - th - 18; if (y < 8) y = Math.min(sh - th - 8, Math.max(8, rect.bottom + 18));
+    // ---- voz del navegador (speechSynthesis, sin red): se avisa si no hay voz en español ----
+    var TTS = window.speechSynthesis || null, voice = null, voiceOn = true;
+    try { voiceOn = localStorage.getItem('guiaVoz') !== 'off'; } catch (e) {}
+    function pickVoice() {
+        if (!TTS) return; var vs = TTS.getVoices() || [], es = vs.filter(function (v) { return /^es([-_]|$)/i.test(v.lang); });
+        voice = es.filter(function (v) { return v.localService; })[0] || es[0] || null;
+    }
+    if (TTS) { pickVoice(); if (TTS.addEventListener) TTS.addEventListener('voiceschanged', function () { pickVoice(); if (topic) renderPanel(lastStep, idx); }); }
+    function say(text) { if (!TTS) return; TTS.cancel(); if (!voiceOn || !voice || !text) return; var u = new SpeechSynthesisUtterance(text); u.voice = voice; u.lang = voice.lang; TTS.speak(u); }
+    function hush() { if (TTS) TTS.cancel(); }
+
+    // ---- panel fijo en el menú izquierdo: entre la última entrada y «Cerrar Sesión»; si no cabe o el menú no se ve, abajo a la izquierda ----
+    var lastStep = null;
+    function placePanel() {
+        if (!panel || panel.hidden) return;
+        var sb = document.querySelector('.sidebar'), lo = sb && sb.querySelector('.logout-link'), sr = sb && sb.getBoundingClientRect(), s = panel.style;
+        s.top = s.bottom = s.left = s.width = s.height = s.maxHeight = '';
+        if (sb && lo && sr.width > 0 && sr.right > 0 && window.innerWidth >= 700) {
+            var items = sb.querySelectorAll('.nav-item:not(.logout-link)'), last = null, i;
+            for (i = items.length - 1; i >= 0; i--) if (items[i].offsetParent !== null) { last = items[i]; break; }
+            var top = (last ? last.getBoundingClientRect().bottom : sr.top) + 8, free = lo.getBoundingClientRect().top - 8 - top;
+            if (free >= 170) { s.left = (sr.left + 8) + 'px'; s.width = (sr.width - 16) + 'px'; s.top = top + 'px'; s.height = Math.min(free, 300) + 'px'; return; }
         }
-        place(tip, x, y);
+        s.left = '8px'; s.bottom = '8px'; s.width = Math.min(300, window.innerWidth - 16) + 'px'; s.maxHeight = '55vh';
+    }
+    function renderPanel(step, n) {
+        var total = topic.steps.length; lastStep = step; panel.textContent = '';
+        var head = el('div', 'g-tip-h'); head.appendChild(el('b', '', topic.title)); head.appendChild(el('span', 'g-count', 'Paso ' + (n + 1) + ' de ' + total)); panel.appendChild(head);
+        panel.appendChild(el('p', 'g-tip-t', step.text));
+        if (TTS && !voice) panel.appendChild(el('p', 'g-tip-n', 'Este navegador no tiene voz en español: la guía sigue solo con texto.'));
+        else if (!TTS) panel.appendChild(el('p', 'g-tip-n', 'Este navegador no tiene voz: la guía sigue solo con texto.'));
+        var row = el('div', 'g-tip-b');
+        function btn(cls, label, fn) { var b = el('button', cls, label); b.type = 'button'; b.addEventListener('click', fn); row.appendChild(b); return b; }
+        btn('g-btn', 'Anterior', function () { go(idx - 1); }).disabled = n === 0;
+        btn('g-btn g-primary', n === total - 1 ? 'Terminar' : 'Siguiente', function () { if (idx === total - 1) showIndex(); else go(idx + 1); });
+        btn('g-btn', 'Índice', showIndex);
+        btn('g-btn', 'Salir', function () { location.href = 'index.php'; });
+        var v = btn('g-btn', voiceOn ? '🔊 Voz: sí' : '🔇 Voz: no', function () { voiceOn = !voiceOn; try { localStorage.setItem('guiaVoz', voiceOn ? 'on' : 'off'); } catch (e) {} if (voiceOn) say(lastStep.text); else hush(); renderPanel(lastStep, idx); });
+        v.disabled = !voice; v.title = voice ? 'Activar o silenciar la voz' : 'Sin voz en español en este navegador';
+        panel.appendChild(row); panel.hidden = false; placePanel();
     }
 
     async function show(i) {
         var my = ++token, step = topic.steps[i]; idx = i;
         document.querySelectorAll('.g-step-dot').forEach(function (d, k) { d.classList.toggle('on', k === i); });
-        tip.hidden = true;
+        hush(); renderPanel(step, i);
         try {
             if (step.page && step.page !== loaded) { stage.classList.add('loading'); await loadPage(step.page); stage.classList.remove('loading'); if (my !== token) return; }
             var doc = frame.contentDocument; if (topic.prep) topic.prep(doc, i);
-            if (step.none) { hl.style.opacity = 0; ptr.style.opacity = 0; showTip(step, null, i, topic.steps.length); return; }
+            if (step.none) { hl.style.opacity = 0; ptr.style.opacity = 0; say(step.text); return; }
             var e = await waitFor(step); if (my !== token) return;
-            if (!e) { hl.style.opacity = 0; showTip({ text: step.text + ' (Este elemento no está visible en esta pantalla ahora.)' }, null, i, topic.steps.length); return; }
+            if (!e) { hl.style.opacity = 0; var m = step.text + ' (Este elemento no está visible en esta pantalla ahora.)'; renderPanel({ text: m }, i); say(m); return; }
             e.scrollIntoView({ block: 'center', inline: 'nearest' }); await sleep(120); if (my !== token) return;
             var r = e.getBoundingClientRect(), pad = 4;
             hl.style.opacity = 1; place(hl, r.left - pad, r.top - pad, r.width + pad * 2, r.height + pad * 2);
@@ -148,19 +168,19 @@
             else if (step.action === 'select') { if (step.value !== undefined) e.value = step.value; ripple(tx, ty); await sleep(250); }
             if (my !== token) return;
             r = e.getBoundingClientRect(); place(hl, r.left - pad, r.top - pad, r.width + pad * 2, r.height + pad * 2);
-            showTip(step, r, i, topic.steps.length);
+            say(step.text);
         } catch (err) {
-            stage.classList.remove('loading'); showTip({ text: 'No se pudo cargar esta pantalla: ' + err.message }, null, i, topic.steps.length);
+            stage.classList.remove('loading'); renderPanel({ text: 'No se pudo cargar esta pantalla: ' + err.message }, i);
         }
     }
     function go(i) { if (!topic || i < 0 || i >= topic.steps.length) return; show(i); }
 
     function start(t) {
-        topic = t; idx = 0; loaded = ''; $('index').hidden = true; $('tour').hidden = false; ptr.style.opacity = 0; hl.style.opacity = 0; tip.hidden = true;
+        topic = t; idx = 0; loaded = ''; $('index').hidden = true; $('tour').hidden = false; ptr.style.opacity = 0; hl.style.opacity = 0;
         var dots = $('dots'); dots.textContent = ''; t.steps.forEach(function (s, k) { var d = el('span', 'g-step-dot'); d.title = 'Paso ' + (k + 1); d.addEventListener('click', function () { go(k); }); dots.appendChild(d); });
         $('tour-title').textContent = 'Guía · ' + t.title; show(0);
     }
-    function showIndex() { token++; topic = null; loaded = ''; frame.removeAttribute('srcdoc'); frame.src = 'about:blank'; $('tour').hidden = true; $('index').hidden = false; tip.hidden = true; }
+    function showIndex() { token++; topic = null; loaded = ''; frame.removeAttribute('srcdoc'); frame.src = 'about:blank'; $('tour').hidden = true; $('index').hidden = false; panel.hidden = true; hush(); }
 
     function buildIndex() {
         var box = $('topics'); box.textContent = '';
@@ -174,10 +194,11 @@
     }
 
     function reposition() { if (topic) show(idx); }
+    window.addEventListener('scroll', function () { placePanel(); }, true);
     document.addEventListener('DOMContentLoaded', function () {
-        stage = $('stage'); frame = $('frame'); hl = $('hl'); ptr = $('ptr'); tip = $('tip');
+        stage = $('stage'); frame = $('frame'); hl = $('hl'); ptr = $('ptr'); panel = $('gpanel');
         buildIndex();
-        var t; window.addEventListener('resize', function () { clearTimeout(t); t = setTimeout(reposition, 250); });
+        var t; window.addEventListener('resize', function () { placePanel(); clearTimeout(t); t = setTimeout(reposition, 250); });
         document.addEventListener('keydown', function (e) { if (!topic) return; if (e.key === 'ArrowRight') go(idx + 1); else if (e.key === 'ArrowLeft') go(idx - 1); else if (e.key === 'Escape') showIndex(); });
         var q = new URLSearchParams(location.search).get('tema'); // acceso directo: guia.php?tema=dashboard
         if (q) window.GUIA_DEMO.topics.forEach(function (tp) { if (tp.id === q && tp.ready) start(tp); });
