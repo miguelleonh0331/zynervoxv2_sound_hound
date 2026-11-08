@@ -252,8 +252,7 @@ function campaigns_schedule_row(array $r, array $days): string {
                         <?php endforeach; ?>
                         <?php if (($c['transfer_carrier_id'] ?? '') !== '' && !$carrierKnown): ?><option value="<?php echo h($c['transfer_carrier_id']); ?>" selected><?php echo h($c['transfer_carrier_id']); ?> (no disponible)</option><?php endif; ?>
                         </select></label>
-                    <label>ID CAMPAÑA <input name="transfer_destination" value="<?php echo h($c['transfer_destination'] ?? ''); ?>" maxlength="40" placeholder="Ej.: 13117878">
-                        <small style="font-size: 0.72rem; font-weight: 400; text-transform: none; line-height: 1.3;">Identificador con el que la llamada transferida llega al sistema receptor, para que la derive a sus agentes. Ej.: 13117878</small></label>
+                    <label>ID CAMPAÑA <input name="transfer_destination" value="<?php echo h($c['transfer_destination'] ?? ''); ?>" maxlength="40" placeholder="Ej.: 13117878"></label>
                     <label>Zona horaria <input name="timezone" value="<?php echo h($c['timezone'] ?? 'America/Lima'); ?>" maxlength="64" required></label>
                     <label>Orden de leads
                         <select name="lead_order"><?php foreach (['DOWN'=>'Descendente', 'UP'=>'Ascendente', 'RANDOM'=>'Aleatorio'] as $k => $label): ?><option value="<?php echo $k; ?>"<?php echo ($c['lead_order'] ?? 'DOWN') === $k ? ' selected' : ''; ?>><?php echo $label; ?></option><?php endforeach; ?></select></label>
