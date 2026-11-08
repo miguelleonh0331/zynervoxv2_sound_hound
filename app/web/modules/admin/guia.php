@@ -21,6 +21,7 @@ Auth::checkAccess(9);
         .g-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.75rem; }
         .g-topic { background: var(--bg-card); border: 1px solid var(--border); border-radius: 3px; padding: 0.8rem; display: flex; flex-direction: column; gap: 0.4rem; }
         .g-topic h3 { margin: 0; font-size: 1rem; } .g-topic p { margin: 0; color: var(--text-muted); font-size: 0.82rem; flex: 1; } .g-ico { font-size: 1.6rem; color: var(--primary); }
+        .g-voice { background: var(--bg-card); border: 1px solid var(--border); border-radius: 3px; padding: 0.6rem 0.8rem; display: flex; flex-direction: column; gap: 0.3rem; } .g-voice span { color: var(--text-muted); font-size: 0.78rem; } .g-voice audio { width: 100%; }
         .g-topic.soon { opacity: 0.6; }
         .g-btn { padding: 4px 12px; border: 1px solid var(--border); border-radius: 2px; background: var(--bg-card); color: var(--text); cursor: pointer; font-size: 0.8rem; }
         .g-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); } .g-btn:disabled { opacity: .45; cursor: not-allowed; }
@@ -57,6 +58,18 @@ Auth::checkAccess(9);
         <section id="index">
             <h2 style="font-size: 1rem; margin: 0 0 0.5rem;">Elige un tema</h2>
             <div class="g-grid" id="topics"></div>
+            <h2 style="font-size: 1rem; margin: 1.2rem 0 0.3rem;">Voz del narrador</h2>
+            <p style="margin: 0 0 0.5rem; color: var(--text-muted); font-size: 0.82rem;">Aún no hay narración en la guía. Escucha estas muestras (el inicio del tema Dashboard) y di cuál prefieres. Aquí solo se escucha: no se guarda ninguna elección.</p>
+            <div class="g-grid" id="voices">
+                <div class="g-voice"><b>Nagi</b><span>Profesional, segura y clara</span><audio controls preload="none" src="vendor/guia/muestras/nagi.mp3"></audio></div>
+                <div class="g-voice"><b>Verity</b><span>Conversacional y didáctica</span><audio controls preload="none" src="vendor/guia/muestras/verity.mp3"></audio></div>
+                <div class="g-voice"><b>Voz Femenina Español</b><span>Narración tranquila y suave</span><audio controls preload="none" src="vendor/guia/muestras/voz-femenina-espanol.mp3"></audio></div>
+                <div class="g-voice"><b>Colombiana</b><span>Narración cálida, acento latino</span><audio controls preload="none" src="vendor/guia/muestras/colombiana.mp3"></audio></div>
+                <div class="g-voice"><b>Voz Femenina Latino</b><span>Profesional y educativa</span><audio controls preload="none" src="vendor/guia/muestras/voz-femenina-latino.mp3"></audio></div>
+                <div class="g-voice"><b>Voz Femenina Clara</b><span>Narración educativa, cálida</span><audio controls preload="none" src="vendor/guia/muestras/voz-femenina-clara.mp3"></audio></div>
+                <div class="g-voice"><b>Voz Serena</b><span>Calmada y profesional</span><audio controls preload="none" src="vendor/guia/muestras/voz-serena.mp3"></audio></div>
+                <div class="g-voice"><b>Voz de Mujer Real</b><span>Natural, nada artificial</span><audio controls preload="none" src="vendor/guia/muestras/voz-real.mp3"></audio></div>
+            </div>
         </section>
 
         <section id="tour" hidden>

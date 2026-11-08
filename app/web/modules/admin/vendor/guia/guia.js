@@ -102,17 +102,6 @@
         return new Promise(function (res) { (function tick() { if (my !== token || i >= value.length) return res(); input.value += value[i++]; setTimeout(tick, REDUCED ? 0 : 70); })(); });
     }
 
-    // ---- voz del navegador (speechSynthesis, sin red): se avisa si no hay voz en español ----
-    var TTS = window.speechSynthesis || null, voice = null, voiceOn = true;
-    try { voiceOn = localStorage.getItem('guiaVoz') !== 'off'; } catch (e) {}
-    function pickVoice() {
-        if (!TTS) return; var vs = TTS.getVoices() || [], es = vs.filter(function (v) { return /^es([-_]|$)/i.test(v.lang); });
-        voice = es.filter(function (v) { return v.localService; })[0] || es[0] || null;
-    }
-    if (TTS) { pickVoice(); if (TTS.addEventListener) TTS.addEventListener('voiceschanged', function () { pickVoice(); if (topic) renderPanel(lastStep, idx); }); }
-    function say(text) { if (!TTS) return; TTS.cancel(); if (!voiceOn || !voice || !text) return; var u = new SpeechSynthesisUtterance(text); u.voice = voice; u.lang = voice.lang; TTS.speak(u); }
-    function hush() { if (TTS) TTS.cancel(); }
-
     // ---- panel fijo en el menú izquierdo: entre la última entrada y «Cerrar Sesión»; si no cabe o el menú no se ve, abajo a la izquierda ----
     var lastStep = null;
     function placePanel() {
@@ -131,29 +120,25 @@
         var total = topic.steps.length; lastStep = step; panel.textContent = '';
         var head = el('div', 'g-tip-h'); head.appendChild(el('b', '', topic.title)); head.appendChild(el('span', 'g-count', 'Paso ' + (n + 1) + ' de ' + total)); panel.appendChild(head);
         panel.appendChild(el('p', 'g-tip-t', step.text));
-        if (TTS && !voice) panel.appendChild(el('p', 'g-tip-n', 'Este navegador no tiene voz en español: la guía sigue solo con texto.'));
-        else if (!TTS) panel.appendChild(el('p', 'g-tip-n', 'Este navegador no tiene voz: la guía sigue solo con texto.'));
         var row = el('div', 'g-tip-b');
         function btn(cls, label, fn) { var b = el('button', cls, label); b.type = 'button'; b.addEventListener('click', fn); row.appendChild(b); return b; }
         btn('g-btn', 'Anterior', function () { go(idx - 1); }).disabled = n === 0;
         btn('g-btn g-primary', n === total - 1 ? 'Terminar' : 'Siguiente', function () { if (idx === total - 1) showIndex(); else go(idx + 1); });
         btn('g-btn', 'Índice', showIndex);
         btn('g-btn', 'Salir', function () { location.href = 'index.php'; });
-        var v = btn('g-btn', voiceOn ? '🔊 Voz: sí' : '🔇 Voz: no', function () { voiceOn = !voiceOn; try { localStorage.setItem('guiaVoz', voiceOn ? 'on' : 'off'); } catch (e) {} if (voiceOn) say(lastStep.text); else hush(); renderPanel(lastStep, idx); });
-        v.disabled = !voice; v.title = voice ? 'Activar o silenciar la voz' : 'Sin voz en español en este navegador';
         panel.appendChild(row); panel.hidden = false; placePanel();
     }
 
     async function show(i) {
         var my = ++token, step = topic.steps[i]; idx = i;
         document.querySelectorAll('.g-step-dot').forEach(function (d, k) { d.classList.toggle('on', k === i); });
-        hush(); renderPanel(step, i);
+        renderPanel(step, i);
         try {
             if (step.page && step.page !== loaded) { stage.classList.add('loading'); await loadPage(step.page); stage.classList.remove('loading'); if (my !== token) return; }
             var doc = frame.contentDocument; if (topic.prep) topic.prep(doc, i);
-            if (step.none) { hl.style.opacity = 0; ptr.style.opacity = 0; say(step.text); return; }
+            if (step.none) { hl.style.opacity = 0; ptr.style.opacity = 0; return; }
             var e = await waitFor(step); if (my !== token) return;
-            if (!e) { hl.style.opacity = 0; var m = step.text + ' (Este elemento no está visible en esta pantalla ahora.)'; renderPanel({ text: m }, i); say(m); return; }
+            if (!e) { hl.style.opacity = 0; var m = step.text + ' (Este elemento no está visible en esta pantalla ahora.)'; renderPanel({ text: m }, i); return; }
             e.scrollIntoView({ block: 'center', inline: 'nearest' }); await sleep(120); if (my !== token) return;
             var r = e.getBoundingClientRect(), pad = 4;
             hl.style.opacity = 1; place(hl, r.left - pad, r.top - pad, r.width + pad * 2, r.height + pad * 2);
@@ -168,7 +153,6 @@
             else if (step.action === 'select') { if (step.value !== undefined) e.value = step.value; ripple(tx, ty); await sleep(250); }
             if (my !== token) return;
             r = e.getBoundingClientRect(); place(hl, r.left - pad, r.top - pad, r.width + pad * 2, r.height + pad * 2);
-            say(step.text);
         } catch (err) {
             stage.classList.remove('loading'); renderPanel({ text: 'No se pudo cargar esta pantalla: ' + err.message }, i);
         }
@@ -180,7 +164,7 @@
         var dots = $('dots'); dots.textContent = ''; t.steps.forEach(function (s, k) { var d = el('span', 'g-step-dot'); d.title = 'Paso ' + (k + 1); d.addEventListener('click', function () { go(k); }); dots.appendChild(d); });
         $('tour-title').textContent = 'Guía · ' + t.title; show(0);
     }
-    function showIndex() { token++; topic = null; loaded = ''; frame.removeAttribute('srcdoc'); frame.src = 'about:blank'; $('tour').hidden = true; $('index').hidden = false; panel.hidden = true; hush(); }
+    function showIndex() { token++; topic = null; loaded = ''; frame.removeAttribute('srcdoc'); frame.src = 'about:blank'; $('tour').hidden = true; $('index').hidden = false; panel.hidden = true; }
 
     function buildIndex() {
         var box = $('topics'); box.textContent = '';
