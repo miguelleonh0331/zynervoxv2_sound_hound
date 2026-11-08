@@ -25,6 +25,7 @@ if (empty($_SESSION['lists_csrf'])) $_SESSION['lists_csrf'] = bin2hex(random_byt
 if (!function_exists('h')) { function h($value): string { return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); } }
 
 $error = '';
+$channelsAlert = null;
 $message = (string)($_SESSION['lists_message'] ?? '');
 unset($_SESSION['lists_message']);
 $campaigns = [];
@@ -99,6 +100,7 @@ try {
             }
             header('Location: ' . $listsUrl);
             exit;
+        } catch (BotChannelsException $e) { $error = $e->getMessage(); $channelsAlert = $e->figures;
         } catch (Throwable $e) { $error = $e->getMessage(); }
     }
     foreach ($db->campaigns() as $campaign) {
@@ -142,6 +144,7 @@ try {
 
         <?php if ($message !== ''): ?><p class="msg-ok"><?php echo h($message); ?></p><?php endif; ?>
         <?php if ($error !== ''): ?><p class="msg-err"><?php echo h($error); ?></p><?php endif; ?>
+        <?php if ($channelsAlert !== null): ?><script src="channels_alert.js"></script><script>window.addEventListener('DOMContentLoaded', function () { window.channelsAlert(<?php echo json_encode($error, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG); ?>, <?php echo json_encode($channelsAlert); ?>); });</script><?php endif; ?>
 
         <form method="POST" action="<?php echo h($listsUrl); ?>" class="card">
             <h2>Límite del servidor</h2>

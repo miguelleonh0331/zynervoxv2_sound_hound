@@ -84,6 +84,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         <div id="groups"></div>
     </main>
     <script src="vendor/gauge.min.js"></script>
+    <script src="channels_alert.js"></script>
     <script>
     (function () {
         var CSRF = <?php echo json_encode($_SESSION['dashboard_csrf']); ?>;
@@ -112,12 +113,12 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         // ---- acciones (mismas de dashboard_api.php) ----
         function post(action, c, l, extra) {
             var body = new URLSearchParams(Object.assign({ action: action, campaign_id: c, list_id: l, csrf: CSRF }, extra || {}));
-            return fetch(API, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': CSRF }, body: body }).then(function (r) { return r.json(); }).then(function (j) { if (!j.ok) throw new Error(j.error || 'No se pudo completar la acción.'); });
+            return fetch(API, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': CSRF }, body: body }).then(function (r) { return r.json(); }).then(function (j) { if (!j.ok) { var er = new Error(j.error || 'No se pudo completar la acción.'); er.channels = j.channels; throw er; } });
         }
         function act(action, c, l, confirmText, extra) {
             if (confirmText && !window.confirm(confirmText)) return;
             showNotice('');
-            post(action, c, l, extra).then(refresh).catch(function (e) { showNotice(e.message); refresh(true); });
+            post(action, c, l, extra).then(refresh).catch(function (e) { if (e.channels) window.channelsAlert(e.message, e.channels); else showNotice(e.message); refresh(true); });
         }
 
         // ---- agujas (canvas-gauges, mismo modelo que el Dashboard); una instancia por aguja, solo se actualiza el valor ----
@@ -236,6 +237,17 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
                 : 'Vas a DETENER ' + items.length + (items.length === 1 ? ' lista que está discando' : ' listas que están discando') + ' (incluidas las que esperan reintentos). Las llamadas en curso terminan solas. ¿Continuar?';
             if (!window.confirm(text)) return;
             bulkBusy = true; paintBulk(); showNotice(''); bulkBox.hidden = false; bulkBox.textContent = verb + '… 0 de ' + items.length;
+            if (action === 'start') { // todo o nada: el servidor decide si caben todas juntas
+                var lists = items.map(function (it) { return it.c.campaign_id + ':' + it.l.list_id; }).join(',');
+                fetch(API, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': CSRF }, body: new URLSearchParams({ action: 'start_many', lists: lists, csrf: CSRF }) })
+                    .then(function (r) { return r.json(); }).then(function (j) {
+                        bulkBox.textContent = '';
+                        if (j.ok) bulkBox.appendChild(el('b', '', verb + ': ' + items.length + ' de ' + items.length + ' aplicadas.'));
+                        else { bulkBox.appendChild(el('b', '', verb + ': no se inició ninguna. ' + (j.error || ''))); if (j.channels) window.channelsAlert(j.error, j.channels); }
+                    }).catch(function () { bulkBox.textContent = verb + ': no se pudo completar.'; })
+                    .then(function () { var x = el('button', 'mini-btn', 'Cerrar'); x.type = 'button'; x.style.marginLeft = '0.5rem'; x.addEventListener('click', function () { bulkBox.hidden = true; }); bulkBox.appendChild(x); bulkBusy = false; paintBulk(); refresh(true); });
+                return;
+            }
             var ok = 0, bad = [], todo = items.slice();
             (function next() {
                 var it = todo.shift();

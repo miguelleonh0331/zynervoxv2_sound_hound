@@ -100,6 +100,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         <section id="campaigns" aria-label="Campañas y listas"></section>
     </main>
     <script src="vendor/gauge.min.js"></script>
+    <script src="channels_alert.js"></script>
     <script>
     (function () {
         var CSRF = <?php echo json_encode($_SESSION['dashboard_csrf']); ?>;
@@ -178,13 +179,13 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
         function post(action, c, l, extra) {
             var body = new URLSearchParams(Object.assign({ action: action, campaign_id: c, list_id: l, csrf: CSRF }, extra || {}));
             return fetch(API, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': CSRF }, body: body }).then(function (r) { return r.json(); }).then(function (j) {
-                if (!j.ok) throw new Error(j.error || 'No se pudo completar la acción.');
+                if (!j.ok) { var er = new Error(j.error || 'No se pudo completar la acción.'); er.channels = j.channels; throw er; }
             });
         }
         function act(action, c, l, confirmText, extra) {
             if (confirmText && !window.confirm(confirmText)) return;
             showNotice('', '');
-            post(action, c, l, extra).then(refresh).catch(function (e) { showNotice(e.message, 'dash-error'); refresh(); });
+            post(action, c, l, extra).then(refresh).catch(function (e) { if (e.channels) window.channelsAlert(e.message, e.channels); else showNotice(e.message, 'dash-error'); refresh(); });
         }
 
         function fpct(v) { return String(v).replace('.', ','); }

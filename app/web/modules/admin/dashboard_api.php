@@ -51,6 +51,18 @@ try {
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $token = (string)($_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf'] ?? '');
         if (empty($_SESSION['dashboard_csrf']) || !hash_equals($_SESSION['dashboard_csrf'], $token)) dash_json(403, ['ok' => false, 'error' => 'Sesión inválida. Recarga la página.']);
+        if ((string)($_POST['action'] ?? '') === 'start_many') { // «Iniciar todas»: todo o nada, el servicio decide si caben
+            $items = [];
+            foreach (explode(',', (string)($_POST['lists'] ?? '')) as $pair) {
+                if (!preg_match('/^([1-9][0-9]{0,9}):([1-9][0-9]{0,9})$/D', trim($pair), $m)) dash_json(400, ['ok' => false, 'error' => 'Listas inválidas.']);
+                $items[] = ['campaign_id' => (int)$m[1], 'list_id' => (int)$m[2]];
+            }
+            if (!$items) dash_json(400, ['ok' => false, 'error' => 'Elige al menos una lista.']);
+            try { $started = bot_cfg_list_start_many($db, $items, $actor); }
+            catch (BotChannelsException $e) { dash_json(409, ['ok' => false, 'error' => $e->getMessage(), 'channels' => $e->figures]); }
+            catch (RuntimeException $e) { dash_json(409, ['ok' => false, 'error' => $e->getMessage()]); }
+            dash_json(200, ['ok' => true, 'started' => $started]);
+        }
         $campaignId = filter_var($_POST['campaign_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $listId = filter_var($_POST['list_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         if (!$campaignId || !$listId) dash_json(400, ['ok' => false, 'error' => 'Lista inválida.']);
@@ -62,6 +74,8 @@ try {
             elseif ($action === 'set_channels') bot_cfg_set_list_channels($db, $campaignId, $listId, $_POST['channels'] ?? null);
             elseif ($action === 'deactivate') bot_cfg_list_set_active($db, $campaignId, $listId, false, $actor);
             else dash_json(400, ['ok' => false, 'error' => 'Acción inválida.']);
+        } catch (BotChannelsException $e) {
+            dash_json(409, ['ok' => false, 'error' => $e->getMessage(), 'channels' => $e->figures]);
         } catch (RuntimeException $e) {
             dash_json(409, ['ok' => false, 'error' => $e->getMessage()]);
         }

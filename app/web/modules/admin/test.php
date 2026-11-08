@@ -94,6 +94,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             <div style="overflow-x: auto;"><table class="table-compact" id="recent"><thead><tr><th>Hora (Lima)</th><th>Campaña</th><th>Número</th><th>Estado</th><th>Resultado</th><th></th></tr></thead><tbody></tbody></table></div>
         </div>
     </main>
+    <script src="channels_alert.js"></script>
     <script>
     (function () {
         var TEST_CSRF = <?php echo json_encode($_SESSION['test_csrf']); ?>, DASH_CSRF = <?php echo json_encode($_SESSION['dashboard_csrf']); ?>;
@@ -107,8 +108,8 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             if (!window.confirm('Se llamará de verdad al número ' + phone + ' desde la campaña «' + campaign + '». ¿Continuar?')) return Promise.resolve(false);
             var body = new URLSearchParams({ action: 'start', campaign_id: campaignId, list_id: listId, csrf: DASH_CSRF });
             return fetch('dashboard_api.php', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': DASH_CSRF }, body: body })
-                .then(function (r) { return r.json(); }).then(function (j) { if (!j.ok) throw new Error(j.error || 'No se pudo iniciar.'); msg('Llamada iniciada.', 'msg-ok'); load(); return true; })
-                .catch(function (e) { msg(e.message); return false; });
+                .then(function (r) { return r.json(); }).then(function (j) { if (!j.ok) { var er = new Error(j.error || 'No se pudo iniciar.'); er.channels = j.channels; throw er; } msg('Llamada iniciada.', 'msg-ok'); load(); return true; })
+                .catch(function (e) { if (e.channels) window.channelsAlert(e.message, e.channels); else msg(e.message); return false; });
         }
 
         function showCreated(l, phone) {
