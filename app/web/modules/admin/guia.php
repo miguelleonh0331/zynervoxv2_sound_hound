@@ -4,9 +4,10 @@ declare(strict_types=1);
 // Esta página no escribe nada ni hace consultas: solo sirve la guía (ver vendor/guia/guia.js para el aislamiento del iframe).
 require_once __DIR__ . '/../../includes/Auth.php';
 require_once __DIR__ . '/sidebar.php';
-use Includes\Auth;
+use Includes\Permissions;
 
-Auth::checkAccess(9);
+Permissions::requirePage('page.guia'); // Administrador, Supervisor y GTR; cada perfil ve solo sus temas
+$guiaTopics = Permissions::guideTopics(); // null = todos
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -69,6 +70,7 @@ Auth::checkAccess(9);
         </section>
     </main>
     <div id="gpanel" hidden role="region" aria-label="Panel de la guía"></div>
+    <script>window.GUIA_ALLOWED = <?php echo json_encode($guiaTopics); ?>;</script>
     <script src="vendor/guia/guia_data.js"></script>
     <script src="vendor/guia/guia.js"></script>
 </body>

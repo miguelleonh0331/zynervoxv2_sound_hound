@@ -195,9 +195,11 @@
     }
     function showIndex() { token++; stopAudio(); topic = null; loaded = ''; frame.removeAttribute('srcdoc'); frame.src = 'about:blank'; $('tour').hidden = true; $('index').hidden = false; panel.hidden = true; }
 
+    // Temas visibles según el perfil (GUIA_ALLOWED lo pone guia.php: null = todos). Un tema no permitido tampoco se abre por ?tema=.
+    function allowed(t) { var a = window.GUIA_ALLOWED; return !a || a.indexOf(t.id) >= 0; }
     function buildIndex() {
         var box = $('topics'); box.textContent = '';
-        window.GUIA_DEMO.topics.forEach(function (t, n) {
+        window.GUIA_DEMO.topics.filter(allowed).forEach(function (t, n) {
             var c = el('div', 'g-topic' + (t.ready ? '' : ' soon'));
             c.appendChild(el('div', 'g-ico', t.icon)); c.appendChild(el('h3', '', (n + 1) + '. ' + t.title)); c.appendChild(el('p', '', t.about));
             var b = el('button', 'g-btn g-primary', t.ready ? 'Empezar (' + t.steps.length + ' pasos)' : 'Próximamente'); b.type = 'button'; b.disabled = !t.ready;
@@ -214,6 +216,6 @@
         var t; window.addEventListener('resize', function () { placePanel(); clearTimeout(t); t = setTimeout(reposition, 250); });
         document.addEventListener('keydown', function (e) { if (!topic) return; if (e.key === 'ArrowRight') go(idx + 1); else if (e.key === 'ArrowLeft') go(idx - 1); else if (e.key === 'Escape') showIndex(); });
         var q = new URLSearchParams(location.search).get('tema'); // acceso directo: guia.php?tema=dashboard
-        if (q) window.GUIA_DEMO.topics.forEach(function (tp) { if (tp.id === q && tp.ready) start(tp); });
+        if (q) window.GUIA_DEMO.topics.forEach(function (tp) { if (tp.id === q && tp.ready && allowed(tp)) start(tp); });
     });
 })();
