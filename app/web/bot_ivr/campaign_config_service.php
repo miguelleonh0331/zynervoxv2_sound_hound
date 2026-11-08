@@ -11,6 +11,7 @@ require_once __DIR__.'/../marcador/zypad.php';
 require_once __DIR__.'/../marcador/contact_distribution.php';
 require_once __DIR__.'/../marcador/blacklist.php';
 require_once __DIR__.'/list_service.php';
+require_once __DIR__.'/../marcador/blacklist_admin.php';
 
 const BOT_CFG_MAX_HEADERS = 16;
 
@@ -738,10 +739,10 @@ function bot_cfg_test_create(\ZynervoxQueries\BotIvrRepository $db, int $campaig
     if (count($parsed['rows']) !== 1 || $parsed['rows'][0]['phone'] !== $digits) throw new RuntimeException('Número inválido.');
     $name = 'test-'.(new DateTimeImmutable('now', new DateTimeZone('America/Lima')))->format('Ymd-His');
     $listId = $db->createTestList($campaignId, $name);
-    try { $db->importLeads($listId, $campaignId, $parsed); }
+    try { $loaded = $db->importLeads($listId, $campaignId, $parsed); }
     catch (Throwable $e) { try { bot_list_delete($db, $listId, $campaignId, $actor); } catch (Throwable $x) { error_log('ZV2 test list cleanup: '.$x->getMessage()); } throw $e; }
     error_log('ZV2 test_list_created '.json_encode(['list_id'=>$listId, 'campaign_id'=>$campaignId, 'actor'=>$actor, 'at'=>gmdate('c')], JSON_UNESCAPED_UNICODE));
-    return ['list_id'=>$listId, 'campaign_id'=>$campaignId, 'name'=>$name];
+    return ['list_id'=>$listId, 'campaign_id'=>$campaignId, 'name'=>$name, 'blocked'=>(int)($loaded['blocked'] ?? 0), 'blocked_list'=>(string)($loaded['blocked_list'] ?? '')]; // blocked = the number is in the campaign's global blacklist: the test list is born «Bloqueado» and will not call
 }
 /**
  * Last test lists for the screen, newest first (default 20, max 100): list_id, campaign_id, campaign (name), phone (full: the user typed it), created_at (UTC),

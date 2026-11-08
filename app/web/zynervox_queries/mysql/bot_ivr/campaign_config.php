@@ -666,6 +666,118 @@ trait CampaignConfigQueries {
         $s = $this->db->prepare('SELECT 1 FROM zynervox_blacklist WHERE phone=? AND campaign_id IN (0,?) LIMIT 1'); $s->execute([$key, $campaignId]);
         return (bool)$s->fetchColumn();
     }
+    // ---- Blacklist, two levels (migration 026). GLOBAL: named lists per client, read ONLY when a base is loaded (blockLeadsByGlobalBlacklist). REGULAR: zynervox_blacklist, read when dialing. ----
+    private function blacklistAuditWrite(string $actor, string $action, string $scope, ?int $listId, string $listName, ?int $campaignId, ?string $phone, int $rows, string $detail = ''): void {
+        $this->db->prepare('INSERT INTO zynervox_blacklist_audit (actor,action,scope,list_id,list_name,campaign_id,phone,rows_affected,detail) VALUES (?,?,?,?,?,?,?,?,?)')
+            ->execute([$actor, $action, $scope, $listId, $listName, $campaignId, $phone, $rows, mb_substr($detail, 0, 200)]);
+    }
+    private function blacklistListRow(int $listId): array {
+        $s = $this->db->prepare('SELECT list_id,name FROM zynervox_blacklist_lists WHERE list_id=?'); $s->execute([$listId]);
+        $r = $s->fetch(\PDO::FETCH_ASSOC);
+        if (!$r) throw new \RuntimeException('La lista global no existe.');
+        return $r;
+    }
+    /** Global lists with their count of numbers and the campaigns that use each. */
+    public function blacklistLists(): array {
+        return $this->db->query('SELECT l.list_id,l.name,l.created_at,l.created_by,(SELECT COUNT(*) FROM zynervox_blacklist_global g WHERE g.list_id=l.list_id) numbers,
+            (SELECT COUNT(*) FROM zynervox_bot_campaigns c WHERE c.global_blacklist_id=l.list_id) campaigns FROM zynervox_blacklist_lists l ORDER BY l.name')->fetchAll(\PDO::FETCH_ASSOC);
+    }
+    public function createBlacklistList(string $name, string $actor): int {
+        return $this->callAtomic(function() use($name,$actor) {
+            try { $this->db->prepare('INSERT INTO zynervox_blacklist_lists (name,created_by) VALUES (?,?)')->execute([$name,$actor]); }
+            catch (\PDOException $e) { if ($e->getCode() === '23000') throw new \RuntimeException('Ya existe una lista global con ese nombre.'); throw $e; }
+            $id = (int)$this->db->lastInsertId();
+            $this->blacklistAuditWrite($actor, 'list_create', 'global', $id, $name, null, null, 0);
+            return $id;
+        });
+    }
+    public function renameBlacklistList(int $listId, string $name, string $actor): void {
+        $this->callAtomic(function() use($listId,$name,$actor) {
+            $old = $this->blacklistListRow($listId);
+            try { $this->db->prepare('UPDATE zynervox_blacklist_lists SET name=? WHERE list_id=?')->execute([$name,$listId]); }
+            catch (\PDOException $e) { if ($e->getCode() === '23000') throw new \RuntimeException('Ya existe una lista global con ese nombre.'); throw $e; }
+            $this->blacklistAuditWrite($actor, 'list_rename', 'global', $listId, $name, null, null, 0, 'antes: '.$old['name']);
+        });
+    }
+    /** Where a number (9 digits) is: every global list and every regular row. */
+    public function blacklistSearch(string $key): array {
+        $g = $this->db->prepare("SELECT 'global' scope,g.list_id,l.name list_name,NULL campaign_id,g.reason,g.created_at,g.created_by FROM zynervox_blacklist_global g JOIN zynervox_blacklist_lists l ON l.list_id=g.list_id WHERE g.phone=?");
+        $g->execute([$key]);
+        $r = $this->db->prepare("SELECT 'regular' scope,NULL list_id,IF(b.campaign_id=0,'Todas las campañas',COALESCE(c.name,'campaña eliminada')) list_name,b.campaign_id,b.reason,b.created_at,b.created_by FROM zynervox_blacklist b LEFT JOIN zynervox_bot_campaigns c ON c.campaign_id=b.campaign_id WHERE b.phone=?");
+        $r->execute([$key]);
+        return array_merge($g->fetchAll(\PDO::FETCH_ASSOC), $r->fetchAll(\PDO::FETCH_ASSOC));
+    }
+    /** $scope 'global' ($target = global list id) or 'regular' ($target = campaign id, 0 = all campaigns). Adds or updates the reason of a number. */
+    public function blacklistAdd(string $scope, int $target, string $key, string $reason, string $actor): void {
+        $this->callAtomic(function() use($scope,$target,$key,$reason,$actor) {
+            if ($scope === 'global') {
+                $l = $this->blacklistListRow($target);
+                $this->db->prepare('INSERT INTO zynervox_blacklist_global (list_id,phone,reason,created_by) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE reason=VALUES(reason)')->execute([$target,$key,$reason,$actor]);
+                $this->blacklistAuditWrite($actor, 'add', 'global', $target, $l['name'], null, $key, 1, $reason);
+            } else {
+                if ($target > 0) $this->campaign($target);
+                $this->db->prepare('INSERT INTO zynervox_blacklist (campaign_id,phone,reason,created_by) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE reason=VALUES(reason)')->execute([$target,$key,$reason,$actor]);
+                $this->blacklistAuditWrite($actor, 'add', 'regular', null, '', $target, $key, 1, $reason);
+            }
+        });
+    }
+    /** Removes ONE number. Returns the rows removed (0 when it was not there). */
+    public function blacklistRemove(string $scope, int $target, string $key, string $actor): int {
+        return (int)$this->callAtomic(function() use($scope,$target,$key,$actor) {
+            if ($scope === 'global') {
+                $l = $this->blacklistListRow($target);
+                $d = $this->db->prepare('DELETE FROM zynervox_blacklist_global WHERE list_id=? AND phone=?'); $d->execute([$target,$key]);
+                if ($d->rowCount() > 0) $this->blacklistAuditWrite($actor, 'remove', 'global', $target, $l['name'], null, $key, $d->rowCount());
+            } else {
+                $d = $this->db->prepare('DELETE FROM zynervox_blacklist WHERE campaign_id=? AND phone=?'); $d->execute([$target,$key]);
+                if ($d->rowCount() > 0) $this->blacklistAuditWrite($actor, 'remove', 'regular', null, '', $target, $key, $d->rowCount());
+            }
+            return $d->rowCount();
+        });
+    }
+    /** Empties the REGULAR blacklist of one campaign (campaign_id = $campaignId; 0 = the «all campaigns» rows only). Returns the rows removed. Global lists have no equivalent. */
+    public function blacklistClearRegular(int $campaignId, string $actor): int {
+        return (int)$this->callAtomic(function() use($campaignId,$actor) {
+            $d = $this->db->prepare('DELETE FROM zynervox_blacklist WHERE campaign_id=?'); $d->execute([$campaignId]);
+            $this->blacklistAuditWrite($actor, 'clear', 'regular', null, '', $campaignId, null, $d->rowCount());
+            return $d->rowCount();
+        });
+    }
+    /** Campaign uses ONE global list ($listId) or none (null). */
+    public function setCampaignGlobalBlacklist(int $campaignId, ?int $listId, string $actor): void {
+        $this->callAtomic(function() use($campaignId,$listId,$actor) {
+            $this->campaign($campaignId);
+            $name = $listId === null ? '' : $this->blacklistListRow($listId)['name'];
+            $this->db->prepare('UPDATE zynervox_bot_campaigns SET global_blacklist_id=? WHERE campaign_id=?')->execute([$listId,$campaignId]);
+            $this->blacklistAuditWrite($actor, 'assign', 'global', $listId, $name, $campaignId, null, 1, $listId === null ? 'sin lista global' : '');
+        });
+    }
+    public function blacklistAuditRows(int $limit, ?string $key): array {
+        $s = $this->db->prepare('SELECT audit_id,at,actor,action,scope,list_id,list_name,campaign_id,phone,rows_affected,detail FROM zynervox_blacklist_audit WHERE (? IS NULL OR phone=?) ORDER BY audit_id DESC LIMIT '.max(1, min(500, $limit)));
+        $s->execute([$key, $key]);
+        return $s->fetchAll(\PDO::FETCH_ASSOC);
+    }
+    /**
+     * Called by importLeads inside its transaction. If the campaign of the list has a global blacklist, ONE set-based pass marks as «Bloqueado» (final, never dialed) the freshly loaded
+     * contacts whose last 9 digits are in it, with a BLOCKED attempt each so the distribution counts them in «Bloqueado». Not repeated later. Quiet no-op before migration 026.
+     * @return array{blocked:int,blocked_list:string}
+     */
+    public function blockLeadsByGlobalBlacklist(int $listId, int $campaignId): array {
+        $none = ['blocked'=>0, 'blocked_list'=>''];
+        try {
+            $s = $this->db->prepare('SELECT g.list_id,g.name FROM zynervox_bot_campaigns c JOIN zynervox_blacklist_lists g ON g.list_id=c.global_blacklist_id WHERE c.campaign_id=?');
+            $s->execute([$campaignId]);
+            $g = $s->fetch(\PDO::FETCH_ASSOC);
+            if (!$g) return $none;
+            $on = 'g.list_id=? AND g.phone=(CONVERT(RIGHT(l.phone,9) USING ascii) COLLATE ascii_bin)';
+            $this->db->prepare("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,campaign_id,started_at,finished_at,status,disposition,end_source)
+                SELECT CONCAT('zv2-bl-',REPLACE(UUID(),'-','')),l.list_id,l.lead_id,l.phone,?,UTC_TIMESTAMP(),UTC_TIMESTAMP(),'BLOCKED','BLOCKED','BLOCKED'
+                FROM zynervox_bot_list l JOIN zynervox_blacklist_global g ON $on WHERE l.list_id=? AND l.status='NEW'")->execute([$campaignId, (int)$g['list_id'], $listId]);
+            $u = $this->db->prepare("UPDATE zynervox_bot_list l JOIN zynervox_blacklist_global g ON $on SET l.status='BLOCKED' WHERE l.list_id=? AND l.status='NEW'");
+            $u->execute([(int)$g['list_id'], $listId]);
+            return ['blocked'=>$u->rowCount(), 'blocked_list'=>(string)$g['name']];
+        } catch (\PDOException $e) { error_log('ZV2 lista global (migración 026 pendiente?): '.$e->getMessage()); return $none; }
+    }
     /** Leaves a finished attempt «BLOCKED» (no call was made) and the lead in the final status BLOCKED. Does not count as a call of the lead. */
     private function recordBlockedAttempt(int $listId, int $leadId, string $phone, int $campaignId): void {
         $this->db->prepare("INSERT INTO zynervox_bot_call_attempts (call_id,list_id,lead_id,phone,campaign_id,started_at,finished_at,status,disposition,end_source) VALUES (?,?,?,?,?,UTC_TIMESTAMP(),UTC_TIMESTAMP(),'BLOCKED','BLOCKED','BLOCKED')")

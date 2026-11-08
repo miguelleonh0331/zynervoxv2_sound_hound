@@ -622,6 +622,61 @@ $rt = array_values(array_filter(bot_cfg_test_recent($repo, 5), fn($r) => $r['lis
 check('Test: al terminar la lista se cierra sola y la pantalla ve su estado y resultado', $ft && $rt['state'] === 'terminada' && $rt['estado'] === 'ocupado' && $rt['estado_label'] === 'Ocupado' && str_contains($rt['resultado'], '486')
     && (int)$pdo->query("SELECT active FROM zynervox_bot_lists WHERE list_id={$t1['list_id']}")->fetchColumn() === 0);
 check('Test: una lista normal de la misma campaña sí conserva sus reintentos', $repo->campaignConfig($tc)['rules'] !== []);
+// --- Blacklist in two levels (026): global lists filtered only on load; regular one consulted when dialing; audited changes ---
+$pdo->exec("DELETE FROM zynervox_blacklist"); $pdo->exec("DELETE FROM zynervox_blacklist_global"); $pdo->exec("UPDATE zynervox_bot_campaigns SET global_blacklist_id=NULL"); $pdo->exec("DELETE FROM zynervox_blacklist_lists"); $pdo->exec("DELETE FROM zynervox_blacklist_audit");
+$gA = bot_bl_list_create($repo, 'BCP-T', 'tester'); $gB = bot_bl_list_create($repo, 'INTERBANK-T', 'tester');
+check('global: el nombre de la lista es único y se puede renombrar', throws(fn() => bot_bl_list_create($repo, 'BCP-T', 'tester')) !== '' && (bot_bl_list_rename($repo, $gB, 'IBK-T', 'tester') ?? true) && array_column(bot_bl_lists($repo), 'name') === ['BCP-T', 'IBK-T']);
+foreach (['900000081', '51900000082', '+51 900-000-083'] as $n) bot_bl_add($repo, 'global', $gA, $n, 'cliente BCP', 'tester');
+bot_bl_add($repo, 'global', $gB, '900000084', 'cliente IBK', 'tester');
+bot_bl_add($repo, 'global', $gA, '900000081', 'motivo nuevo', 'tester');
+check('global: números a 9 dígitos, sin duplicados y la reincidencia solo actualiza el motivo', (int)$pdo->query("SELECT COUNT(*) FROM zynervox_blacklist_global WHERE list_id=$gA")->fetchColumn() === 3 && $pdo->query("SELECT reason FROM zynervox_blacklist_global WHERE list_id=$gA AND phone='900000081'")->fetchColumn() === 'motivo nuevo'
+    && throws(fn() => bot_bl_add($repo, 'global', $gA, '12345', '', 'tester')) !== '' && throws(fn() => bot_bl_add($repo, 'global', 999999, '900000085', '', 'tester')) !== '' && throws(fn() => bot_bl_add($repo, 'global', $gA, '900000085', '', ' ')) !== '');
+$gc = bot_cfg_save($repo, null, ['name'=>'GLOBALCON', 'active'=>'1', 'call_origin'=>'7308', 'lead_order'=>'UP', 'rules'=>[], 'schedules'=>[]]);
+$gn = bot_cfg_save($repo, null, ['name'=>'GLOBALSIN', 'active'=>'1', 'call_origin'=>'7308', 'lead_order'=>'UP', 'rules'=>[], 'schedules'=>[]]);
+$go = bot_cfg_save($repo, null, ['name'=>'GLOBALOTRA', 'active'=>'1', 'call_origin'=>'7308', 'lead_order'=>'UP', 'rules'=>[], 'schedules'=>[]]);
+bot_bl_assign_global($repo, $gc, $gA, 'tester'); bot_bl_assign_global($repo, $go, $gB, 'tester');
+$mk = function(int $camp) use($pdo, $repo) { $pdo->exec("INSERT INTO zynervox_bot_lists (campaign_id,name,active,max_channels) VALUES ($camp,'GL',1,1)"); return (int)$pdo->lastInsertId(); };
+$rows = bot_list_parse_txt("numero,id_contacto\n900000081,1\n900000082,2\n900000084,3\n900000086,4\n");
+$lc = $mk($gc); $rc = $repo->importLeads($lc, $gc, $rows);
+check('carga con global: bloquea los suyos (81 y 82), no el de otra lista global (84) ni el libre, e informa cuántos y de qué lista', $rc['saved'] === 4 && $rc['blocked'] === 2 && $rc['blocked_list'] === 'BCP-T'
+    && $pdo->query("SELECT GROUP_CONCAT(phone ORDER BY phone) FROM zynervox_bot_list WHERE list_id=$lc AND status='BLOCKED'")->fetchColumn() === '900000081,900000082'
+    && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_call_attempts WHERE list_id=$lc AND disposition='BLOCKED' AND finished_at IS NOT NULL")->fetchColumn() === 2);
+$ln = $mk($gn); $rn = $repo->importLeads($ln, $gn, $rows);
+check('carga en una campaña SIN lista global: no bloquea nada', $rn['blocked'] === 0 && $rn['blocked_list'] === '' && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_bot_list WHERE list_id=$ln AND status<>'NEW'")->fetchColumn() === 0);
+$lo = $mk($go); $ro = $repo->importLeads($lo, $go, $rows);
+check('carga con OTRA lista global: solo bloquea los de esa (84)', $ro['blocked'] === 1 && $ro['blocked_list'] === 'IBK-T' && $pdo->query("SELECT phone FROM zynervox_bot_list WHERE list_id=$lo AND status='BLOCKED'")->fetchColumn() === '900000084');
+$pdo->exec("UPDATE zynervox_bot_lists SET dialer_state='running' WHERE list_id=$lc");
+$repo->refreshListSummary($lc, 'stopped', marcador_amd_valid_from_utc());
+$dc = bot_cfg_contact_distribution($repo, ['list_id'=>$lc])['lists'][0];
+check('los bloqueados por la global cuentan en «Bloqueado» de la distribución y suman 100', $dc['counts']['bloqueado'] === 2 && $dc['counts']['sin_llamar'] === 2 && array_sum($dc['counts']) === 4 && abs(array_sum($dc['pct']) - 100.0) < 0.0001);
+$seen = []; while (($cl = $repo->claimCampaignLead($gc, 'UP', 'zv2-gl'.count($seen), fn($lead) => ['ok'=>1])) !== null) { $seen[] = $cl['phone']; $repo->finishUnansweredCall($cl['call_id'], 'NOANSWER', 19, 'SIP 487 Request Terminated', 'NOANSWER'); }
+check('el motor nunca marca a los bloqueados por la carga (solo 84 y 86)', $seen === ['900000084', '900000086'] || $seen === ['900000086', '900000084']);
+bot_bl_add($repo, 'global', $gA, '900000086', 'agregado después', 'tester');
+$pdo->exec("UPDATE zynervox_bot_lists SET dialer_state='stopped' WHERE list_id=$ln"); $lc2 = $mk($gn); $pdo->exec("UPDATE zynervox_bot_lists SET dialer_state='running' WHERE list_id=$lc2"); $repo->importLeads($lc2, $gn, bot_list_parse_txt("numero,id_contacto\n900000086,9\n"));
+check('lo agregado a la global DESPUÉS no se refiltra al marcar (solo en la carga)', $repo->claimCampaignLead($gn, 'UP', 'zv2-gl-late', fn($lead) => ['ok'=>1])['phone'] === '900000086');
+// regular blacklist: only the regular table is consulted when dialing, never the global one
+$pdo->exec("DELETE FROM zynervox_blacklist"); bot_cfg_save($repo, $gn, ['name'=>'GLOBALSIN', 'blacklist_enabled'=>'1']);
+check('al marcar se consulta solo la regular: un número de la global no bloquea y uno de la regular sí', !$repo->isBlacklisted('900000081', $gn) && marcador_blacklist_check($repo, '900000081', (string)$gn) === 'NO'
+    && (bot_bl_add($repo, 'regular', $gn, '900000091', 'regular', 'tester') === '900000091') && $repo->isBlacklisted('900000091', $gn) && marcador_blacklist_check($repo, '900000091', (string)$gn) === 'SI');
+bot_bl_add($repo, 'regular', $gn, '900000092', '', 'tester'); bot_bl_add($repo, 'regular', $gc, '900000093', '', 'tester'); bot_bl_add($repo, 'regular', 0, '900000094', 'todas', 'tester');
+$sr = bot_bl_search($repo, '+51 900000091'); $sg = bot_bl_search($repo, '900000081');
+check('buscar un número lo encuentra en las listas globales y en la regular', count($sr) === 1 && $sr[0]['scope'] === 'regular' && $sr[0]['list_name'] === 'GLOBALSIN' && count($sg) === 1 && $sg[0]['scope'] === 'global' && $sg[0]['list_name'] === 'BCP-T');
+check('retirar exige confirmación y retira solo un número', throws(fn() => bot_bl_remove($repo, 'regular', $gn, '900000091', 'tester', false)) !== '' && bot_bl_remove($repo, 'regular', $gn, '900000091', 'tester', true) === 1 && bot_bl_remove($repo, 'regular', $gn, '900000091', 'tester', true) === 0
+    && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_blacklist WHERE campaign_id=$gn")->fetchColumn() === 1);
+check('vaciar la regular exige confirmación y vacía solo la campaña pedida (ni las otras ni «todas»)', throws(fn() => bot_bl_clear_regular($repo, $gn, 'tester', false)) !== '' && bot_bl_clear_regular($repo, $gn, 'tester', true) === 1
+    && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_blacklist WHERE campaign_id=$gc")->fetchColumn() === 1 && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_blacklist WHERE campaign_id=0")->fetchColumn() === 1);
+check('vaciar «todas» quita solo las filas de «todas»', bot_bl_clear_regular($repo, 0, 'tester', true) === 1 && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_blacklist WHERE campaign_id=$gc")->fetchColumn() === 1);
+bot_bl_remove($repo, 'global', $gA, '900000086', 'tester', true);
+check('la global no se puede vaciar por el servicio: no existe esa operación y quitar un número deja los demás', !function_exists('bot_bl_clear_global') && !method_exists($repo, 'blacklistClearGlobal') && (int)$pdo->query("SELECT COUNT(*) FROM zynervox_blacklist_global WHERE list_id=$gA")->fetchColumn() === 3);
+$au = bot_bl_audit($repo, 200); $acts = array_count_values(array_column($au, 'action'));
+check('auditoría: altas, retiradas, vaciados, altas de lista y asignaciones quedan con quién, cuándo, número y lista', ($acts['add'] ?? 0) >= 9 && ($acts['remove'] ?? 0) === 2 && ($acts['clear'] ?? 0) === 2 && ($acts['list_create'] ?? 0) === 2 && ($acts['assign'] ?? 0) === 2 && ($acts['list_rename'] ?? 0) === 1
+    && $au[0]['actor'] === 'tester' && count(bot_bl_audit($repo, 10, '900000086')) === 2
+    && array_filter($au, fn($a) => $a['action'] === 'remove' && $a['scope'] === 'global' && $a['phone'] === '900000086' && $a['list_name'] === 'BCP-T'));
+bot_bl_assign_global($repo, $gc, null, 'tester');
+check('una campaña puede quitar su lista global', $repo->importLeads($mk($gc), $gc, $rows)['blocked'] === 0);
+$tg = bot_cfg_test_create($repo, $go, '900000084', 'tester');
+check('Test con la campaña que tiene global: la lista de prueba nace bloqueada y lo informa', $tg['blocked'] === 1 && $tg['blocked_list'] === 'IBK-T');
+$pdo->exec("DELETE FROM zynervox_blacklist"); $pdo->exec("DELETE FROM zynervox_blacklist_global"); $pdo->exec("UPDATE zynervox_bot_campaigns SET global_blacklist_id=NULL"); $pdo->exec("DELETE FROM zynervox_blacklist_lists"); $pdo->exec("DELETE FROM zynervox_blacklist_audit");
 // Strict check used by the dialplan AGI: SI / NO / ERROR (fail closed when the table or the database fail)
 $pdo->exec("INSERT INTO zynervox_blacklist (campaign_id,phone,reason,created_by) VALUES ($bc,'900000021','prueba ficticia','test')");
 check('AGI de lista negra: SI para un bloqueado (con prefijo o formato), NO para otro, ERROR sin dígitos', marcador_blacklist_check($repo, '51900000021', (string)$bc) === 'SI' && marcador_blacklist_check($repo, '900000021', (string)$bc) === 'SI' && marcador_blacklist_check($repo, '900000022', (string)$bc) === 'NO' && marcador_blacklist_check($repo, 'xx', (string)$bc) === 'ERROR' && marcador_blacklist_check($repo, '12345', (string)$bc) === 'NO');
