@@ -140,6 +140,7 @@ function campaigns_schedule_row(array $r, array $days): string {
     <title>Campañas - Zynervox</title>
     <link rel="stylesheet" href="layout.css">
     <style>
+        tr.row-link { cursor: pointer; } tr.row-link:hover td { background: rgba(249, 115, 22, 0.12); } tr.row-link:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
         .cfg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.75rem; }
         .cfg-grid label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
         .cfg-grid input, .cfg-grid select, .cfg-table input, .cfg-table select { width: 100%; box-sizing: border-box; }
@@ -171,14 +172,13 @@ function campaigns_schedule_row(array $r, array $days): string {
                 <thead><tr><th>ID</th><th>Nombre</th><th>Activa</th><th>Marcador</th><th>Listas</th><th></th></tr></thead>
                 <tbody>
                 <?php foreach ($campaigns as $row): ?>
-                    <tr>
+                    <tr class="row-link" tabindex="0" data-href="campaigns.php?id=<?php echo (int)$row['campaign_id']; ?>" title="Abrir la campaña para editarla">
                         <td><strong><?php echo (int)$row['campaign_id']; ?></strong></td>
                         <td><?php echo h($row['name']); ?></td>
                         <td><?php echo (int)$row['active'] ? 'Sí' : 'No'; ?></td>
                         <td style="color: <?php echo ($row['dialer_state'] ?? '') === 'running' ? '#10b981' : '#9ca3af'; ?>;"><?php echo ($row['dialer_state'] ?? '') === 'running' ? 'En marcha' : 'Detenido'; ?></td>
                         <td><?php echo (int)$row['lists_count']; ?></td>
                         <td style="white-space: nowrap;">
-                            <a class="btn-action" href="campaigns.php?id=<?php echo (int)$row['campaign_id']; ?>">Editar</a>
                             <form method="POST" action="campaigns.php" class="inline-form" style="display: inline;">
                                 <input type="hidden" name="csrf" value="<?php echo h($_SESSION['campaigns_csrf']); ?>">
                                 <input type="hidden" name="campaign_id" value="<?php echo (int)$row['campaign_id']; ?>">
@@ -202,6 +202,13 @@ function campaigns_schedule_row(array $r, array $days): string {
                 </tbody>
             </table>
         </div>
+        <script>
+        // La fila entera abre la edición (clic o Intro); los botones y formularios de la fila hacen solo lo suyo.
+        document.querySelectorAll('tr.row-link').forEach(function (tr) {
+            tr.addEventListener('click', function (e) { if (e.target.closest('button, a, form, input, select')) return; location.href = tr.dataset.href; });
+            tr.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target === tr) { e.preventDefault(); location.href = tr.dataset.href; } });
+        });
+        </script>
 <?php else: ?>
         <form method="POST" action="campaigns.php<?php echo $c['campaign_id'] ? '?id=' . (int)$c['campaign_id'] : '?view=new'; ?>" id="cfg">
             <div class="card" style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem;">
@@ -236,7 +243,8 @@ function campaigns_schedule_row(array $r, array $days): string {
                         <?php endforeach; ?>
                         <?php if (($c['transfer_carrier_id'] ?? '') !== '' && !$carrierKnown): ?><option value="<?php echo h($c['transfer_carrier_id']); ?>" selected><?php echo h($c['transfer_carrier_id']); ?> (no disponible)</option><?php endif; ?>
                         </select></label>
-                    <label>Destino de transferencia <input name="transfer_destination" value="<?php echo h($c['transfer_destination'] ?? ''); ?>" maxlength="40" placeholder="dígitos, +, * y #"></label>
+                    <label>ID CAMPAÑA <input name="transfer_destination" value="<?php echo h($c['transfer_destination'] ?? ''); ?>" maxlength="40" placeholder="Ej.: 13117878">
+                        <small style="font-size: 0.72rem; font-weight: 400; text-transform: none; line-height: 1.3;">Identificador con el que la llamada transferida llega al sistema receptor, para que la derive a sus agentes. Ej.: 13117878</small></label>
                     <label>Zona horaria <input name="timezone" value="<?php echo h($c['timezone'] ?? 'America/Lima'); ?>" maxlength="64" required></label>
                     <label>Orden de leads
                         <select name="lead_order"><?php foreach (['DOWN'=>'Descendente', 'UP'=>'Ascendente', 'RANDOM'=>'Aleatorio'] as $k => $label): ?><option value="<?php echo $k; ?>"<?php echo ($c['lead_order'] ?? 'DOWN') === $k ? ' selected' : ''; ?>><?php echo $label; ?></option><?php endforeach; ?></select></label>
