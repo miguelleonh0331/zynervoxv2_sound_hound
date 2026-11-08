@@ -230,7 +230,7 @@
                 { page: 'test.php', sel: '#form', text: 'La pantalla Test sirve para probar rápido con UN número: se crea una lista de prueba (1 número, 1 canal) y tú decides cuándo llamar. Crearla no llama a nadie.' },
                 { sel: '#campaign', action: 'select', value: '1', text: 'Se elige la campaña con la que se hará la prueba: de ella se toman la troncal, la transferencia y el tipo de marcación.' },
                 { sel: '#phone', action: 'type', value: '900000012', text: 'Se escribe el número: 9 dígitos, sin 51. (En la guía se usa uno inventado, 900 000 012.)' },
-                { sel: '#create', action: 'submit-demo', sim: true, text: '«Crear lista de prueba». SIMULADO: en la guía solo aparece una lista de ejemplo en pantalla; no se crea nada de verdad.' },
+                { sel: '#create', action: 'submit-demo', submit: '#form', sim: true, text: '«Crear lista de prueba». SIMULADO: en la guía solo aparece una lista de ejemplo en pantalla; no se crea nada de verdad.' },
                 { sel: '#created', text: 'Aparece la ficha con el nombre de la lista (test-fecha-hora), la campaña, el número y un enlace a su reporte. Todavía no se ha llamado a nadie.' },
                 { sel: '#created button', txt: 'Iniciar', action: 'click', sim: true, text: '«Iniciar» llamaría de verdad a ese número, por eso pide una confirmación que lo dice claro. EN LA GUÍA ES SOLO UN CLIC SIMULADO: no se llama a nadie ni se inicia nada.' },
                 { sel: '#recent', text: '«Últimas pruebas»: hora, campaña, número, estado (Sin iniciar, En curso o Terminada) y el resultado en lenguaje llano, con un enlace a Reportes. Se actualiza sola cada pocos segundos.' }

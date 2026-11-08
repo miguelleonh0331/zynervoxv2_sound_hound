@@ -143,7 +143,7 @@
             if (step.action === 'click' || step.action === 'real' || step.action === 'submit-demo') { ripple(tx, ty); if (step.sim) badge(tx, ty); }
             if (step.action === 'real' && REAL_OK.indexOf(step.sel) >= 0) { await sleep(250); e.click(); await sleep(450); }
             else if (step.action === 'real-change' && REAL_CHANGE_OK.indexOf(step.sel) >= 0) { e.value = step.value; e.dispatchEvent(new Event('change', { bubbles: true })); await sleep(900); }
-            else if (step.action === 'submit-demo' && REAL_SUBMIT_OK.indexOf(step.sel) >= 0) { var w = frame.contentWindow; w.__allowSubmit = e.id; e.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await sleep(1100); }
+            else if (step.action === 'submit-demo' && REAL_SUBMIT_OK.indexOf(step.submit) >= 0) { var fm = frame.contentDocument.querySelector(step.submit); if (fm) { frame.contentWindow.__allowSubmit = fm.id; fm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await sleep(1100); } }
             else if (step.action === 'type') { await typeInto(e, step.value || '', my); }
             else if (step.action === 'select') { if (step.value !== undefined) e.value = step.value; ripple(tx, ty); await sleep(250); }
             if (my !== token) return;
