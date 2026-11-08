@@ -10,13 +10,15 @@
         var h = el('h2', '', 'No hay canales suficientes'); h.id = 'chn-title'; h.style.cssText = 'margin:0 0 .5rem;font-size:1.05rem'; box.appendChild(h);
         box.appendChild(el('p', '', message)).style.margin = '0 0 .6rem';
         if (f) {
-            var rows = [['Discando ahora', f.discando], ['Máximo del servidor', f.maximo], ['Pedidos', f.pedidos], ['Libres', f.libres]];
-            if (f.faltan > 0) rows.push(['Faltan', f.faltan]);
+            var bajaMax = f.pedidos === 0 && f.libres === 0 && f.faltan > 0; // al bajar el máximo del servidor: «maximo» es el valor que se intentó guardar
+            var rows = bajaMax ? [['Discando ahora', f.discando], ['Máximo que intentaste', f.maximo], ['Sobran', f.faltan]]
+                : [['Discando ahora', f.discando], ['Máximo del servidor', f.maximo], ['Pedidos', f.pedidos], ['Libres', f.libres]];
+            if (!bajaMax && f.faltan > 0) rows.push(['Faltan', f.faltan]);
             var t = el('table'); t.style.cssText = 'border-collapse:collapse;width:100%;margin:.2rem 0 .6rem';
             rows.forEach(function (r) { var tr = el('tr'); var a = el('td', '', r[0]), b = el('td', '', String(r[1])); a.style.cssText = 'padding:.15rem 0;color:#4b5563'; b.style.cssText = 'padding:.15rem 0;text-align:right;font-weight:700;font-variant-numeric:tabular-nums'; tr.appendChild(a); tr.appendChild(b); t.appendChild(tr); });
             box.appendChild(t);
         }
-        box.appendChild(el('p', '', 'No se inició ni se cambió nada. Baja los canales de esta lista o detén otra lista y vuelve a intentarlo.')).style.cssText = 'margin:0 0 .8rem;color:#374151';
+        box.appendChild(el('p', '', f && f.pedidos === 0 && f.libres === 0 && f.faltan > 0 ? 'No se cambió el máximo. Detén listas o baja sus canales primero y vuelve a intentarlo.' : 'No se inició ni se cambió nada. Baja los canales de esta lista o detén otra lista y vuelve a intentarlo.')).style.cssText = 'margin:0 0 .8rem;color:#374151';
         var ok = el('button', 'btn-primary', 'Entendido'); ok.type = 'button'; ok.style.cssText = 'float:right;cursor:pointer';
         function close() { back.remove(); document.removeEventListener('keydown', onKey); }
         function onKey(e) { if (e.key === 'Escape') close(); }
