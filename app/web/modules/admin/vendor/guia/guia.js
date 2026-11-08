@@ -103,13 +103,30 @@
     }
 
     // ---- narración: un MP3 por paso (vendor/guia/audio/<tema>/<paso>.mp3, misma carpeta de la guía, sin red externa); si falta el archivo, silencio ----
-    var voiceOn = true, snd = null;
+    var voiceOn = true, snd = null, paused = false, autoT = 0;
     try { voiceOn = localStorage.getItem('guiaVoz') !== 'off'; } catch (e) {}
-    function stopAudio() { if (snd) { snd.pause(); snd.onerror = null; snd = null; } }
+    function clearAuto() { clearTimeout(autoT); autoT = 0; }
+    function armAuto(ms) { // pasa solo al siguiente paso; en el último se detiene; en pausa no corre
+        clearAuto(); if (paused || !topic || idx >= topic.steps.length - 1) return;
+        var my = token; autoT = setTimeout(function () { if (my === token && !paused) go(idx + 1); }, ms);
+    }
+    function waitMs(step) { return Math.max(5000, 2500 + (step.text || '').length * 55); } // sin audio: tiempo de lectura según el largo del texto
+    function stopAudio() { clearAuto(); if (snd) { snd.pause(); snd.onerror = snd.onended = null; snd = null; } }
     function playStep(i) {
-        stopAudio(); if (!voiceOn || !topic) return;
-        var a = new Audio(BASE + 'vendor/guia/audio/' + topic.id + '/' + (i + 1) + '.mp3'); snd = a; a.onerror = function () { if (snd === a) snd = null; };
-        var pr = a.play(); if (pr && pr.catch) pr.catch(function () {});
+        stopAudio(); if (!topic) return;
+        var step = topic.steps[i];
+        if (!voiceOn) { armAuto(waitMs(step)); return; }
+        var a = new Audio(BASE + 'vendor/guia/audio/' + topic.id + '/' + (i + 1) + '.mp3'); snd = a;
+        a.onended = function () { if (snd === a) armAuto(1500); };
+        a.onerror = function () { if (snd === a) { snd = null; armAuto(waitMs(step)); } };
+        var pr = a.play(); if (pr && pr.catch) pr.catch(function () { if (snd === a) { snd = null; armAuto(waitMs(step)); } }); // el navegador bloqueó el sonido
+    }
+    function togglePause() {
+        paused = !paused;
+        if (paused) { clearAuto(); if (snd) snd.pause(); }
+        else if (snd && !snd.ended) { var pr = snd.play(); if (pr && pr.catch) pr.catch(function () { snd = null; armAuto(waitMs(topic.steps[idx])); }); }
+        else armAuto(waitMs(topic.steps[idx]));
+        renderPanel(lastStep, idx);
     }
 
     // ---- panel fijo en el menú izquierdo: entre la última entrada y «Cerrar Sesión»; si no cabe o el menú no se ve, abajo a la izquierda ----
@@ -136,7 +153,8 @@
         btn('g-btn g-primary', n === total - 1 ? 'Terminar' : 'Siguiente', function () { if (idx === total - 1) showIndex(); else go(idx + 1); });
         btn('g-btn', 'Índice', showIndex);
         btn('g-btn', 'Salir', function () { stopAudio(); location.href = 'index.php'; });
-        btn('g-btn', voiceOn ? 'Voz: sí' : 'Voz: no', function () { voiceOn = !voiceOn; try { localStorage.setItem('guiaVoz', voiceOn ? 'on' : 'off'); } catch (e) {} if (voiceOn) playStep(idx); else stopAudio(); renderPanel(lastStep, idx); }).title = 'Activar o silenciar la narración';
+        btn('g-btn', voiceOn ? 'Voz: sí' : 'Voz: no', function () { voiceOn = !voiceOn; try { localStorage.setItem('guiaVoz', voiceOn ? 'on' : 'off'); } catch (e) {} playStep(idx); renderPanel(lastStep, idx); }).title = 'Activar o silenciar la narración';
+        btn('g-btn', paused ? 'Continuar' : 'Pausa', togglePause).title = 'Pausar o continuar el avance automático';
         panel.appendChild(row); panel.hidden = false; placePanel();
     }
 
@@ -171,7 +189,7 @@
     function go(i) { if (!topic || i < 0 || i >= topic.steps.length) return; show(i); }
 
     function start(t) {
-        topic = t; idx = 0; loaded = ''; $('index').hidden = true; $('tour').hidden = false; ptr.style.opacity = 0; hl.style.opacity = 0;
+        topic = t; idx = 0; loaded = ''; paused = false; $('index').hidden = true; $('tour').hidden = false; ptr.style.opacity = 0; hl.style.opacity = 0;
         var dots = $('dots'); dots.textContent = ''; t.steps.forEach(function (s, k) { var d = el('span', 'g-step-dot'); d.title = 'Paso ' + (k + 1); d.addEventListener('click', function () { go(k); }); dots.appendChild(d); });
         $('tour-title').textContent = 'Guía · ' + t.title; show(0);
     }
