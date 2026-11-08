@@ -18,7 +18,7 @@ function test_json(int $code, array $body): void {
 $isApi = isset($_GET['data']) || ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
 if ($isApi) {
     if (session_status() === PHP_SESSION_NONE) session_start();
-    if (empty($_SESSION['user']) || (int)($_SESSION['user_level'] ?? 0) !== 9) test_json(401, ['ok' => false, 'error' => 'Sesión requerida.']);
+    \Includes\Permissions::requireApi('page.test'); // no listada en el mapa: solo Administrador
     try {
         $db = bot_ivr_repository();
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {

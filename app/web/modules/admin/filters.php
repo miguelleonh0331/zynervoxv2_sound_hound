@@ -5,7 +5,7 @@ require_once __DIR__ . '/../../includes/Leads.php';
 use Includes\Auth;
 use Includes\Leads;
 
-Auth::checkAccess([7, 8, 9]);
+Auth::checkAccess(9); // pantalla heredada: solo Administrador
 
 $query = trim($_GET['q'] ?? '');
 $results = $query !== '' ? Leads::search($query) : [];

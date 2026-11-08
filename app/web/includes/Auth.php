@@ -8,6 +8,7 @@ use Exception;
 
 require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/Audit.php';
+require_once __DIR__ . '/Permissions.php';
 
 class Auth {
     private static $sessionStarted = false;
@@ -19,6 +20,12 @@ class Auth {
             }
             self::$sessionStarted = true;
         }
+    }
+
+    /** Las claves nuevas se guardan con hash (password_hash, empiezan por $2y$); las antiguas siguen siendo texto plano y siguen entrando. */
+    private static function passwordMatches(string $given, string $stored): bool {
+        if (strncmp($stored, '$2y$', 4) === 0) return password_verify($given, $stored);
+        return hash_equals($stored, $given);
     }
 
     public static function login($username, $password) {
@@ -35,7 +42,7 @@ class Auth {
                                      LIMIT 1");
             $stmt->execute(['user' => $username]);
             $coreUser = $stmt->fetch();
-            if ($coreUser && $password === $coreUser['pass']) {
+            if ($coreUser && self::passwordMatches((string)$password, (string)$coreUser['pass'])) {
                 $_SESSION['user'] = $coreUser['user'];
                 $_SESSION['user_level'] = (int)$coreUser['user_level'];
                 $_SESSION['full_name'] = $coreUser['full_name'];
@@ -92,6 +99,7 @@ class Auth {
 
         $allowed = is_array($requiredLevel) ? $requiredLevel : [$requiredLevel];
         if (!in_array($_SESSION['user_level'], $allowed)) {
+            if (isset(Permissions::PROFILES[(int)$_SESSION['user_level']])) $_SESSION['perm_notice'] = 'Tu perfil (' . Permissions::profileName((int)$_SESSION['user_level']) . ') no tiene acceso a esa pantalla.';
             $correctPath = self::getRedirectPath($_SESSION['user_level']);
             // El path de getRedirectPath es relativo a la raíz del proyecto.
             // Puesto que estamos en /modules/xxx/index.php, necesitamos volver a la raíz.
@@ -101,13 +109,14 @@ class Auth {
     }
 
     // Niveles vigentes: 1=Agente (sin panel web propio, usa el modulo de
-    // agente aparte), 7=GTR, 8=Supervisor (comparten /modules/sup), 9=Admin.
+    // agente aparte), 7=GTR, 8=Supervisor, 9=Admin. Los tres perfiles de panel (7, 8, 9)
+    // entran por el Dashboard de siempre; lo que ven y pueden lo decide includes/Permissions.php.
     public static function getRedirectPath($level) {
         // Rutas relativas desde la raíz del proyecto (donde está index.php)
         switch ($level) {
             case 1: return 'modules/agente/index.php';
             case 7:
-            case 8: return 'modules/sup/index.php';
+            case 8:
             case 9: return 'modules/admin/index.php';
             default: return 'index.php';
         }

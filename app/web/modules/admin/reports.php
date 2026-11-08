@@ -4,7 +4,7 @@ require_once __DIR__ . '/../../includes/Auth.php';
 require_once __DIR__ . '/sidebar.php';
 use Includes\Auth;
 
-Auth::checkAccess(9);
+\Includes\Permissions::requirePage('page.reports');
 ?>
 <!DOCTYPE html>
 <html lang="es">

@@ -3,6 +3,7 @@ declare(strict_types=1);
 // Datos y acciones del Dashboard. GET: métricas del servidor, servicios y listas. POST (CSRF): activar/desactivar, iniciar/detener una lista.
 // Las listas y las acciones vienen del servicio de campañas; aquí no hay SQL.
 require_once __DIR__ . '/../../includes/Auth.php';
+require_once __DIR__ . '/../../includes/Permissions.php';
 require_once __DIR__ . '/../../bot_ivr/campaign_config_service.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 header('Content-Type: application/json; charset=utf-8');
@@ -13,7 +14,7 @@ function dash_json(int $code, array $body): void {
     echo json_encode($body, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
 }
-if (empty($_SESSION['user']) || (int)($_SESSION['user_level'] ?? 0) !== 9) dash_json(401, ['ok' => false, 'error' => 'Sesión requerida.']);
+\Includes\Permissions::requireApi('page.home'); // ver el Dashboard: los tres perfiles; cada acción se vuelve a comprobar abajo
 
 /** CPU % entre dos lecturas de /proc/stat. */
 function dash_cpu(): ?int {
@@ -51,7 +52,10 @@ try {
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $token = (string)($_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf'] ?? '');
         if (empty($_SESSION['dashboard_csrf']) || !hash_equals($_SESSION['dashboard_csrf'], $token)) dash_json(403, ['ok' => false, 'error' => 'Sesión inválida. Recarga la página.']);
-        if ((string)($_POST['action'] ?? '') === 'start_many') { // «Iniciar todas»: todo o nada, el servicio decide si caben
+        $postAction = (string)($_POST['action'] ?? '');
+        if (!in_array($postAction, ['start', 'stop', 'activate', 'deactivate', 'set_channels', 'start_many'], true)) dash_json(400, ['ok' => false, 'error' => 'Acción inválida.']);
+        \Includes\Permissions::requireApi('dash.' . $postAction); // 403 si el perfil no puede esta acción
+        if ($postAction === 'start_many') { // «Iniciar todas»: todo o nada, el servicio decide si caben
             $items = [];
             foreach (explode(',', (string)($_POST['lists'] ?? '')) as $pair) {
                 if (!preg_match('/^([1-9][0-9]{0,9}):([1-9][0-9]{0,9})$/D', trim($pair), $m)) dash_json(400, ['ok' => false, 'error' => 'Listas inválidas.']);

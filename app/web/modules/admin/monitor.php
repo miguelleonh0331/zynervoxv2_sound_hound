@@ -7,7 +7,7 @@ use Includes\Auth;
 use Includes\Campaigns;
 use Includes\AgentMonitor;
 
-Auth::checkAccess([7, 8, 9]);
+Auth::checkAccess(9); // pantalla heredada: solo Administrador
 
 $campaigns = Campaigns::getAll();
 $selectedCampaign = $_GET['campaign_id'] ?? '';

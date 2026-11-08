@@ -18,7 +18,7 @@ function bl_json(int $code, array $body): void {
 $isApi = isset($_GET['data']) || isset($_GET['search']) || isset($_GET['count']) || ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
 if ($isApi) {
     if (session_status() === PHP_SESSION_NONE) session_start();
-    if (empty($_SESSION['user']) || (int)($_SESSION['user_level'] ?? 0) !== 9) bl_json(401, ['ok' => false, 'error' => 'Sesión requerida.']);
+    \Includes\Permissions::requireApi('page.blacklist'); // no listada en el mapa: solo Administrador
     $actor = (string)$_SESSION['user'];
     try {
         $db = bot_ivr_repository();

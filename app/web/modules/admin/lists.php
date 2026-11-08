@@ -11,10 +11,13 @@ require_once __DIR__ . '/../../bot_ivr/list_service.php';
 require_once __DIR__ . '/../../bot_ivr/list_call_service.php';
 use Includes\Auth;
 
-Auth::checkAccess(9);
+\Includes\Permissions::requirePage('page.lists');
+$canMax = \Includes\Permissions::can('lists.set_server_max');
+$canDelete = \Includes\Permissions::can('lists.delete_list');
 
 // «Plantilla»: archivo demo con el formato real de la carga (cabecera + una fila inventada con el número vacío). Se genera aquí, sin ficheros ni consultas.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && ($_GET['plantilla'] ?? '') === '1') {
+    \Includes\Permissions::requireApi('lists.template');
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="plantilla_lista.csv"');
     header('Cache-Control: no-store');
@@ -46,6 +49,8 @@ try {
             if (empty($_POST) && empty($_FILES)) throw new RuntimeException('La carga supera el límite de esta instalación. Usa un archivo más pequeño.');
             if (!hash_equals($_SESSION['lists_csrf'], (string)($_POST['csrf'] ?? ''))) throw new RuntimeException('Sesión inválida. Recarga la página.');
             $action = (string)($_POST['action'] ?? '');
+            $permKey = ['set_server_max' => 'lists.set_server_max', 'set_channels' => 'lists.set_channels', 'toggle_active' => 'lists.toggle_active', 'delete_list' => 'lists.delete_list', 'load_base' => 'lists.upload'][$action] ?? 'lists.none';
+            if (!\Includes\Permissions::can($permKey)) { http_response_code(403); throw new RuntimeException('Tu perfil (' . \Includes\Permissions::profileName() . ') no tiene permiso para hacer esto.'); } // el servidor decide; los botones ocultos son solo comodidad
             if ($action === 'set_server_max') {
                 bot_cfg_set_max_total_channels($db, $_POST['max_total'] ?? null);
                 $_SESSION['lists_message'] = 'Máximo de canales del servidor actualizado.';
@@ -152,10 +157,12 @@ try {
             <h2>Límite del servidor</h2>
             <input type="hidden" name="csrf" value="<?php echo h($_SESSION['lists_csrf']); ?>">
             <input type="hidden" name="action" value="set_server_max">
+            <?php if ($canMax): ?>
             <div class="cfg-grid">
                 <label>Máximo de canales (todo el servidor, 1 a 500) <input type="number" name="max_total" value="<?php echo h($maxTotal ?? ''); ?>" min="1" max="500" required></label>
                 <button type="submit" class="btn-primary">Guardar máximo</button>
             </div>
+            <?php else: ?><p style="margin: 0.25rem 0;">Máximo de canales del servidor: <strong><?php echo h($maxTotal ?? '—'); ?></strong> (solo el Administrador lo cambia).</p><?php endif; ?>
             <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 0.5rem;">Los canales de cada lista no pueden superar este valor.
                 <?php if ($limits !== null): ?>Llamadas abiertas ahora: <strong><?php echo (int)$limits['open_calls']; ?></strong>.<?php endif; ?>
                 <?php if ($chStatus !== null): ?>Discando ahora: <strong><?php echo (int)$chStatus['discando']; ?></strong> de <strong><?php echo (int)$chStatus['maximo']; ?></strong> canales (libres: <strong><?php echo (int)$chStatus['libres']; ?></strong>).<?php endif; ?></p>
@@ -198,13 +205,13 @@ try {
                             </form>
                         </td>
                         <td>
-                            <form method="POST" action="<?php echo h($listsUrl); ?>" class="inline-form" style="display: inline;" onsubmit="return confirm(this.getAttribute('data-confirm'));" data-confirm="<?php echo h('Se eliminará la lista «' . $l['name'] . '» (#' . (int)$l['list_id'] . ') y sus ' . (int)$l['leads_count'] . ' contactos. El historial de llamadas se conserva. No se puede deshacer.'); ?>">
+                            <?php if ($canDelete): ?><form method="POST" action="<?php echo h($listsUrl); ?>" class="inline-form" style="display: inline;" onsubmit="return confirm(this.getAttribute('data-confirm'));" data-confirm="<?php echo h('Se eliminará la lista «' . $l['name'] . '» (#' . (int)$l['list_id'] . ') y sus ' . (int)$l['leads_count'] . ' contactos. El historial de llamadas se conserva. No se puede deshacer.'); ?>">
                                 <input type="hidden" name="csrf" value="<?php echo h($_SESSION['lists_csrf']); ?>">
                                 <input type="hidden" name="action" value="delete_list">
                                 <input type="hidden" name="campaign_id" value="<?php echo $cid; ?>">
                                 <input type="hidden" name="list_id" value="<?php echo (int)$l['list_id']; ?>">
                                 <button type="submit" class="btn-action">Eliminar</button>
-                            </form>
+                            </form><?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>

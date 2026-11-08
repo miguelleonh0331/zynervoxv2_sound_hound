@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../includes/ServerInfo.php';
+require_once __DIR__ . '/../../includes/Permissions.php';
 
 // Iconos en linea (estilo Feather), heredan color via currentColor -> se ven
 // bien tanto en reposo (gris) como activo/hover (naranja) sin CSS extra.
@@ -67,6 +68,8 @@ function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
     if (($_SESSION['user'] ?? '') === '6666') {
         $items[] = ['key' => 'dev', 'href' => 'modules/admin/dev_checklist.php', 'icon' => 'checklist', 'label' => 'Dev (Checklist)', 'in_scope' => false];
     }
+    // Cada perfil ve solo sus entradas (includes/Permissions.php); lo no listado en el mapa es solo del Administrador.
+    $items = array_values(array_filter($items, function ($it) { return \Includes\Permissions::can('page.' . $it['key']); }));
 ?>
 <aside class="sidebar">
     <div class="sidebar-logo">
@@ -92,6 +95,7 @@ function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
         ];
         $serviciosOpen = in_array($activePage, array_column($servicios, 'key'), true);
         ?>
+        <?php if (\Includes\Permissions::can('page.servicios')): ?>
         <details class="nav-group"<?php echo $serviciosOpen ? ' open' : ''; ?>>
             <summary class="nav-item"><?php echo _svgIcon('services'); ?> Servicios</summary>
             <?php foreach ($servicios as $sv): ?>
@@ -101,6 +105,7 @@ function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
             </a>
             <?php endforeach; ?>
         </details>
+        <?php endif; ?>
     </div>
 
     <a href="<?php echo $rootPrefix; ?>logout.php" class="nav-item logout-link" style="margin-top: auto; color: #ef4444;">
@@ -121,11 +126,13 @@ function renderSidebar($activePage = 'home', $rootPrefix = '../../') {
             <span class="server-info-host"><?php echo htmlspecialchars($serverHost); ?></span>
             <span class="server-info-ip"><?php echo htmlspecialchars($serverIp); ?></span>
         </div>
+        <?php if (\Includes\Permissions::can('page.servidor_notas')): ?>
         <textarea id="serverInfoNotes" class="server-info-notes" maxlength="2000" placeholder="Notas de este servidor (ej. producción, lab de pruebas...)"><?php echo htmlspecialchars($serverNotes); ?></textarea>
         <div class="server-info-actions">
             <button type="button" id="serverInfoSaveBtn" class="server-info-save">Guardar</button>
             <span id="serverInfoStatus" class="server-info-status"></span>
         </div>
+        <?php endif; ?>
     </div>
     <script>
     (function () {

@@ -7,7 +7,7 @@ use Includes\Auth;
 use Includes\Campaigns;
 use Includes\CampaignMonitor;
 
-Auth::checkAccess([7, 8, 9]);
+Auth::checkAccess(9); // pantalla heredada: solo Administrador
 if (\Config\Config::deployment('isolated',false)) {
     $monitorTitle='Monitor de campanas';
     require __DIR__.'/../../bot_ivr/campaign_monitor_view.php';

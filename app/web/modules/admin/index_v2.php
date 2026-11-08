@@ -6,7 +6,8 @@ require_once __DIR__ . '/../../includes/Auth.php';
 require_once __DIR__ . '/sidebar.php';
 use Includes\Auth;
 
-Auth::checkAccess(9);
+\Includes\Permissions::requirePage('page.home');
+$permNotice = \Includes\Permissions::takeNotice();
 if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(random_bytes(32));
 ?>
 <!DOCTYPE html>
@@ -78,7 +79,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             </span>
             <span class="m" id="updated"></span>
         </div>
-        <div id="notice"></div>
+        <div id="notice"><?php if ($permNotice !== ''): ?><p class="dash-error"><?php echo htmlspecialchars($permNotice); ?></p><?php endif; ?></div>
         <div id="bulkres" hidden></div>
         <div id="stpanel" hidden></div>
         <div id="groups"></div>
@@ -88,6 +89,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
     <script>
     (function () {
         var CSRF = <?php echo json_encode($_SESSION['dashboard_csrf']); ?>;
+        var CAN = <?php echo json_encode(\Includes\Permissions::flags(['dash.start', 'dash.stop', 'dash.start_many', 'dash.set_channels', 'dash.deactivate'])); ?>; // lo que el perfil puede; el servidor lo vuelve a comprobar
         var API = 'dashboard_api.php';
         var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         var CATS = [['humano', 'Humano', '#10b981'], ['casilla_voz', 'Casilla de voz', '#3b82f6'], ['no_seguro', 'No seguro', '#8b5cf6'], ['contestada_sin_amd', 'Contestada sin AMD', '#38bdf8'],
@@ -157,14 +159,14 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             var r = { id: l.list_id, c: c }, root = el('div', 'cell'); r.root = root;
             var head = el('div', 'ch'); head.appendChild(el('span', 'pulse'));
             r.nm = el('a', 'nm'); head.appendChild(r.nm); r.tag = el('span', 'tag'); head.appendChild(r.tag); head.appendChild(el('span', 'sp'));
-            r.stop = el('button', 'mini-btn', 'Detener'); r.stop.type = 'button'; head.appendChild(r.stop);
-            r.off = el('button', 'mini-btn', 'Desactivar'); r.off.type = 'button'; head.appendChild(r.off); root.appendChild(head);
+            r.stop = el('button', 'mini-btn', 'Detener'); r.stop.type = 'button'; if (!CAN['dash.stop']) r.stop.style.display = 'none'; head.appendChild(r.stop);
+            r.off = el('button', 'mini-btn', 'Desactivar'); r.off.type = 'button'; if (!CAN['dash.deactivate']) r.off.style.display = 'none'; head.appendChild(r.off); root.appendChild(head);
             var body = el('div', 'body'), gz = el('div', 'gz'); r.gboxA = el('div', 'g'); r.gboxB = el('div', 'g');
             var capA = el('div', 'cap', 'Acumulado'), capB = el('div', 'cap', 'Últimas 50'); r.capB = capB;
             var ga = el('div'), gbx = el('div'); r.gA = new Gauge(ga); r.gB = new Gauge(gbx);
             r.gboxA.appendChild(capA); r.gboxA.appendChild(ga); r.gboxB.appendChild(capB); r.gboxB.appendChild(gbx); gz.appendChild(r.gboxA); gz.appendChild(r.gboxB); body.appendChild(gz);
             var info = el('div', 'info'); r.big = el('div', 'big'); r.l50 = el('div'); r.adv = el('div', 'mut');
-            var chn = el('div'); chn.appendChild(document.createTextNode('Canales ')); r.sel = el('select'); chn.appendChild(r.sel); r.use = el('span', 'mut'); chn.appendChild(r.use);
+            var chn = el('div'); chn.appendChild(document.createTextNode('Canales ')); r.sel = el('select'); r.sel.disabled = !CAN['dash.set_channels']; chn.appendChild(r.sel); r.use = el('span', 'mut'); chn.appendChild(r.use);
             info.appendChild(r.big); info.appendChild(r.l50); info.appendChild(r.adv); info.appendChild(chn); body.appendChild(info);
             r.leg = el('div', 'leg'); r.legRows = {};
             CATS.forEach(function (k) { var row = el('div'), i = el('i'), lb = el('span', 'lb', k[1]), pc = el('span', 'pc'); i.style.background = k[2]; row.appendChild(i); row.appendChild(lb); row.appendChild(pc); row.title = k[1]; r.legRows[k[0]] = { row: row, pc: pc }; r.leg.appendChild(row); });
@@ -217,7 +219,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             if (!list.length) { stPanel.appendChild(el('span', 'mut', 'No hay listas activas detenidas.')); return; }
             list.forEach(function (x) {
                 var row = el('div', 'row'); row.appendChild(el('b', '', x.c.name)); row.appendChild(el('span', '', x.l.name + ' (#' + x.l.list_id + ')')); row.appendChild(el('span', 'sp'));
-                var go = el('button', 'mini-btn', 'Iniciar'); go.type = 'button';
+                var go = el('button', 'mini-btn', 'Iniciar'); go.type = 'button'; if (!CAN['dash.start']) go.style.display = 'none';
                 go.addEventListener('click', function () { act('start', x.c.campaign_id, x.l.list_id, 'Al iniciar, el marcador empezará a llamar de verdad a los contactos de la lista «' + x.l.name + '». ¿Continuar?'); });
                 row.appendChild(go); stPanel.appendChild(row);
             });
@@ -262,6 +264,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
                 post(action, it.c.campaign_id, it.l.list_id).then(function () { ok++; }).catch(function (e) { bad.push(it.c.name + ' · ' + it.l.name + ' (#' + it.l.list_id + '): ' + e.message); }).then(next);
             })();
         }
+        if (!CAN['dash.start_many']) startAllBtn.style.display = 'none'; if (!CAN['dash.stop']) stopAllBtn.style.display = 'none';
         startAllBtn.addEventListener('click', function () { bulk('start', stoppedAll.slice(), 'Iniciar todas'); });
         stopAllBtn.addEventListener('click', function () { bulk('stop', runningList.slice(), 'Parar todas'); });
 

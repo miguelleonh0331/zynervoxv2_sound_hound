@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-// Datos del informe de llamadas (JSON) y exportación CSV. Solo nivel 9. Sin SQL propio: usa bot_cfg_report de la capa de campañas.
+// Datos del informe de llamadas (JSON) y exportación CSV. Lectura: Administrador, Supervisor y GTR. Sin SQL propio: usa bot_cfg_report de la capa de campañas.
 require_once __DIR__ . '/../../includes/Auth.php';
 require_once __DIR__ . '/../../bot_ivr/campaign_config_service.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -12,7 +12,7 @@ function rep_json(int $code, array $body): void {
     echo json_encode($body, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
 }
-if (empty($_SESSION['user']) || (int)($_SESSION['user_level'] ?? 0) !== 9) rep_json(401, ['ok' => false, 'error' => 'Sesión requerida.']);
+\Includes\Permissions::requireApi('reports.read'); // Supervisor y GTR consultan; el informe es solo de lectura
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') rep_json(405, ['ok' => false, 'error' => 'Método no permitido.']);
 
 $filters = [];

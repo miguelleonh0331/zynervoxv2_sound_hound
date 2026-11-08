@@ -4,7 +4,8 @@ require_once __DIR__ . '/../../includes/Auth.php';
 require_once __DIR__ . '/sidebar.php';
 use Includes\Auth;
 
-Auth::checkAccess(9);
+\Includes\Permissions::requirePage('page.home');
+$permNotice = \Includes\Permissions::takeNotice();
 if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(random_bytes(32));
 ?>
 <!DOCTYPE html>
@@ -93,7 +94,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
                 <p style="color: var(--text-muted); font-size: 0.8125rem;">Servidor, servicios y listas · se actualiza cada 5 segundos <span id="updated"></span></p>
             </div>
         </header>
-        <div id="notice"></div>
+        <div id="notice"><?php if ($permNotice !== ''): ?><p class="dash-error"><?php echo htmlspecialchars($permNotice); ?></p><?php endif; ?></div>
         <div id="status"></div>
         <section class="dash-grid" id="server" aria-label="Servidor"></section>
         <section class="services" id="services" aria-label="Servicios"></section>
@@ -104,6 +105,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
     <script>
     (function () {
         var CSRF = <?php echo json_encode($_SESSION['dashboard_csrf']); ?>;
+        var CAN = <?php echo json_encode(\Includes\Permissions::flags(['dash.start', 'dash.stop', 'dash.start_many', 'dash.set_channels', 'dash.deactivate'])); ?>; // lo que el perfil puede; el servidor lo vuelve a comprobar
         var API = 'dashboard_api.php';
         var busy = false, timer = null;
         // Categorías por contacto, en el orden y con los colores del contrato (Distribución por contacto).
@@ -233,7 +235,7 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
             card.appendChild(el('div', 'rate', dist ? 'Avance: ' + called + ' de ' + dist.contacts + ' contactos ya llamados (' + fpct(av) + ' %)' : 'Avance ' + l.progress_pct + ' %'));
 
             var ch = el('div', 'chan'), sel = el('select'), maxc = Math.max(n0(srvMax), n0(l.channels), 1);
-            sel.setAttribute('aria-label', 'Canales asignados a ' + l.name);
+            sel.setAttribute('aria-label', 'Canales asignados a ' + l.name); sel.disabled = !CAN['dash.set_channels'];
             for (var k = 1; k <= maxc; k++) { var op = el('option', '', String(k)); op.value = k; sel.appendChild(op); }
             sel.value = l.channels; sel.addEventListener('change', function () { act('set_channels', c.campaign_id, l.list_id, '', { channels: sel.value }); });
             ch.appendChild(el('span', '', 'Canales asignados')); ch.appendChild(sel); ch.appendChild(el('span', 'g-sub', 'en uso ' + l.open_calls + ' de ' + l.channels + ' (máx. servidor ' + srvMax + ')')); card.appendChild(ch);
@@ -245,10 +247,11 @@ if (empty($_SESSION['dashboard_csrf'])) $_SESSION['dashboard_csrf'] = bin2hex(ra
                 if (!l.active) { go.disabled = true; go.title = 'Lista inactiva: actívala primero'; }
                 go.addEventListener('click', function () { act('start', c.campaign_id, l.list_id, 'Al iniciar, el marcador empezará a llamar de verdad a los contactos de la lista «' + l.name + '». ¿Continuar?'); });
             }
-            ac.appendChild(go);
+            if (l.started ? CAN['dash.stop'] : CAN['dash.start']) ac.appendChild(go);
             var off = el('button', 'btn-action', 'Desactivar'); off.type = 'button';
             off.addEventListener('click', function () { act('deactivate', c.campaign_id, l.list_id, 'Se detiene la lista «' + l.name + '» y sale del Dashboard. Para volver a usarla, actívala en Listas. ¿Continuar?'); });
-            ac.appendChild(off); card.appendChild(ac);
+            if (CAN['dash.deactivate']) ac.appendChild(off);
+            card.appendChild(ac);
             if (ins.thresholds_provisional && ins.thresholds) card.appendChild(el('div', 'foot', 'Umbrales provisionales (según % de humanos entre contactos llamados): Caliente ≥ ' + ins.thresholds.hot_human_pct + ' %, Tibia ≥ ' + ins.thresholds.warm_human_pct + ' %, Fría por debajo; con menos de ' + ins.thresholds.min_called_contacts + ' contactos llamados, Sin datos.'));
             return card;
         }

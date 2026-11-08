@@ -3,7 +3,7 @@ require_once __DIR__ . '/../../includes/Auth.php';
 
 use Includes\Auth;
 
-Auth::checkAccess([7, 8, 9]);
+Auth::checkAccess(9); // pantalla heredada: solo Administrador
 $config = [
     'WHATSAPP_BASE_PATH' => '/zynerwabav2',
     'ZYNERVOX_SSO_SECRET' => '',
