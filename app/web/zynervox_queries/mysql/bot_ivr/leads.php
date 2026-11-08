@@ -44,9 +44,10 @@ trait LeadQueries {
                     $saved += count($values);
                 }
             }
+            $blocked = $this->blockLeadsByGlobalBlacklist($listId, $campaignId); // global blacklist of the campaign (MarcadorBuilder): once, only on load
             if ($ownsTransaction) $this->db->commit();
             else $this->db->exec('RELEASE SAVEPOINT '.$savepoint);
-            return ['saved'=>$saved, 'duplicates'=>$duplicates, 'rejected'=>(int)$parsed['rejected'], 'errors'=>$parsed['errors']];
+            return ['saved'=>$saved, 'duplicates'=>$duplicates, 'rejected'=>(int)$parsed['rejected'], 'errors'=>$parsed['errors']] + $blocked;
         } catch (\Throwable $e) {
             if ($ownsTransaction && $this->db->inTransaction()) $this->db->rollBack();
             elseif (!$ownsTransaction && $this->db->inTransaction()) {
