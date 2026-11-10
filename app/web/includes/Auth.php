@@ -12,6 +12,15 @@ require_once __DIR__ . '/Permissions.php';
 
 class Auth {
     private static $sessionStarted = false;
+    /** Motivo del último login rechazado por perfil (para mostrarlo en la pantalla de entrada). */
+    public static $loginError = '';
+
+    /** Solo entran los perfiles del panel (7 GTR, 8 Supervisor, 9 Administrador); cualquier otro nivel no tiene destino y se rechaza. */
+    private static function acceptsLevel(int $level): bool {
+        if (isset(Permissions::PROFILES[$level])) return true;
+        self::$loginError = 'Tu usuario no tiene un perfil con acceso al panel (Administrador, Supervisor o GTR). Pide al Administrador que te asigne uno.';
+        return false;
+    }
 
     private static function startSession() {
         if (!self::$sessionStarted) {
@@ -43,6 +52,7 @@ class Auth {
             $stmt->execute(['user' => $username]);
             $coreUser = $stmt->fetch();
             if ($coreUser && self::passwordMatches((string)$password, (string)$coreUser['pass'])) {
+                if (!self::acceptsLevel((int)$coreUser['user_level'])) { Audit::logAccess($username, 'LOGIN_DENIED', 'Perfil sin acceso al panel (nivel ' . (int)$coreUser['user_level'] . ')'); return false; }
                 $_SESSION['user'] = $coreUser['user'];
                 $_SESSION['user_level'] = (int)$coreUser['user_level'];
                 $_SESSION['full_name'] = $coreUser['full_name'];
@@ -73,6 +83,7 @@ class Auth {
                 // NOTA: Vicidial puede guardar passwords en texto plano o md5 según config.
                 // Por simplicidad y compatibilidad inicial, validamos texto plano.
                 if ($password === $user['pass']) {
+                    if (!self::acceptsLevel((int)$user['user_level'])) { Audit::logAccess($username, 'LOGIN_DENIED', 'Perfil sin acceso al panel (nivel ' . (int)$user['user_level'] . ')'); return false; }
                     $_SESSION['user'] = $user['user'];
                     $_SESSION['user_level'] = (int)$user['user_level'];
                     $_SESSION['full_name'] = $user['full_name'];
@@ -108,13 +119,12 @@ class Auth {
         }
     }
 
-    // Niveles vigentes: 1=Agente (sin panel web propio, usa el modulo de
-    // agente aparte), 7=GTR, 8=Supervisor, 9=Admin. Los tres perfiles de panel (7, 8, 9)
-    // entran por el Dashboard de siempre; lo que ven y pueden lo decide includes/Permissions.php.
+    // Niveles vigentes: 7=GTR, 8=Supervisor, 9=Admin; los tres entran por el Dashboard y lo que ven y pueden lo decide
+    // includes/Permissions.php. Cualquier otro nivel no tiene destino: el login lo rechaza (acceptsLevel) y, si llegara a haber una
+    // sesión suya, el destino es la pantalla de entrada (index.php).
     public static function getRedirectPath($level) {
         // Rutas relativas desde la raíz del proyecto (donde está index.php)
         switch ($level) {
-            case 1: return 'modules/agente/index.php';
             case 7:
             case 8:
             case 9: return 'modules/admin/index.php';

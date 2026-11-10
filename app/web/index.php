@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: " . Auth::getRedirectPath($level));
         exit;
     } else {
-        $error = "Usuario o contraseña incorrectos.";
+        $error = Auth::$loginError !== '' ? Auth::$loginError : "Usuario o contraseña incorrectos.";
     }
 }
 ?>
