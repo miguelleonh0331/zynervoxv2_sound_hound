@@ -181,7 +181,7 @@ minuto, `call_tracking_agi.php --replay`.
 **Motor de marcación `zynervox-dialer.service`.** Lo instala y habilita
 `installer/dialer.sh` (lo llama `install.sh` en modo aislado, como módulo; si falla,
 la instalación continúa y queda en el resumen). **No lo arranca nunca.** La unidad
-está en `asterisk/synervox/modules/bot_ivr/zynervox-dialer.service` (usuario
+está en `asterisk/synervox/modules/bot_ivr/zynervox-dialer.service` (por defecto usuario
 `apache`, ejecuta `/var/www/html/zynervoxv2/bot_ivr/campaign_engine.php`):
 
 ```sh
@@ -190,11 +190,25 @@ sudo bash installer/dialer.sh           # instala y habilita; sin arrancar
 # systemctl start zynervox-dialer.service   -> solo cuando se autorice marcar
 ```
 
-Arrancar el motor **no** inicia llamadas: solo marca listas puestas en «Iniciada».
-Reiniciarlo con llamadas abiertas las puede afectar: hacerlo con 0 canales. La unidad
-fija el usuario y la ruta de la web; si el servidor usa otra ruta, hay que ajustarla.
-Probado: `bash -n` y `--check` en `soundhound` (ya instalada, habilitada y activa);
-**el paso de instalación no se ha ejecutado**, ni en este ni en un servidor limpio.
+Arrancar el motor **no** inicia llamadas: solo marca listas puestas en «Iniciada»
+(todas nacen detenidas). No se arranca en la instalación porque un servidor nuevo aún
+no tiene AMI, dialplan ni troncales: arrancarlo es la decisión explícita final, y
+reiniciarlo, siempre con 0 llamadas abiertas.
+
+La unidad se **genera** con `User=$WEB_USER`, `Group=$WEB_GROUP` y la ruta
+`$WEB_ROOT/bot_ivr/campaign_engine.php` (por defecto `apache`, `apache` y
+`/var/www/html/zynervoxv2`); el resto es la del repo. Para poder arrancar necesita:
+BD accesible con las migraciones 014 a 026 y los `GRANT` de `list-call-worker.sh`
+(si no, falla cada pasada y `Restart=on-failure` lo reinicia cada 5 s), las
+configuraciones de BD y `pbx/ami.json` legibles por el grupo web, y
+`recordings/marcador` creada (`list-call-worker.sh`). No lleva `Requires=` a propósito
+(`After=` de MariaDB y Asterisk basta y no se para en cadena) y es independiente de
+`zypad-bridge`. Comprobación sin arrancar:
+`cd $WEB_ROOT/bot_ivr && sudo -u $WEB_USER php campaign_engine.php --dry-run`
+(JSON con `"dry_run": true`).
+Probado: `bash -n`, `--check` en `soundhound` (instalada, habilitada y activa, con la
+unidad generada idéntica a la instalada) y la generación con otros valores; **el modo
+instalar no se ha ejecutado**, ni en este ni en un servidor limpio.
 
 **Puente de zypad `zypad-bridge.service`.** `installer/zypad-bridge.sh` lo instala y
 lo deja habilitado, sin arrancar. **Manual** en el sentido de que `install.sh` no lo
