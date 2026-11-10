@@ -63,20 +63,43 @@ los scripts; aquí queda en un solo sitio.
   audios nuevos (**sin verificar** el destino exacto).
 
 **5. Puertos y firewall.** Las reglas de `firewalld` por IP de origen son **manuales** y
-no se documentan aquí con direcciones. Revisión de Jarvis pendiente: todo lo de esta
-lista de red está **sin verificar**.
+no se documentan aquí con direcciones (se usan marcadores: `<IP_EQUIPO>`, `<IP_EQUIPO_SIP>`,
+`<IP_TAILSCALE_SERVIDOR>`, `<IP_SERVIDOR>`). Revisado por Jarvis el 2026-11-10 con
+`firewall-cmd` y `ss` (solo lectura) y comprobado por Cartógrafo, salvo lo marcado
+**sin verificar** más abajo. `firewalld` filtra la entrada; el tráfico de `tailscale0`
+también pasa por él.
 
-| Puerto | Uso | Exposición prevista |
+| Puerto | Uso | Estado en `soundhound` |
 |---|---|---|
-| 80/tcp | Web | Solo desde orígenes autorizados (regla `rich` por origen) |
-| 5060/udp, 5065/tcp | SIP (5065 con TLS) | Hacia el proveedor |
-| 10000-20000/udp | RTP | Hacia el proveedor |
-| 5038/tcp | AMI de Asterisk | Solo `127.0.0.1` |
-| 8765/tcp | Puente de zypad | Solo `127.0.0.1` |
-| 3306/tcp | MariaDB | Solo local (**sin verificar** el `bind-address`) |
+| 80/tcp | Web | Una regla `rich` por equipo, con origen su IP Tailscale. Sin regla el 80 queda cerrado. No hay 443. |
+| 8443/tcp | Acceso por Tailscale | Regla por destino a `<IP_TAILSCALE_SERVIDOR>` (v4 y v6) |
+| 5060/udp | SIP (chan_sip) | Aceptado solo desde `<IP_EQUIPO_SIP>/32`. Qué tráfico SIP hace falta lo define Telefonia. |
+| 5065/tcp | SIP con TLS | Escucha, pero no tiene regla: cerrado desde fuera |
+| 10000-20000/udp | RTP | Dos reglas: una desde `<IP_EQUIPO_SIP>/32` y otra sin origen. **Hoy abierto a cualquier origen.** Estrecharlo a la /24 del carrier queda pendiente de decisión del propietario. |
+| 5038/tcp | AMI de Asterisk | Escucha solo en `127.0.0.1` (límite del bind, no del firewall) |
+| 8765/tcp | Puente de zypad | Escucha solo en `127.0.0.1` (ídem) |
+| 3306/tcp | MariaDB | Escucha solo en `127.0.0.1` (ídem) |
+| 3212/tcp | Regla por destino | El servicio escucha en `127.0.0.1`, así que hoy la regla no sirve (indicio). Su utilidad: **sin verificar**. |
+| 8000/tcp | Abierto a todos | No escucha nada. Uso: **sin verificar**. |
+| 1194/udp | OpenVPN | Lo publica Docker en `<IP_SERVIDOR>` (por eso no aparece en `firewalld`); el panel solo está en `127.0.0.1:18081`. Las cadenas de Docker: **sin verificar**. |
+| 41641/udp | Tailscale | Abierto |
+| ssh, cockpit, dhcpv6-client | Servicios | Abiertos en la zona `public` |
 
 Evitar `firewall-cmd --reload` con llamadas en curso (puede afectarlas): añadir las reglas
 en caliente y en permanente por separado.
+
+Procedimiento para recrear el firewall en la zona `public` (manual; lo aprueba el
+propietario y lo ejecuta Jarvis). **Sin verificar:** las pruebas desde los orígenes
+remotos.
+
+1. Copiar `public.xml` a `/var/backups/firewalld`.
+2. Añadir los servicios base (ssh, cockpit, dhcpv6-client).
+3. Una regla `rich` por equipo para el 80, con origen `<IP_EQUIPO>`.
+4. 8443/tcp por destino `<IP_TAILSCALE_SERVIDOR>` (v4 y v6).
+5. SIP y RTP según lo que defina Telefonia (origen `<IP_EQUIPO_SIP>/32`).
+6. Aplicar en caliente, sin `--permanent` primero, y nunca `--reload` con llamadas.
+7. Comprobar que la configuración en ejecución y la permanente coinciden, y hacer
+   `curl -m5` desde cada `<IP_EQUIPO>`.
 
 **6. Pasos manuales de Asterisk y certificados.** Compilar Asterisk 20.21.0 con chan_sip,
 app_amd y AudioSocket (procedimiento de Telefonia:
@@ -120,8 +143,10 @@ solo comprueba y no cambia nada. La lista está sacada de `rpm -qa` y `dnf repol
 `soundhound` no es un paquete (`/usr/sbin/asterisk`, versión 20.21.0, compilado desde
 fuente; el procedimiento está en
 [`asterisk/soundhound/COMPILAR-ASTERISK.md`](asterisk/soundhound/COMPILAR-ASTERISK.md), de Telefonia, sin
-verificar aquí). Docker y
-Tailscale (repos presentes en `soundhound`) son opcionales y quedan fuera.
+verificar aquí). Tailscale
+**es necesario** para replicar el acceso actual (web y 8443): instalarlo y hacer
+`tailscale up` es manual y lo aprueba el propietario. Docker hace falta para el VPN.
+Ninguno de los dos está en la lista de paquetes.
 
 Usuario del grupo web en Rocky: `apache` (el instalador exige `WEB_GROUP=apache`).
 
@@ -426,7 +451,8 @@ No están en git y se respaldan por separado:
   (`/var/lib/zypad-bridge/logs/`).
 - Copias de BD y de despliegues: `/var/backups/zynervoxv2-db/`,
   `/var/backups/zynervoxv2-web/`.
-- El VPN (`/opt/zynervoxv2-vpn`, contenedor `zynervoxv2-openvpn`).
+- El VPN (`/opt/zynervoxv2-vpn`, contenedor `zynervoxv2-openvpn`, que publica 1194/udp en
+  la IP LAN; el panel solo está en `127.0.0.1:18081`).
 - Las reglas de firewalld por IP de acceso (las gestiona Jarvis).
 
 ## 11. Huecos conocidos
