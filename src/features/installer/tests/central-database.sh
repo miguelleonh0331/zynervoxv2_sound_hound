@@ -84,8 +84,8 @@ if BOT_IVR_DB_PASSWORD=rejected-placeholder bash "$ROOT/installer/ivr-builder-bo
 mysql "$isolated_db" -e "UPDATE v2_ivr_deploy_config SET db_name='$isolated_db' WHERE id=1;"
 php "$ROOT/src/features/installer/tests/isolated-v2.php" "$WEB_ROOT"
 [[ "$(php "$ROOT/src/features/installer/tests/isolated-gate.php" "$WEB_ROOT" index.php)" == *ALLOWED* ]]
-[[ "$(php "$ROOT/src/features/installer/tests/isolated-gate.php" "$WEB_ROOT" agc/api.php)" == *STATUS=403* ]]
-[[ "$(php "$ROOT/src/features/installer/tests/isolated-gate.php" "$WEB_ROOT" bot_ivr/../setup_db.php)" == *STATUS=403* ]]
+[[ "$(php "$ROOT/src/features/installer/tests/isolated-gate.php" "$WEB_ROOT" includes/Database.php)" == *STATUS=403* ]]
+[[ "$(php "$ROOT/src/features/installer/tests/isolated-gate.php" "$WEB_ROOT" bot_ivr/../config/deployment.php)" == *STATUS=403* ]]
 [[ "$legacy_config_hash" == "$(find "$legacy_directory" -maxdepth 1 -type f -exec sha256sum {} + | sort | sha256sum)" ]]
 [[ "$(mysql -N "$test_db" -e "SELECT asterisk_api_url FROM ivr_deploy_config WHERE id=1")" == https://retained.invalid ]]
 echo 'PASS: configuracion legacy intacta tras instalacion v2 aislada'

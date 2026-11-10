@@ -41,8 +41,7 @@ done
 options=(-rcpgo --no-links --no-specials --no-devices --chown=root:apache --chmod=D750 --itemize-changes
   --exclude=runtime/ --exclude=venvs/ --exclude=secrets/ --exclude=__pycache__/ '--exclude=*.pyc'
   '--exclude=*.bak*' --exclude=.env '--exclude=.env.*' '--exclude=*.pem' '--exclude=*.key'
-  --exclude=/config/deployment.php --exclude=/config/reporting_mirror.json
-  '--exclude=/agc/attachments/*')
+  --exclude=/config/deployment.php --exclude=/config/reporting_mirror.json)
 if [[ "$mode" = preview ]]; then
   options+=(--dry-run)
 else

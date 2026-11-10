@@ -26,9 +26,12 @@ def request_status(path, headers=None):
         return error.code
 
 assert request_status('index.php') == 200, 'login unavailable'
-for path in ('agc/api.php', 'setup_db.php', 'config/deployment.php', 'includes/Database.php'):
+for path in ('config/deployment.php', 'includes/Database.php'):
     assert request_status(path) == 403, 'unprotected path: ' + path
-assert request_status('agc/api.php', {'PHP_VALUE': 'auto_prepend_file='}) == 403, 'gate override accepted'
+# Rutas del legado ViciDial retiradas: ya no existen, deben dar 404 y no volver a aparecer.
+for path in ('agc/api.php', 'setup_db.php'):
+    assert request_status(path) == 404, 'retired path still served: ' + path
+assert request_status('includes/Database.php', {'PHP_VALUE': 'auto_prepend_file='}) == 403, 'gate override accepted'
 for password, expected in (('invalid-test-password', False), (os.environ['ZYNERVOX_CORE_ADMIN_PASSWORD'], True)):
     jar = http.cookiejar.CookieJar()
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))

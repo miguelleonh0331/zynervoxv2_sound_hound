@@ -28,6 +28,3 @@ api-token
 *.bak*
 *.tar.gz
 *.zip
-/app/web/agc/attachments/*
-!/app/web/agc/attachments/.htaccess
-!/app/web/agc/attachments/index.html
