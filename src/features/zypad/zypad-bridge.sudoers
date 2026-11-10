@@ -1,0 +1,12 @@
+# Privilegios minimos del usuario del servicio zypad-bridge (sustituir @SERVICE_USER@ por ZYPAD_SERVICE_USER; instalar en /etc/sudoers.d/zypad-bridge, modo 0440).
+# 1) Catalogo de palabras: el programa de MarcadorBuilder, como apache (es quien lee la configuracion de BD de la web).
+# 2) Corte y anotacion (asterisk/soundhound/etc-asterisk/bin/{cortar_llamada,anotar_palabra}.sh): solo estas ordenes del CLI de Asterisk.
+#    Limite conocido: la regla no puede comprobar QUE canal se cuelga; eso lo valida cortar_llamada.sh (UUID con marca c07e y canal registrado).
+Cmnd_Alias ZYPAD_CATALOG = /usr/bin/php /var/www/html/zynervoxv2/marcador/zypad_catalog.php
+Cmnd_Alias ZYPAD_ASTERISK = /usr/sbin/asterisk -rx database get zypadmap *, \
+                            /usr/sbin/asterisk -rx database get zypadword *, \
+                            /usr/sbin/asterisk -rx database put zypadword *, \
+                            /usr/sbin/asterisk -rx database put zypadcut *, \
+                            /usr/sbin/asterisk -rx channel request hangup *
+@SERVICE_USER@ ALL=(apache) NOPASSWD: ZYPAD_CATALOG
+@SERVICE_USER@ ALL=(root) NOPASSWD: ZYPAD_ASTERISK

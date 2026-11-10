@@ -20,6 +20,9 @@ Fichero `ZYPAD_CONFIG` (por defecto `/etc/zypad/bridge.env`, modo 640, dueño ro
 ## Logs y retención
 `BRIDGE_LOG_DIR/<uuid>.jsonl`, directorio 700 y ficheros 600: **contienen transcripciones** (datos personales). Eventos: `start`, `ws_open`, `first_audio` (UTC con ms), `text` (cada cambio de texto), `word_pre`/`word_post`, `cut_*`/`annotate_*`, `closed` (segundo del answer), `final`, `summary`. Sin retención automática: los logs se conservan y su gestión la decide el usuario (no se borra nada).
 
+## Programas de Telefonia y privilegios
+`CUT_CMD` y `ANNOTATE_CMD` apuntan a `asterisk/soundhound/etc-asterisk/bin/{cortar_llamada,anotar_palabra}.sh` del repositorio (copia de referencia de Telefonia; el servicio ejecuta lo que haya en el árbol de trabajo). Usan el CLI de Asterisk con sudo y el catálogo usa `sudo -u apache php …/zypad_catalog.php`. `zypad-bridge.sudoers` es la regla mínima para el usuario del servicio (solo esas órdenes); en un servidor sin sudo amplio hay que instalarla en `/etc/sudoers.d/` (sustituyendo `@SERVICE_USER@`).
+
 ## Servicio
 `zypad-bridge.service` (plantilla en este directorio; la instala Instalador). Arranca con el sistema y se reinicia solo. Recargar el catálogo no reinicia nada.
 
