@@ -17,6 +17,7 @@ WITH_STT_PROVIDERS=0
 WITH_ZYNERDESK=0
 WITH_ZYPAD=0
 INSTALL_DOCKER=0
+ALLOW_NON_ISOLATED=0
 SELECTED_MODULE=''
 expect_module=0
 FARM_INSTANCE="${FARM_INSTANCE:-zynervox-farm}"
@@ -36,6 +37,7 @@ for arg in "$@"; do
     --with-zynerdesk) WITH_ZYNERDESK=1 ;;
     --with-zypad) WITH_ZYPAD=1 ;;
     --install-docker) INSTALL_DOCKER=1 ;;
+    --allow-non-isolated) ALLOW_NON_ISOLATED=1 ;;
     *) echo "Argumento desconocido: $arg" >&2; exit 2 ;;
   esac
 done
@@ -47,6 +49,14 @@ if [[ -n "$SELECTED_MODULE" ]]; then
   exec bash "$ROOT/installer/carriers.sh"
 fi
 
+# Esta guia instala el modo v2 aislado. Si WEB_ROOT no termina en /zynervoxv2, isolated-env.sh no se carga y se
+# instalaria otra cosa en silencio: se para con un mensaje claro, salvo que se pida expresamente otro modo.
+if [[ "${ZYNERVOX_ISOLATED:-0}" != 1 && "$ALLOW_NON_ISOLATED" != 1 ]]; then
+  echo "ERROR: modo v2 aislado NO activado (WEB_ROOT=$WEB_ROOT no termina en /zynervoxv2)." >&2
+  echo "  Defina WEB_ROOT=/var/www/html/zynervoxv2 y URL_PATH=/zynervoxv2 y repita," >&2
+  echo "  o pase --allow-non-isolated si de verdad quiere la instalacion heredada (no es la de INSTALL.md)." >&2
+  exit 2
+fi
 [[ $EUID -eq 0 ]] || { echo "Ejecutar como root" >&2; exit 1; }
 WEB_GROUP="${WEB_GROUP:-www-data}"
 getent group "$WEB_GROUP" >/dev/null || WEB_GROUP=www

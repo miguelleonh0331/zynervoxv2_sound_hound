@@ -63,10 +63,20 @@ Como root, desde la raíz de la fuente. La contraseña del administrador inicial
 obligatoria en modo aislado y no se imprime en ningún sitio de este documento:
 
 ```sh
-export ZYNERVOX_CORE_ADMIN_PASSWORD='<contraseña elegida>'
+export WEB_ROOT=/var/www/html/zynervoxv2
+export URL_PATH=/zynervoxv2
 export WEB_GROUP=apache
-bash installer/install.sh --skip-packages
+export ZYNERVOX_CORE_ADMIN_PASSWORD='<contraseña elegida>'
+bash installer/install.sh
 ```
+
+`WEB_ROOT` y `URL_PATH` son **obligatorios**: el modo aislado solo se activa si
+`WEB_ROOT` termina en `/zynervoxv2`. Sin ellos Rocky usaría `/var/www/html/zynervox` y
+se instalaría otra cosa; por eso `install.sh` se detiene con un error claro («modo v2
+aislado NO activado», código 2) en lugar de seguir. Para pedir expresamente la
+instalación heredada existe `--allow-non-isolated`, que **no** es la de esta guía.
+Comprobación sin escribir nada: `sudo bash installer/install.sh --dry-run` (debe
+imprimir `web=/var/www/html/zynervoxv2`).
 
 Qué hace `install.sh` en este modo (en este orden, según el código):
 
