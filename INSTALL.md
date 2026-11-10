@@ -66,11 +66,30 @@ estar activo cada servicio:
 
 ## 2. La fuente
 
-Manual. Dejar la fuente en `/opt/zynervoxv2-source-soundhound` y mantenerla como
-repositorio git local con el árbol limpio antes de publicar. Esta fuente no tiene
-remoto configurado. `installer/bootstrap.sh` y `installer/unattended.sh
---update-source` hablan con un remoto git de GitHub: **sin verificar** que exista y
-no sirven para este servidor; no usarlos.
+El repositorio está publicado en `https://github.com/miguelleonh0331/zynervoxv2_sound_hound.git`,
+rama `main`. En un servidor nuevo, **clonar `main`** en la ruta de la fuente y trabajar
+siempre con el árbol limpio antes de publicar:
+
+```sh
+git clone --branch main https://github.com/miguelleonh0331/zynervoxv2_sound_hound.git /opt/zynervoxv2-source-soundhound
+```
+
+La copia de `soundhound` no tiene remoto configurado (su rama local es `master`) y no se
+hace *push* desde ella; no configurar un remoto en ese servidor.
+
+**Scripts de arranque heredados: no sirven tal cual para v2.**
+
+- `installer/bootstrap.sh` (clona y lanza `install.sh`): usa rutas de prueba por defecto
+  (`/var/www/html/zynervoxv2-deploy-test`, URL `/zynervoxv2-deploy-test`) que no terminan
+  en `/zynervoxv2`, así que `install.sh` se detiene («modo v2 aislado NO activado»), y pide
+  módulos que el modo aislado **deshabilita** (`--install-docker --with-whatsapp
+  --with-farm --with-stt-providers --with-zynerdesk`). No usarlo para v2.
+- `installer/unattended.sh`: sí fuerza el modo aislado (carga `isolated-env.sh`), pero pasa
+  `--skip-packages` siempre, pide preparar credenciales con `load-db-password.sh` y su
+  `--update-source` exige estar en la rama `main` con el árbol limpio y un remoto `origin`
+  (en `soundhound` fallaría: la rama es `master` y no hay remoto). `--fresh` no está
+  soportado. Su uso útil está documentado en las pruebas (`--module carriers`).
+  **Sin verificar** su ejecución completa con la fuente actual.
 
 ## 3. Instalación v2 aislada
 

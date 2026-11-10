@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPOSITORY_URL="${ZYNERVOX_REPOSITORY_URL:-https://github.com/miguelleonh0331/zynervoxv2.git}"
+# ATENCION: prueba de despliegue heredada, NO es la instalacion v2 de INSTALL.md. Sus rutas por defecto son de
+# prueba (-deploy-test, que no terminan en /zynervoxv2, asi que install.sh se detiene) y pide modulos que el modo v2
+# aislado deshabilita (--install-docker --with-whatsapp --with-farm --with-stt-providers --with-zynerdesk).
+REPOSITORY_URL="${ZYNERVOX_REPOSITORY_URL:-https://github.com/miguelleonh0331/zynervoxv2_sound_hound.git}"
 REF="${ZYNERVOX_REF:-main}"
 SOURCE_DIR="${ZYNERVOX_SOURCE_DIR:-/opt/zynervoxv2-deploy-test-source}"
 WEB_ROOT="${WEB_ROOT:-/var/www/html/zynervoxv2-deploy-test}"
