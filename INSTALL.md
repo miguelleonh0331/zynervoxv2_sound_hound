@@ -79,8 +79,8 @@ Evitar `firewall-cmd --reload` con llamadas en curso (puede afectarlas): añadir
 en caliente y en permanente por separado.
 
 **6. Pasos manuales de Asterisk y certificados.** Compilar Asterisk 20.21.0 con chan_sip,
-app_amd y AudioSocket (Telefonia lo documenta en `asterisk/soundhound/compilacion/`,
-**en preparación**; sin enlace hasta que esté comiteado), instalar la configuración de
+app_amd y AudioSocket (procedimiento de Telefonia:
+[`asterisk/soundhound/COMPILAR-ASTERISK.md`](asterisk/soundhound/COMPILAR-ASTERISK.md)), instalar la configuración de
 referencia de `asterisk/soundhound/etc-asterisk/`, colocar los certificados TLS y
 `asterisk.service`, y crear `pbx/ami.json`. Ver el paso 6.
 
@@ -118,7 +118,9 @@ solo comprueba y no cambia nada. La lista está sacada de `rpm -qa` y `dnf repol
 `install.sh` en un Rocky limpio llegue a instalar todo con ella (solo se probó
 `--check` en `soundhound`, donde ya está todo). **Asterisk no está en la lista**: en
 `soundhound` no es un paquete (`/usr/sbin/asterisk`, versión 20.21.0, compilado desde
-fuente); no hay procedimiento de compilación en el repo (hueco 15). Docker y
+fuente; el procedimiento está en
+[`asterisk/soundhound/COMPILAR-ASTERISK.md`](asterisk/soundhound/COMPILAR-ASTERISK.md), de Telefonia, sin
+verificar aquí). Docker y
 Tailscale (repos presentes en `soundhound`) son opcionales y quedan fuera.
 
 Usuario del grupo web en Rocky: `apache` (el instalador exige `WEB_GROUP=apache`).
@@ -432,13 +434,13 @@ No están en git y se respaldan por separado:
 | # | Qué falta | Riesgo | Quién debería cubrirlo |
 |---|---|---|---|
 | 6 | El envoltorio y su sudoers se instalan a mano como root; no hay script que lo haga. | Un servidor nuevo queda sin la vía de publicación segura. | Instalador / quien administre el servidor |
-| 7 | Quedan fuera del repo los certificados TLS, `asterisk.service` y el procedimiento de compilar Asterisk (hueco 15). | Sin ellos un servidor nuevo no tiene llamadas. | Telefonia |
+| 7 | Quedan fuera del repo los certificados TLS y `ami.json`; el procedimiento de compilar Asterisk y `asterisk.service` están en `asterisk/soundhound/COMPILAR-ASTERISK.md`. | Sin ellos un servidor nuevo no tiene llamadas. | Telefonia |
 | 8 | `amd_stt_batch.php` no está programado y no hay motor STT (la auditoría AMD no depende de él). | Las grabaciones se acumulan sin transcribir. | El propietario de los datos (elige el motor) y MarcadorBuilder |
 | 10 | La creación de usuarios Supervisor y GTR no la hace el instalador. | Solo existe el administrador tras instalar. | Plataforma |
 | 11 | Las reglas de firewalld por IP son manuales. | Web inaccesible, o abierta de más, en un servidor nuevo. | Jarvis |
 | 12 | No hay copias programadas de BD ni de grabaciones (solo las manuales que se citan arriba; **sin verificar** que no exista otro respaldo). | Pérdida de datos. | Jarvis y el propietario de los datos |
 | 13 | El VPN vive en `/opt/zynervoxv2-vpn`, fuera del repo; su volumen y token no están respaldados. | El panel VPN no se puede reconstruir. | Jarvis |
 | 14 | Esta guía no se ha probado en un servidor limpio, ni los tests `rocky-http.sh` y `central-database.sh` completos. | Pasos que fallen al instalar de verdad. | Instalador, con un servidor de prueba |
-| 15 | Asterisk 20.21.0 está compilado desde fuente en `soundhound`: no hay paquete ni procedimiento de compilación (módulos, `menuselect`, `res_audiosocket`, usuario) en el repo. | Un servidor nuevo no puede tener el mismo Asterisk sin conocimiento previo. | Telefonia |
+| 15 | Asterisk 20.21.0 está compilado desde fuente en `soundhound`. El procedimiento está ahora en `asterisk/soundhound/COMPILAR-ASTERISK.md` (Telefonia), pero no se ha reproducido en un servidor limpio. | Un servidor nuevo podría no quedar igual. | Telefonia, con un servidor de prueba |
 
 Los números son estables. Resueltos: 1 (paquetes de Rocky, `installer/packages-rocky9.sh`), 2 (motor, `installer/dialer.sh`), 4 (las herramientas de corte y anotación ya están en el repo, `asterisk/soundhound/etc-asterisk/bin/`, y la plantilla las usa), 5 (lista única de AGI, `installer/agi-list.txt`) y 9 (la `013` se retiró a propósito; `001-schema.sql` y `migrate.php` son del legado y no crean tablas del marcador).
