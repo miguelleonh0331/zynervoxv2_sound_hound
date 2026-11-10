@@ -18,7 +18,9 @@ Los secretos se nombran por su ruta. Nunca se escriben en este repositorio.
   intentos de llamada, marcador) y la de flujos IVR/bot.
 - Los AGI de Asterisk (`bot_ivr/*_agi.php` y `marcador/amd_audit_agi.php`), el motor
   de marcación (`zynervox-dialer.service`) y el puente de zypad (`zypad-bridge.service`).
-- Asterisk y su dialplan **no** los instala este repositorio (ver «Huecos conocidos»).
+- Asterisk y su dialplan **no** los instala este repositorio (ver «Huecos conocidos»). Hay
+  una copia de referencia, sin secretos reales, de la configuración de este servidor en
+  `asterisk/soundhound/etc-asterisk/`.
 
 Modo de instalación soportado: **v2 aislado** (`ZYNERVOX_ISOLATED=1`). Lo activa
 `installer/isolated-env.sh` cuando `WEB_ROOT` termina en `/zynervoxv2`. En ese modo
@@ -95,17 +97,20 @@ nueva. El orden es:
    `ZYNERVOX_CORE_ADMIN_PASSWORD`; la guarda en
    `/etc/zynervox/zynervoxv2/zynervox-core-admin.env` (0600).
 2. `ivr-builder-bot-db.sh`: `database/init/002` y `004` y los modelos
-   `src/features/bot_ivr/models/001` a `012`, con permisos de tabla para
-   `zynervoxv2_bot_ivr`. Si el modo es aislado, al final llama a `call-audit.sh`
+   `src/features/bot_ivr/models/001` a `012`; concede a `zynervoxv2_bot_ivr` los permisos
+   de las tablas base. Los de las tablas nuevas (desde la `015`) van en
+   `list-call-worker.sh`. Si el modo es aislado, al final llama a `call-audit.sh`
    (cron, paso 7) y a `list-call-worker.sh`.
 3. `list-call-worker.sh`: modelos `012` (otra vez, idempotente) y `014` a `026`, los `GRANT` de las tablas
    del marcador a `zynervoxv2_bot_ivr`, y las carpetas `bot_ivr/call_jobs`,
    `modules/bot_ivr` y `recordings/marcador`.
 
 Todas las migraciones son idempotentes (`IF NOT EXISTS`) y se pueden reaplicar.
-**No existe `013`** en el repositorio; que sea un salto intencionado está **sin
-verificar**. `database/init/001-schema.sql` y `installer/migrate.php` no los llama
-ningún script del paso 3: su papel actual está **sin verificar**.
+**No existe `013` a propósito**: se retiró (commit `a4e8926`) y la sustituye la `014`
+(cabeceras por campaña); no falta nada. `database/init/001-schema.sql` es el volcado de
+la BD central heredada (`database.sh`, con Docker) y `installer/migrate.php` aplica las
+migraciones heredadas `001` a `005` de `asterisk/synervox/modules/migrations`. Ninguno
+crea tablas del marcador, que salen solo de `models/001` a `012` y `014` a `026`.
 
 **Regla para nuevas migraciones.** Añadirlas a `list-call-worker.sh` junto con sus
 `GRANT` mínimos; si no, una instalación nueva no las tendrá.
@@ -151,24 +156,33 @@ regla SELinux por ruta (`semanage fcontext -a -t zynervox_agi_exec_t <ruta>`), q
 
 ## 6. Asterisk y dialplan
 
-**Manual / Telefonia. Sin verificar en este documento.** El repositorio contiene
-ejemplos y piezas en `asterisk/synervox/modules/` (por ejemplo
-`bot_ivr/bot_ivr_route_example.conf`, `asterisk/extensions-forwarding.conf`) y la
-tabla de dialplans de la web (`src/features/core/models/dialplans-v2.sql`,
-`includes/Dialplans.php`, `modules/admin/dialplan.php`). Dónde escribe esos ficheros
-la web, qué `include` hay en `/etc/asterisk`, la configuración PJSIP y el AMI
-(`/etc/zynervox/zynervoxv2/pbx/ami.json` lo nombra `rocky-selinux.sh`) **no se han
-verificado aquí** porque `/etc/asterisk` no es legible para el usuario del equipo
-de instalación.
+**Manual / Telefonia.** Asterisk 20.21.0 está compilado desde `/usr/local/src/zynervox`
+(módulos en `/usr/lib64/asterisk/modules`). Usa **chan_sip** (UDP 5060 y TLS 5065); PJSIP
+está en `noload` y los `pjsip-zynervoxv2*.conf` están vacíos. Los `extensions`, `sip` y
+`pjsip` de `/etc/asterisk` incluyen los ficheros generados en
+`/var/lib/zynervoxv2/asterisk/modules/asterisk/`. En este modo aislado los ficheros
+generados son `*-zynervoxv2.conf`; los nombres `pjsip-zynervox.conf` y
+`extensions-zynervox.conf` (y las constantes `Carriers::CONF_PATH` y
+`Carriers::DIALPLAN_PATH`) son del modo no aislado. **Guardar en la web no recarga
+Asterisk**: hay que hacer `sip reload` y `dialplan reload` con 0 canales. El AMI escucha
+en `127.0.0.1:5038` con el usuario `zynervoxv2` y el mismo secreto que
+`/etc/zynervox/zynervoxv2/pbx/ami.json`. Una copia de referencia de la configuración
+(sin secretos) está en `asterisk/soundhound/etc-asterisk/`. Los dialplans llaman a los
+AGI por `/srv/www/htdocs/zynervoxv2`, que es un enlace a `/var/www/html/zynervoxv2`:
+**el enlace tiene que existir**. **Sin verificar aquí:** que `DialplanOrigins` regenere
+`extensions-zynervoxv2.conf` exactamente igual en un servidor nuevo, y los
+certificados TLS.
 
 Lo que sí exige el resto del sistema a Asterisk:
 
 - Corre como usuario `asterisk` y debe poder **ejecutar** los cuatro AGI
   (`bot_ivr/call_tracking_agi.php`, `ivr_engine_agi.php`, `forward_headers_agi.php`,
-  `marcador/amd_audit_agi.php`): modo 0750, `user:asterisk:r-x`, contexto SELinux
+  `marcador/amd_audit_agi.php`, que admite las acciones `audit`, `check` y `blocked`):
+  modo 0750, `user:asterisk:r-x`, contexto SELinux
   `zynervox_agi_exec_t`.
 - Escribe las grabaciones en `/var/lib/zynervoxv2/asterisk/recordings/marcador/`
-  (propietario `asterisk`, grupo `apache`, modo 2770, contexto `zynervox_runtime_t`).
+  (propietario `asterisk`, grupo `apache`, modo 2770, contexto `zynervox_runtime_t`);
+  `recordings/bot_ivr/` tiene el mismo propietario, modo y contexto.
 - Se conecta al puente de zypad en `127.0.0.1:8765`; `rocky-selinux.sh` etiqueta ese
   puerto como `zynervox_audiosocket_port_t` y deja a `asterisk_t` conectar.
 
@@ -176,7 +190,9 @@ Lo que sí exige el resto del sistema a Asterisk:
 
 **Auditoría de llamadas (cron).** Lo crea `call-audit.sh`
 (llamado por `ivr-builder-bot-db.sh`): `/etc/cron.d/zynervoxv2-call-audit`, cada
-minuto, `call_tracking_agi.php --replay`.
+minuto, `call_tracking_agi.php --replay`. **No lo usa el motor**: reinyecta los cierres
+de llamada que no llegaron a la BD (cola `call_audit_pending`). Antes de vaciar datos
+del marcador hay que vaciar esa cola.
 
 **Motor de marcación `zynervox-dialer.service`.** Lo instala y habilita
 `installer/dialer.sh` (lo llama `install.sh` en modo aislado, como módulo; si falla,
@@ -201,7 +217,8 @@ La unidad se **genera** con `User=$WEB_USER`, `Group=$WEB_GROUP` y la ruta
 BD accesible con las migraciones 014 a 026 y los `GRANT` de `list-call-worker.sh`
 (si no, falla cada pasada y `Restart=on-failure` lo reinicia cada 5 s), las
 configuraciones de BD y `pbx/ami.json` legibles por el grupo web, y
-`recordings/marcador` creada (`list-call-worker.sh`). No lleva `Requires=` a propósito
+`recordings/marcador` creada (`list-call-worker.sh`). La unidad fija además
+`/usr/bin/php` como intérprete; con otro PHP hay que editarla. No lleva `Requires=` a propósito
 (`After=` de MariaDB y Asterisk basta y no se para en cadena) y es independiente de
 `zypad-bridge`. Comprobación sin arrancar:
 `cd $WEB_ROOT/bot_ivr && sudo -u $WEB_USER php campaign_engine.php --dry-run`
@@ -224,10 +241,12 @@ Escucha solo en `127.0.0.1:8765`, necesita Node.js 22. Los logs contienen
 transcripciones y no se borran por edad (decisión del propietario de los datos).
 El catálogo de palabras lo lee con `sudo -n -u apache php .../marcador/zypad_catalog.php`
 (definido en `/etc/systemd/system/zypad-bridge.service.d/20-catalog.conf`, que crea
-el script). **Ver huecos 3 y 4.**
+el script). **Ver hueco 3.**
 
-**Pasada de transcripción (STT).** `marcador/amd_stt_batch.php` existe pero **no está
-programada**; no hay motor STT configurado.
+**Pasada de transcripción (STT).** Es una pasada opcional y posterior: la auditoría AMD
+(`amd_audit_agi.php`) no depende de ella. `marcador/amd_stt_batch.php` existe pero **no
+está programada** y no hay motor STT configurado; elegir el motor y programarla lo
+decide el propietario de los datos.
 
 ## 8. Primer usuario administrador
 
@@ -249,6 +268,9 @@ getfacl -p /var/www/html/zynervoxv2/marcador/amd_audit_agi.php # user:asterisk:r
 ls -Z /var/www/html/zynervoxv2/marcador/amd_audit_agi.php      # zynervox_agi_exec_t
 systemctl is-active httpd php-fpm mariadb zypad-bridge zynervox-dialer
 sudo ausearch -m avc -ts recent | grep -E 'asterisk|httpd'     # tras una llamada: sin denegaciones nuevas
+sudo asterisk -rx 'sip show peers'                             # el proveedor, OK
+sudo asterisk -rx 'dialplan show 7314900000000@zynervoxv2'     # el dialplan de prueba está cargado
+sudo asterisk -rx 'core show channels count'                   # 0 canales antes de reiniciar nada
 ```
 
 Rutas retiradas del legado que deben dar 404: `agc/api.php`, `setup_db.php`.
@@ -264,7 +286,8 @@ No están en git y se respaldan por separado:
 
 - Secretos: `/etc/zynervox/zynervoxv2/` (contraseñas de BD, administrador, `.conf`
   de la web) y `/etc/zypad/bridge.env`.
-- Configuración de Asterisk de este servidor, certificados TLS y SIP.
+- De Asterisk solo quedan fuera del repo los certificados TLS, `asterisk.service` y `ami.json`
+  (el resto de la configuración está en `asterisk/soundhound/etc-asterisk/`).
 - Grabaciones (`/var/lib/zynervoxv2/asterisk/recordings/`) y logs de zypad
   (`/var/lib/zypad-bridge/logs/`).
 - Copias de BD y de despliegues: `/var/backups/zynervoxv2-db/`,
@@ -277,11 +300,9 @@ No están en git y se respaldan por separado:
 | # | Qué falta | Riesgo | Quién debería cubrirlo |
 |---|---|---|---|
 | 3 | `zypad-bridge.sh` no se llama desde `install.sh`, y el servicio usa `sudo -n -u apache` para el catálogo sin una regla sudoers propia (en `soundhound` funciona porque el usuario de servicio tiene sudo amplio). | En un servidor sin ese sudo el puente no obtiene el catálogo; con sudo amplio, privilegio excesivo. | Instalador y Zypad |
-| 4 | La plantilla `src/features/zypad/zypad-bridge.service` apunta `CUT_CMD` y `ANNOTATE_CMD` a herramientas dentro del espacio de trabajo de otro agente, y esas herramientas no están en el repositorio. | Si ese espacio cambia, el corte y la anotación dejan de funcionar. | Zypad (comitearlas en el repo) |
 | 6 | El envoltorio y su sudoers se instalan a mano como root; no hay script que lo haga. | Un servidor nuevo queda sin la vía de publicación segura. | Instalador / quien administre el servidor |
-| 7 | Dialplan, PJSIP, AMI y `include` de `/etc/asterisk` no están en este repositorio ni verificados aquí. | Sin ellos no hay llamadas; la reinstalación depende de memoria. | Telefonia |
-| 8 | `amd_stt_batch.php` no está programado y no hay motor STT. | Las grabaciones se acumulan sin transcribir. | MarcadorBuilder y el propietario de los datos |
-| 9 | Falta la migración `013` y `database/init/001-schema.sql` / `migrate.php` no los usa el instalador. | Sospecha de esquema incompleto en una instalación nueva. | MarcadorBuilder y BotIVR |
+| 7 | Quedan fuera del repo los certificados TLS, `asterisk.service` y el procedimiento de compilar Asterisk (hueco 15). | Sin ellos un servidor nuevo no tiene llamadas. | Telefonia |
+| 8 | `amd_stt_batch.php` no está programado y no hay motor STT (la auditoría AMD no depende de él). | Las grabaciones se acumulan sin transcribir. | El propietario de los datos (elige el motor) y MarcadorBuilder |
 | 10 | La creación de usuarios Supervisor y GTR no la hace el instalador. | Solo existe el administrador tras instalar. | Plataforma |
 | 11 | Las reglas de firewalld por IP son manuales. | Web inaccesible, o abierta de más, en un servidor nuevo. | Jarvis |
 | 12 | No hay copias programadas de BD ni de grabaciones (solo las manuales que se citan arriba; **sin verificar** que no exista otro respaldo). | Pérdida de datos. | Jarvis y el propietario de los datos |
@@ -289,4 +310,4 @@ No están en git y se respaldan por separado:
 | 14 | Esta guía no se ha probado en un servidor limpio, ni los tests `rocky-http.sh` y `central-database.sh` completos. | Pasos que fallen al instalar de verdad. | Instalador, con un servidor de prueba |
 | 15 | Asterisk 20.21.0 está compilado desde fuente en `soundhound`: no hay paquete ni procedimiento de compilación (módulos, `menuselect`, `res_audiosocket`, usuario) en el repo. | Un servidor nuevo no puede tener el mismo Asterisk sin conocimiento previo. | Telefonia |
 
-Los números son estables. Resueltos: 1 (paquetes de Rocky, `installer/packages-rocky9.sh`), 2 (motor, `installer/dialer.sh`) y 5 (lista única de AGI, `installer/agi-list.txt`).
+Los números son estables. Resueltos: 1 (paquetes de Rocky, `installer/packages-rocky9.sh`), 2 (motor, `installer/dialer.sh`), 4 (las herramientas de corte y anotación ya están en el repo, `asterisk/soundhound/etc-asterisk/bin/`, y la plantilla las usa), 5 (lista única de AGI, `installer/agi-list.txt`) y 9 (la `013` se retiró a propósito; `001-schema.sql` y `migrate.php` son del legado y no crean tablas del marcador).
