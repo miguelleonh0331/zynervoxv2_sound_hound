@@ -16,7 +16,9 @@ Un candado impide dos despliegues simultaneos.
 
 El codigo se prepara con Git y tar como `codex-web`, sin privilegios. La parte
 root solo instala esa fotografia, con propietario root, grupo apache, permisos
-web y de los tres AGI, y contexto SELinux. No ejecuta PHP ni scripts de la
+web y de los cuatro AGI (`bot_ivr/call_tracking_agi.php`, `ivr_engine_agi.php`,
+`forward_headers_agi.php` y `marcador/amd_audit_agi.php`), ACL de lectura para
+`asterisk` y `codex-web` sobre todo lo publicado, y contexto SELinux. No ejecuta PHP ni scripts de la
 fuente como root. Se omiten enlaces simbolicos y archivos especiales.
 
 Se conservan `config/deployment.php`, `config/reporting_mirror.json`, runtime,
@@ -29,10 +31,15 @@ Cada despliegue real deja los archivos reemplazados en
 
 ## Instalacion protegida
 
-- Ejecutable instalado: `/usr/local/sbin/deploy-zynervoxv2`, root:root, 0755.
+- Ejecutable instalado: `/usr/local/sbin/deploy-zynervoxv2`, root:root, 0750.
 - Politica: `/etc/sudoers.d/codex-web-zynervoxv2-deploy`, root:root, 0440.
 - Copias versionadas para revision: `installer/deploy-zynervoxv2` y
   `installer/codex-web-zynervoxv2-deploy.sudoers`.
+
+Un AGI nuevo no se trata solo: hay que añadir su ruta al envoltorio (modo 0750),
+a `installer/rocky-selinux.sh` (etiqueta `zynervox_agi_exec_t`) y a
+`src/features/installer/tests/deploy-permission.sh`, y que root reinstale el
+envoltorio. Ver `INSTALL.md`, sección «Huecos conocidos».
 
 Modificar las copias de la fuente no cambia el comando privilegiado. Solo root
 puede instalar una revision de este ejecutable o de su politica, previa revision
