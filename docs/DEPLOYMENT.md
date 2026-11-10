@@ -36,10 +36,11 @@ Cada despliegue real deja los archivos reemplazados en
 - Copias versionadas para revision: `installer/deploy-zynervoxv2` y
   `installer/codex-web-zynervoxv2-deploy.sudoers`.
 
-Un AGI nuevo no se trata solo: hay que añadir su ruta al envoltorio (modo 0750),
-a `installer/rocky-selinux.sh` (etiqueta `zynervox_agi_exec_t`) y a
-`src/features/installer/tests/deploy-permission.sh`, y que root reinstale el
-envoltorio. Ver `INSTALL.md`, sección «Huecos conocidos».
+Los AGI se listan una sola vez en `installer/agi-list.txt`. El envoltorio lo lee del
+commit que publica (como dato, validado: solo rutas `carpeta/nombre.php`), así que un
+AGI nuevo no obliga a reinstalar el envoltorio ni a editar más scripts. En un
+servidor ya instalado falta solo su regla SELinux por ruta
+(`semanage fcontext -a -t zynervox_agi_exec_t <ruta>`). Ver `INSTALL.md`.
 
 Modificar las copias de la fuente no cambia el comando privilegiado. Solo root
 puede instalar una revision de este ejecutable o de su politica, previa revision

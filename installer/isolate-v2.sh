@@ -16,8 +16,9 @@ chown -R root:"$WEB_GROUP" "$WEB_ROOT"
 find "$WEB_ROOT" -path "$WEB_ROOT/venvs" -prune -o -type d -exec chmod 0750 {} +
 find "$WEB_ROOT" -path "$WEB_ROOT/venvs" -prune -o -type f -exec chmod 0640 {} +
 # Los programas AGI se ejecutan desde Asterisk.
-for agi in call_tracking_agi.php ivr_engine_agi.php forward_headers_agi.php; do
-  [[ ! -f "$WEB_ROOT/bot_ivr/$agi" ]] || chmod 0750 "$WEB_ROOT/bot_ivr/$agi"
+source "$ROOT/installer/agi-list.sh"
+for agi in "${AGI_PATHS[@]}"; do
+  [[ ! -f "$WEB_ROOT/$agi" ]] || chmod 0750 "$WEB_ROOT/$agi"
 done
 install -d -o root -g "$WEB_GROUP" -m 0770 "$WEB_ROOT/runtime"
 bash "$ROOT/installer/deployment-marker.sh"

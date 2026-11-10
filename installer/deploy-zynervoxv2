@@ -20,6 +20,13 @@ source_status="$("${as_agent[@]}" git -C "$source_root" status --porcelain)"
 [[ -z "$source_status" ]] || { echo 'La fuente tiene cambios sin commit; no se despliega.' >&2; exit 1; }
 commit="$("${as_agent[@]}" git -C "$source_root" rev-parse --verify HEAD)"
 [[ "$commit" =~ ^[a-f0-9]{40,64}$ ]]
+# Lista de AGI: se lee como DATO del commit que se publica (sin root, sin ejecutarla) y se valida.
+agi_list="$("${as_agent[@]}" git -C "$source_root" show "$commit:installer/agi-list.txt")"
+mapfile -t agi_paths < <(printf '%s\n' "$agi_list" | grep -vE '^[[:space:]]*(#|$)')
+[[ ${#agi_paths[@]} -gt 0 ]] || { echo 'installer/agi-list.txt vacio o ausente en el commit.' >&2; exit 1; }
+for agi_path in "${agi_paths[@]}"; do
+  [[ "$agi_path" =~ ^[a-z0-9_]+/[a-z0-9_]+\.php$ ]] || { echo "Ruta de AGI invalida en agi-list.txt: $agi_path" >&2; exit 1; }
+done
 # Tanto Git como la extraccion corren sin root; nunca se ejecuta el instalador editable.
 stage_parent=/run/zynervoxv2-deploy
 [[ ! -L "$stage_parent" ]]
@@ -34,10 +41,9 @@ chown root:root "$stage"
 chmod 0700 "$stage"
 chown -hR root:root "$stage"
 find "$stage" -type f -exec chmod 0640 {} +
-for agi in call_tracking_agi.php ivr_engine_agi.php forward_headers_agi.php; do
-  [[ ! -f "$stage/bot_ivr/$agi" || -L "$stage/bot_ivr/$agi" ]] || chmod 0750 "$stage/bot_ivr/$agi"
+for agi in "${agi_paths[@]}"; do
+  [[ ! -f "$stage/$agi" || -L "$stage/$agi" ]] || chmod 0750 "$stage/$agi"
 done
-[[ ! -f "$stage/marcador/amd_audit_agi.php" || -L "$stage/marcador/amd_audit_agi.php" ]] || chmod 0750 "$stage/marcador/amd_audit_agi.php"
 options=(-rcpgo --no-links --no-specials --no-devices --chown=root:apache --chmod=D750 --itemize-changes
   --exclude=runtime/ --exclude=venvs/ --exclude=secrets/ --exclude=__pycache__/ '--exclude=*.pyc'
   '--exclude=*.bak*' --exclude=.env '--exclude=.env.*' '--exclude=*.pem' '--exclude=*.key'
@@ -54,10 +60,9 @@ fi
 printf 'COMMIT=%s MODE=%s\n' "$commit" "$mode"
 rsync "${options[@]}" -- "$stage/" "$destination/"
 if [[ "$mode" = apply ]]; then
-  for agi in call_tracking_agi.php ivr_engine_agi.php forward_headers_agi.php; do
-    [[ ! -f "$destination/bot_ivr/$agi" || -L "$destination/bot_ivr/$agi" ]] || chmod 0750 "$destination/bot_ivr/$agi"
+  for agi in "${agi_paths[@]}"; do
+    [[ ! -f "$destination/$agi" || -L "$destination/$agi" ]] || chmod 0750 "$destination/$agi"
   done
-  [[ ! -f "$destination/marcador/amd_audit_agi.php" || -L "$destination/marcador/amd_audit_agi.php" ]] || chmod 0750 "$destination/marcador/amd_audit_agi.php"
   # rsync recrea los inodos sin -A y el arbol no tiene ACL por defecto: se restauran las ACL de asterisk y codex-web.
   find "$destination" \( -path "$destination/venvs" -o -path "$destination/runtime" \) -prune -o \
     -exec setfacl -m u:asterisk:rX,u:codex-web:rX {} +

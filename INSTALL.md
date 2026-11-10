@@ -114,10 +114,12 @@ sudo mysql zynervox_core < src/features/bot_ivr/models/<NNN>-<nombre>.sql
 ## 5. Publicar la web: `deploy-zynervoxv2`
 
 Es la vía normal de publicación; `deploy-web.sh` solo se usa dentro de la
-instalación inicial. `install.sh` y `deploy-web.sh` solo ajustan el modo de los tres
-AGI de `bot_ivr/`. El envoltorio ajusta también `marcador/amd_audit_agi.php`, repone
-las ACL de `asterisk` y de `codex-web` y reetiqueta con SELinux. Por eso, **tras la
-instalación, instalar el envoltorio y publicar una vez con él** (paso 5b).
+instalación inicial. Los AGI que ejecuta Asterisk se listan **una sola vez**, en
+`installer/agi-list.txt`: de ahí leen el instalador (modo 0750, propietario), el
+SELinux (`rocky-selinux.sh`), las pruebas y el envoltorio (que la lee del commit que
+publica). El envoltorio, además, repone las ACL de `asterisk` y de `codex-web` y
+reetiqueta con SELinux, por eso **tras la instalación conviene instalar el envoltorio
+y publicar una vez con él** (paso 5b).
 
 5a. Instalar el envoltorio y su política. **Manual, como root** (solo root puede
 cambiarlos):
@@ -136,9 +138,10 @@ sudo -n /usr/local/sbin/deploy-zynervoxv2             # imprime COMMIT y BACKUP
 sudo -n /usr/local/sbin/deploy-zynervoxv2 --dry-run   # debe dar 0 líneas ">f"
 ```
 
-Detalles y límites del envoltorio: `docs/DEPLOYMENT.md`. Una vez creada la regla
-SELinux por ruta, un AGI **nuevo** necesita además su línea en `rocky-selinux.sh` y
-en el envoltorio; no se hace solo (ver «Huecos conocidos»).
+Detalles y límites del envoltorio: `docs/DEPLOYMENT.md`. **Un AGI nuevo** se añade
+solo a `installer/agi-list.txt`; en un servidor ya instalado hay que además crear su
+regla SELinux por ruta (`semanage fcontext -a -t zynervox_agi_exec_t <ruta>`), que
+`rocky-selinux.sh` hace en una instalación nueva.
 
 ## 6. Asterisk y dialplan
 
@@ -255,7 +258,6 @@ No están en git y se respaldan por separado:
 | 2 | Ningún script instala `zynervox-dialer.service`. | Tras reinstalar no hay motor y el Dashboard lo marca apagado. | Instalador, con MarcadorBuilder |
 | 3 | `zypad-bridge.sh` no se llama desde `install.sh`, y el servicio usa `sudo -n -u apache` para el catálogo sin una regla sudoers propia (en `soundhound` funciona porque el usuario de servicio tiene sudo amplio). | En un servidor sin ese sudo el puente no obtiene el catálogo; con sudo amplio, privilegio excesivo. | Instalador y Zypad |
 | 4 | La plantilla `src/features/zypad/zypad-bridge.service` apunta `CUT_CMD` y `ANNOTATE_CMD` a herramientas dentro del espacio de trabajo de otro agente, y esas herramientas no están en el repositorio. | Si ese espacio cambia, el corte y la anotación dejan de funcionar. | Zypad (comitearlas en el repo) |
-| 5 | `install.sh` y `deploy-web.sh` solo ajustan 3 de los 4 AGI; el cuarto (`amd_audit_agi.php`) lo cubre solo el envoltorio. Un AGI nuevo exige editar a mano `rocky-selinux.sh`, el envoltorio y su prueba. | AGI no ejecutable por Asterisk hasta publicar con el envoltorio; olvidar la regla de un AGI nuevo lo rompe en silencio. | Instalador |
 | 6 | El envoltorio y su sudoers se instalan a mano como root; no hay script que lo haga. | Un servidor nuevo queda sin la vía de publicación segura. | Instalador / quien administre el servidor |
 | 7 | Dialplan, PJSIP, AMI y `include` de `/etc/asterisk` no están en este repositorio ni verificados aquí. | Sin ellos no hay llamadas; la reinstalación depende de memoria. | Telefonia |
 | 8 | `amd_stt_batch.php` no está programado y no hay motor STT. | Las grabaciones se acumulan sin transcribir. | MarcadorBuilder y el propietario de los datos |
@@ -265,3 +267,5 @@ No están en git y se respaldan por separado:
 | 12 | No hay copias programadas de BD ni de grabaciones (solo las manuales que se citan arriba; **sin verificar** que no exista otro respaldo). | Pérdida de datos. | Jarvis y el propietario de los datos |
 | 13 | El VPN vive en `/opt/zynervoxv2-vpn`, fuera del repo; su volumen y token no están respaldados. | El panel VPN no se puede reconstruir. | Jarvis |
 | 14 | Esta guía no se ha probado en un servidor limpio, ni los tests `rocky-http.sh` y `central-database.sh` completos. | Pasos que fallen al instalar de verdad. | Instalador, con un servidor de prueba |
+
+Los números son estables. El hueco 5 (lista única de AGI) está resuelto con `installer/agi-list.txt`.

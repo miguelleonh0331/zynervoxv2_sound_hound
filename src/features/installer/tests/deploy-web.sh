@@ -5,8 +5,10 @@ test_directory="$(mktemp -d)"
 source_directory="$test_directory/source"
 destination_directory="$test_directory/destination"
 mkdir -p "$source_directory/config" "$source_directory/runtime" "$destination_directory/config" "$destination_directory/runtime" "$source_directory/venvs" "$destination_directory/venvs" "$source_directory/bot_ivr"
-for agi in call_tracking_agi.php ivr_engine_agi.php forward_headers_agi.php; do
-  printf '<?php\n' > "$source_directory/bot_ivr/$agi"
+source "$ROOT/installer/agi-list.sh"
+for agi in "${AGI_PATHS[@]}"; do
+  mkdir -p "$source_directory/$(dirname "$agi")"
+  printf '<?php\n' > "$source_directory/$agi"
 done
 printf 'source-venv' > "$source_directory/venvs/local.txt"
 printf 'local-venv' > "$destination_directory/venvs/local.txt"
@@ -21,8 +23,8 @@ printf 'local-only' > "$destination_directory/local.txt"
 deploy() { bash "$ROOT/installer/deploy-web.sh" "$source_directory" "$destination_directory"; }
 deploy > "$test_directory/first.log"
 cmp "$source_directory/file with spaces.php" "$destination_directory/file with spaces.php"
-for agi in call_tracking_agi.php ivr_engine_agi.php forward_headers_agi.php; do
-  [[ -x "$destination_directory/bot_ivr/$agi" ]]
+for agi in "${AGI_PATHS[@]}"; do
+  [[ -x "$destination_directory/$agi" ]]
 done
 [[ "$(cat "$destination_directory/venvs/local.txt")" == local-venv ]]
 [[ ! -e "$destination_directory/file.php.bak.20261029" ]]

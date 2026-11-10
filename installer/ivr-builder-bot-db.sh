@@ -96,10 +96,11 @@ fi
 echo "IVR_BUILDER_DB_READY database=$DB_NAME user=$DB_USER"
 
 # CLI AGI must be executable when deployed from source.
-for agi in call_tracking_agi.php ivr_engine_agi.php; do
-  if [[ -f "$WEB_ROOT/bot_ivr/$agi" ]]; then
-    chown root:"$WEB_GROUP" "$WEB_ROOT/bot_ivr/$agi"
-    chmod 0750 "$WEB_ROOT/bot_ivr/$agi"
+source "$ROOT/installer/agi-list.sh"
+for agi in "${AGI_PATHS[@]}"; do
+  if [[ -f "$WEB_ROOT/$agi" ]]; then
+    chown root:"$WEB_GROUP" "$WEB_ROOT/$agi"
+    chmod 0750 "$WEB_ROOT/$agi"
   fi
 done
 

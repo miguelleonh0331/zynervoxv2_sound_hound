@@ -17,10 +17,10 @@ context httpd_sys_rw_content_t "$WEB_ROOT/runtime(/.*)?"
 context zynervox_runtime_t "$ASTERISK_ROOT(/.*)?"
 context zynervox_conf_t "$CONFIG_DIR(/.*)?"
 context zynervox_runtime_t "$CONFIG_DIR/pbx(/.*)?"
-for agi in call_tracking_agi.php ivr_engine_agi.php; do
-    context zynervox_agi_exec_t "$WEB_ROOT/bot_ivr/$agi"
+source "$ROOT/installer/agi-list.sh"
+for agi in "${AGI_PATHS[@]}"; do
+    context zynervox_agi_exec_t "$WEB_ROOT/$agi"
 done
-context zynervox_agi_exec_t "$WEB_ROOT/marcador/amd_audit_agi.php"
 # Puerto 8765/tcp: puente AudioSocket de zypad; Asterisk (res_audiosocket) conecta a el. Por defecto es lirc_port_t.
 semanage port -a -t zynervox_audiosocket_port_t -p tcp 8765 2>/dev/null || semanage port -m -t zynervox_audiosocket_port_t -p tcp 8765
 restorecon -RF "$WEB_ROOT" "$CONFIG_DIR" "$ASTERISK_ROOT"

@@ -1,0 +1,8 @@
+# AGI que ejecuta Asterisk: ruta relativa a la web, una por linea.
+# Es la UNICA lista: la leen el instalador, el SELinux, las pruebas y el envoltorio
+# deploy-zynervoxv2 (desde el commit que publica). Un AGI nuevo solo se anade aqui
+# (y, si es nuevo para el envoltorio instalado, no hay que reinstalarlo).
+bot_ivr/call_tracking_agi.php
+bot_ivr/ivr_engine_agi.php
+bot_ivr/forward_headers_agi.php
+marcador/amd_audit_agi.php
