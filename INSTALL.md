@@ -227,21 +227,33 @@ Probado: `bash -n`, `--check` en `soundhound` (instalada, habilitada y activa, c
 unidad generada idéntica a la instalada) y la generación con otros valores; **el modo
 instalar no se ha ejecutado**, ni en este ni en un servidor limpio.
 
-**Puente de zypad `zypad-bridge.service`.** `installer/zypad-bridge.sh` lo instala y
-lo deja habilitado, sin arrancar. **Manual** en el sentido de que `install.sh` no lo
-llama y pide un fichero con `ZYPAD_URL` y `ZYPAD_API_KEY` que se prepara aparte:
+**Puente de zypad `zypad-bridge.service`.** `installer/zypad-bridge.sh` lo instala y lo
+deja habilitado, sin arrancar. `install.sh` lo llama en modo aislado **solo si** se
+define `ZYPAD_BRIDGE_ENV_FILE` con la ruta de un fichero que contiene `ZYPAD_URL` y
+`ZYPAD_API_KEY` (se prepara aparte; sin él se omite con un aviso). A mano:
 
 ```sh
+sudo bash installer/zypad-bridge.sh --check "$PWD"                      # solo comprueba
 sudo bash installer/zypad-bridge.sh "$PWD" <fichero con ZYPAD_URL y ZYPAD_API_KEY>
-# crea /etc/zypad/bridge.env (root:codex-web 0640) y /var/lib/zypad-bridge/logs (0700)
 # systemctl start zypad-bridge.service   -> con 0 canales abiertos
 ```
 
-Escucha solo en `127.0.0.1:8765`, necesita Node.js 22. Los logs contienen
-transcripciones y no se borran por edad (decisión del propietario de los datos).
-El catálogo de palabras lo lee con `sudo -n -u apache php .../marcador/zypad_catalog.php`
-(definido en `/etc/systemd/system/zypad-bridge.service.d/20-catalog.conf`, que crea
-el script). **Ver hueco 3.**
+Instala: `/etc/zypad/bridge.env` (root:`$ZYPAD_SERVICE_USER` 0640), `/var/lib/zypad-bridge/logs`
+(0700), la unidad (con `User=$ZYPAD_SERVICE_USER`, por defecto `codex-web`), el
+*drop-in* del catálogo y la regla sudoers mínima
+`src/features/zypad/zypad-bridge.sudoers` → `/etc/sudoers.d/zypad-bridge` (0440,
+validada con `visudo`): solo el catálogo como `apache` y cinco órdenes concretas del CLI
+de Asterisk. Escucha solo en `127.0.0.1:8765` y necesita Node.js 22. Los logs contienen
+transcripciones y no se borran por edad (decisión del propietario de los datos). La
+unidad ejecuta el código de `/opt/zynervoxv2-source-soundhound/src/features/zypad/` y
+las herramientas de corte y anotación de
+`asterisk/soundhound/etc-asterisk/bin/`, es decir, **lo que haya en la fuente en ese
+momento, comiteado o no**.
+**En `soundhound` el servicio instalado difiere de este paso:** `--check` informa de
+que la unidad instalada no es igual a la generada y de que `/etc/sudoers.d/zypad-bridge`
+no existe (hoy funciona con el sudo amplio del usuario de servicio). Reinstalarlas
+exige una decisión aparte porque el servicio está activo. Probado: `bash -n`, `--check`
+y la validación con `visudo`; **el modo instalar no se ha ejecutado**.
 
 **Pasada de transcripción (STT).** Es una pasada opcional y posterior: la auditoría AMD
 (`amd_audit_agi.php`) no depende de ella. `marcador/amd_stt_batch.php` existe pero **no
@@ -299,7 +311,6 @@ No están en git y se respaldan por separado:
 
 | # | Qué falta | Riesgo | Quién debería cubrirlo |
 |---|---|---|---|
-| 3 | `zypad-bridge.sh` no se llama desde `install.sh`, y el servicio usa `sudo -n -u apache` para el catálogo sin una regla sudoers propia (en `soundhound` funciona porque el usuario de servicio tiene sudo amplio). | En un servidor sin ese sudo el puente no obtiene el catálogo; con sudo amplio, privilegio excesivo. | Instalador y Zypad |
 | 6 | El envoltorio y su sudoers se instalan a mano como root; no hay script que lo haga. | Un servidor nuevo queda sin la vía de publicación segura. | Instalador / quien administre el servidor |
 | 7 | Quedan fuera del repo los certificados TLS, `asterisk.service` y el procedimiento de compilar Asterisk (hueco 15). | Sin ellos un servidor nuevo no tiene llamadas. | Telefonia |
 | 8 | `amd_stt_batch.php` no está programado y no hay motor STT (la auditoría AMD no depende de él). | Las grabaciones se acumulan sin transcribir. | El propietario de los datos (elige el motor) y MarcadorBuilder |

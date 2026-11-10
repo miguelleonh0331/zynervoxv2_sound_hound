@@ -254,6 +254,19 @@ install_dialer() {
 }
 if [[ "${ZYNERVOX_ISOLATED:-0}" == 1 ]]; then run_module "Dialer (zynervox-dialer)" install_dialer; fi
 
+# Puente de zypad: necesita el fichero con ZYPAD_URL y ZYPAD_API_KEY, que se prepara aparte
+# (ZYPAD_BRIDGE_ENV_FILE=<ruta>). Sin el, se omite con aviso; no es un error. Tampoco se arranca desde aqui.
+install_zypad_bridge() {
+  bash "$ROOT/installer/zypad-bridge.sh" "$ROOT" "$ZYPAD_BRIDGE_ENV_FILE"
+}
+if [[ "${ZYNERVOX_ISOLATED:-0}" == 1 ]]; then
+  if [[ -n "${ZYPAD_BRIDGE_ENV_FILE:-}" ]]; then
+    run_module "Puente zypad (zypad-bridge)" install_zypad_bridge
+  else
+    echo "AVISO: puente de zypad omitido; defina ZYPAD_BRIDGE_ENV_FILE con el fichero de claves para instalarlo" >&2
+  fi
+fi
+
 # Con `if` y no con `[[ ... ]] && ...`: bajo `set -e` una condición falsa al
 # final de una lista AND devuelve 1 y abortaría la instalación.
 if [[ $WITH_WHATSAPP -eq 1 ]]; then run_module "WhatsApp" install_whatsapp; fi
