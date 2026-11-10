@@ -74,6 +74,32 @@ if [[ "${ZYNERVOX_ISOLATED:-0}" == 1 && ( "$APPLY_MIGRATIONS" == 1 || "$WITH_FAR
   exit 2
 fi
 
+# Los paquetes (y, en Rocky, el arranque de MariaDB, PHP-FPM, Apache y cron) van PRIMERO: deploy-web.sh necesita rsync,
+# y los scripts siguientes usan mysql y recargan httpd y php-fpm.
+if [[ $SKIP_PACKAGES -eq 0 ]]; then
+  case "${ID:-}" in
+    ubuntu|debian)
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update && apt-get install -y apache2 php libapache2-mod-php php-curl php-mbstring php-mysql \
+        php-xml php-zip python3 python3-pymysql python3-num2words || \
+        echo "AVISO: no se pudieron completar dependencias" >&2
+      ;;
+    rocky|rhel|almalinux|centos)
+      bash "$ROOT/installer/packages-rocky9.sh" || exit 1
+      ;;
+    *) echo "Sistema ${ID:-desconocido}: use --skip-packages o instale dependencias manualmente" >&2; exit 1 ;;
+  esac
+else
+  echo "AVISO: instalación de paquetes omitida por --skip-packages" >&2
+  # Sin paquetes automaticos los servicios deben estar ya arrancados: los scripts siguientes usan mysql (socket)
+  # y recargan httpd y php-fpm.
+  if [[ "${ID_LIKE:-}" == *rhel* && "${ZYNERVOX_ISOLATED:-0}" == 1 ]]; then
+    for service in mariadb php-fpm httpd; do
+      systemctl is-active --quiet "$service" || { echo "ERROR: el servicio $service debe estar arrancado antes de instalar (use --skip-packages solo con los paquetes ya instalados y los servicios activos)" >&2; exit 1; }
+    done
+  fi
+fi
+
 # La web siempre se instala antes de comprobar integraciones opcionales.
 bash "$ROOT/installer/deploy-web.sh" "$ROOT/app/web" "$WEB_ROOT"
 printf '[%s] Aplicando permisos web\n' "$(date +%T)"
@@ -107,23 +133,6 @@ bash "$ROOT/installer/zynervox-core.sh"
 printf '[%s] Configurando base IVR/Bot\n' "$(date +%T)"
 bash "$ROOT/installer/ivr-builder-bot-db.sh"
 if [[ "${ZYNERVOX_ISOLATED:-0}" == 1 ]]; then bash "$ROOT/installer/carriers.sh"; fi
-
-if [[ $SKIP_PACKAGES -eq 0 ]]; then
-  case "${ID:-}" in
-    ubuntu|debian)
-      export DEBIAN_FRONTEND=noninteractive
-      apt-get update && apt-get install -y apache2 php libapache2-mod-php php-curl php-mbstring php-mysql \
-        php-xml php-zip python3 python3-pymysql python3-num2words || \
-        echo "AVISO: archivos web instalados; no se pudieron completar dependencias" >&2
-      ;;
-    rocky|rhel|almalinux|centos)
-      bash "$ROOT/installer/packages-rocky9.sh" || exit 1
-      ;;
-    *) echo "Sistema ${ID:-desconocido}: use --skip-packages o instale dependencias manualmente" >&2; exit 1 ;;
-  esac
-else
-  echo "AVISO: instalación de paquetes omitida por --skip-packages" >&2
-fi
 
 if [[ $INSTALL_DOCKER -eq 1 ]]; then
   if ! command -v docker >/dev/null 2>&1; then

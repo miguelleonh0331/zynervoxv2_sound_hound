@@ -3,6 +3,7 @@
 # Lista sacada del servidor de referencia (soundhound) y limitada a lo que usan los scripts y la web.
 # Uso (root):  packages-rocky9.sh           instala lo que falte
 #              packages-rocky9.sh --check   solo comprueba; no cambia nada (sale 1 si falta algo)
+# Deja arrancados y habilitados mariadb, php-fpm, httpd y crond.
 # NO cubre: Asterisk (en soundhound esta compilado desde fuente, no es un paquete),
 #           Docker y Tailscale (opcionales), ni el VPN.
 set -euo pipefail
@@ -55,4 +56,7 @@ dnf -y install dnf-plugins-core epel-release
 dnf config-manager --set-enabled crb
 dnf -y module enable "${MODULES[@]}"
 dnf -y install "${PACKAGES[@]}"
+# Servicios que los scripts siguientes necesitan ARRANCADOS: mysql por socket, recarga de httpd y php-fpm, cron.d.
+# firewalld no se toca aqui (las reglas de red son manuales).
+systemctl enable --now mariadb php-fpm httpd crond
 echo "PACKAGES_INSTALLED paquetes=${#PACKAGES[@]}"

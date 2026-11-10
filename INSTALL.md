@@ -49,6 +49,21 @@ Tailscale (repos presentes en `soundhound`) son opcionales y quedan fuera.
 
 Usuario del grupo web en Rocky: `apache` (el instalador exige `WEB_GROUP=apache`).
 
+**Orden y servicios.** `install.sh` instala los paquetes **primero** (antes de copiar la
+web: `deploy-web.sh` necesita `rsync`) y deja arrancados y habilitados `mariadb`,
+`php-fpm`, `httpd` y `crond`. Con `--skip-packages` el operador debe tenerlos ya
+instalados y **activos**; si no, el instalador se detiene con un error. Cuándo debe
+estar activo cada servicio:
+
+| Servicio | Debe estar activo | Para qué |
+|---|---|---|
+| `mariadb` | Desde el principio | `zynervox-core.sh`, `ivr-builder-bot-db.sh` y `list-call-worker.sh` usan el cliente `mysql` por socket; también `carriers.sh`. |
+| `php-fpm` y `httpd` | Antes de `isolated-apache.sh` | Prueba la configuración y **recarga** ambos; sin ellos arrancados falla. |
+| `crond` | Antes de que se necesite la auditoría | Ejecuta `/etc/cron.d/zynervoxv2-call-audit`. |
+| `asterisk` | Antes de arrancar el motor y el puente | Marca y atiende los AGI; el motor lleva `After=asterisk`. |
+| `zynervox-dialer`, `zypad-bridge` | Los arranca el operador al final | El instalador solo los habilita, nunca los arranca. |
+| `firewalld` | No lo toca el instalador | Las reglas de red son manuales (ver «Prerrequisitos»). |
+
 ## 2. La fuente
 
 Manual. Dejar la fuente en `/opt/zynervoxv2-source-soundhound` y mantenerla como
