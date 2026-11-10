@@ -31,13 +31,19 @@ Servidor de referencia (`soundhound`): Rocky Linux 9.4, SELinux en *Enforcing*,
 firewalld activo. Versiones comprobadas allí: PHP 8.3.33, Apache 2.4.62
 (`httpd`), MariaDB 10.11.18, Asterisk 20.21.0, Node.js 22.23.2, Python 3.9.25.
 
-Paquetes. **Manual.** `installer/install.sh` solo instala paquetes en Debian/Ubuntu;
-en Rocky sale con «use --skip-packages o instale dependencias manualmente». Hay que
-tener instalados `httpd` con el módulo `proxy_fcgi`, `php-fpm` con las extensiones
-que pide `installer/check.sh` (curl, json, mbstring, mysqli, pdo_mysql, session, xml, zip), `mariadb-server`, Asterisk, Node.js 22 (para el
-puente de zypad), Python 3 y las herramientas de SELinux (`policycoreutils`,
-`checkpolicy`, `policycoreutils-python-utils`) y `acl`. La **lista exacta de paquetes
-y nombres de repositorio está sin verificar**: no existe un listado en el repo.
+Paquetes y repositorios: `installer/packages-rocky9.sh` (lo llama `install.sh` en
+Rocky/RHEL 9 cuando no se pasa `--skip-packages`). Habilita CRB y EPEL (de ahí salen
+`sox` y `ffmpeg-free`), los flujos de módulo `php:8.3`, `nodejs:22` y `mariadb:10.11`,
+e instala 34 paquetes: Apache, PHP-FPM y sus extensiones, MariaDB, Python con PyMySQL
+y pip, sox, ffmpeg-free, Node.js, las herramientas de SELinux, ACL, rsync, git,
+openssl, curl, sudo, cron y firewalld. `sudo bash installer/packages-rocky9.sh --check`
+solo comprueba y no cambia nada. La lista está sacada de `rpm -qa` y `dnf repolist` de
+`soundhound` y limitada a lo que usan los scripts y la web. **Sin verificar:** que
+`install.sh` en un Rocky limpio llegue a instalar todo con ella (solo se probó
+`--check` en `soundhound`, donde ya está todo). **Asterisk no está en la lista**: en
+`soundhound` no es un paquete (`/usr/sbin/asterisk`, versión 20.21.0, compilado desde
+fuente); no hay procedimiento de compilación en el repo (hueco 15). Docker y
+Tailscale (repos presentes en `soundhound`) son opcionales y quedan fuera.
 
 Usuario del grupo web en Rocky: `apache` (el instalador exige `WEB_GROUP=apache`).
 
@@ -254,7 +260,6 @@ No están en git y se respaldan por separado:
 
 | # | Qué falta | Riesgo | Quién debería cubrirlo |
 |---|---|---|---|
-| 1 | `install.sh` no instala paquetes en Rocky y no hay lista de paquetes. | Un servidor nuevo no llega a instalarse sin conocimiento previo. | Instalador |
 | 2 | Ningún script instala `zynervox-dialer.service`. | Tras reinstalar no hay motor y el Dashboard lo marca apagado. | Instalador, con MarcadorBuilder |
 | 3 | `zypad-bridge.sh` no se llama desde `install.sh`, y el servicio usa `sudo -n -u apache` para el catálogo sin una regla sudoers propia (en `soundhound` funciona porque el usuario de servicio tiene sudo amplio). | En un servidor sin ese sudo el puente no obtiene el catálogo; con sudo amplio, privilegio excesivo. | Instalador y Zypad |
 | 4 | La plantilla `src/features/zypad/zypad-bridge.service` apunta `CUT_CMD` y `ANNOTATE_CMD` a herramientas dentro del espacio de trabajo de otro agente, y esas herramientas no están en el repositorio. | Si ese espacio cambia, el corte y la anotación dejan de funcionar. | Zypad (comitearlas en el repo) |
@@ -267,5 +272,6 @@ No están en git y se respaldan por separado:
 | 12 | No hay copias programadas de BD ni de grabaciones (solo las manuales que se citan arriba; **sin verificar** que no exista otro respaldo). | Pérdida de datos. | Jarvis y el propietario de los datos |
 | 13 | El VPN vive en `/opt/zynervoxv2-vpn`, fuera del repo; su volumen y token no están respaldados. | El panel VPN no se puede reconstruir. | Jarvis |
 | 14 | Esta guía no se ha probado en un servidor limpio, ni los tests `rocky-http.sh` y `central-database.sh` completos. | Pasos que fallen al instalar de verdad. | Instalador, con un servidor de prueba |
+| 15 | Asterisk 20.21.0 está compilado desde fuente en `soundhound`: no hay paquete ni procedimiento de compilación (módulos, `menuselect`, `res_audiosocket`, usuario) en el repo. | Un servidor nuevo no puede tener el mismo Asterisk sin conocimiento previo. | Telefonia |
 
-Los números son estables. El hueco 5 (lista única de AGI) está resuelto con `installer/agi-list.txt`.
+Los números son estables. Los huecos 1 (paquetes de Rocky, `installer/packages-rocky9.sh`) y 5 (lista única de AGI, `installer/agi-list.txt`) están resueltos.

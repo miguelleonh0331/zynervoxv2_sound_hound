@@ -106,6 +106,9 @@ if [[ $SKIP_PACKAGES -eq 0 ]]; then
         php-xml php-zip python3 python3-pymysql python3-num2words || \
         echo "AVISO: archivos web instalados; no se pudieron completar dependencias" >&2
       ;;
+    rocky|rhel|almalinux|centos)
+      bash "$ROOT/installer/packages-rocky9.sh" || exit 1
+      ;;
     *) echo "Sistema ${ID:-desconocido}: use --skip-packages o instale dependencias manualmente" >&2; exit 1 ;;
   esac
 else
