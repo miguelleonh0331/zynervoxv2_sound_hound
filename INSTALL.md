@@ -178,21 +178,23 @@ Lo que sí exige el resto del sistema a Asterisk:
 (llamado por `ivr-builder-bot-db.sh`): `/etc/cron.d/zynervoxv2-call-audit`, cada
 minuto, `call_tracking_agi.php --replay`.
 
-**Motor de marcación `zynervox-dialer.service`.** **Manual**; ningún script del
-instalador lo instala. La unidad está en
-`asterisk/synervox/modules/bot_ivr/zynervox-dialer.service` (usuario `apache`,
-ejecuta `bot_ivr/campaign_engine.php`):
+**Motor de marcación `zynervox-dialer.service`.** Lo instala y habilita
+`installer/dialer.sh` (lo llama `install.sh` en modo aislado, como módulo; si falla,
+la instalación continúa y queda en el resumen). **No lo arranca nunca.** La unidad
+está en `asterisk/synervox/modules/bot_ivr/zynervox-dialer.service` (usuario
+`apache`, ejecuta `/var/www/html/zynervoxv2/bot_ivr/campaign_engine.php`):
 
 ```sh
-install -m 0644 -o root -g root asterisk/synervox/modules/bot_ivr/zynervox-dialer.service /etc/systemd/system/zynervox-dialer.service
-restorecon -F /etc/systemd/system/zynervox-dialer.service
-systemctl daemon-reload
-systemctl enable zynervox-dialer.service
+sudo bash installer/dialer.sh --check   # solo comprueba: instalada, habilitada, activa
+sudo bash installer/dialer.sh           # instala y habilita; sin arrancar
 # systemctl start zynervox-dialer.service   -> solo cuando se autorice marcar
 ```
 
 Arrancar el motor **no** inicia llamadas: solo marca listas puestas en «Iniciada».
-Reiniciarlo con llamadas abiertas las puede afectar: hacerlo con 0 canales.
+Reiniciarlo con llamadas abiertas las puede afectar: hacerlo con 0 canales. La unidad
+fija el usuario y la ruta de la web; si el servidor usa otra ruta, hay que ajustarla.
+Probado: `bash -n` y `--check` en `soundhound` (ya instalada, habilitada y activa);
+**el paso de instalación no se ha ejecutado**, ni en este ni en un servidor limpio.
 
 **Puente de zypad `zypad-bridge.service`.** `installer/zypad-bridge.sh` lo instala y
 lo deja habilitado, sin arrancar. **Manual** en el sentido de que `install.sh` no lo
@@ -260,7 +262,6 @@ No están en git y se respaldan por separado:
 
 | # | Qué falta | Riesgo | Quién debería cubrirlo |
 |---|---|---|---|
-| 2 | Ningún script instala `zynervox-dialer.service`. | Tras reinstalar no hay motor y el Dashboard lo marca apagado. | Instalador, con MarcadorBuilder |
 | 3 | `zypad-bridge.sh` no se llama desde `install.sh`, y el servicio usa `sudo -n -u apache` para el catálogo sin una regla sudoers propia (en `soundhound` funciona porque el usuario de servicio tiene sudo amplio). | En un servidor sin ese sudo el puente no obtiene el catálogo; con sudo amplio, privilegio excesivo. | Instalador y Zypad |
 | 4 | La plantilla `src/features/zypad/zypad-bridge.service` apunta `CUT_CMD` y `ANNOTATE_CMD` a herramientas dentro del espacio de trabajo de otro agente, y esas herramientas no están en el repositorio. | Si ese espacio cambia, el corte y la anotación dejan de funcionar. | Zypad (comitearlas en el repo) |
 | 6 | El envoltorio y su sudoers se instalan a mano como root; no hay script que lo haga. | Un servidor nuevo queda sin la vía de publicación segura. | Instalador / quien administre el servidor |
@@ -274,4 +275,4 @@ No están en git y se respaldan por separado:
 | 14 | Esta guía no se ha probado en un servidor limpio, ni los tests `rocky-http.sh` y `central-database.sh` completos. | Pasos que fallen al instalar de verdad. | Instalador, con un servidor de prueba |
 | 15 | Asterisk 20.21.0 está compilado desde fuente en `soundhound`: no hay paquete ni procedimiento de compilación (módulos, `menuselect`, `res_audiosocket`, usuario) en el repo. | Un servidor nuevo no puede tener el mismo Asterisk sin conocimiento previo. | Telefonia |
 
-Los números son estables. Los huecos 1 (paquetes de Rocky, `installer/packages-rocky9.sh`) y 5 (lista única de AGI, `installer/agi-list.txt`) están resueltos.
+Los números son estables. Resueltos: 1 (paquetes de Rocky, `installer/packages-rocky9.sh`), 2 (motor, `installer/dialer.sh`) y 5 (lista única de AGI, `installer/agi-list.txt`).

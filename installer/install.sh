@@ -247,6 +247,13 @@ install_zypad() {
 # quede en el resumen final igual que los demás módulos.
 run_module "Macelioai TTS" install_macelioai_tts
 
+# Motor de marcacion: se instala y habilita, NUNCA se arranca desde aqui (iniciar o reiniciar el
+# motor es una decision aparte). Solo en la instalacion v2 aislada, que es la que tiene el marcador.
+install_dialer() {
+  bash "$ROOT/installer/dialer.sh"
+}
+if [[ "${ZYNERVOX_ISOLATED:-0}" == 1 ]]; then run_module "Dialer (zynervox-dialer)" install_dialer; fi
+
 # Con `if` y no con `[[ ... ]] && ...`: bajo `set -e` una condición falsa al
 # final de una lista AND devuelve 1 y abortaría la instalación.
 if [[ $WITH_WHATSAPP -eq 1 ]]; then run_module "WhatsApp" install_whatsapp; fi
