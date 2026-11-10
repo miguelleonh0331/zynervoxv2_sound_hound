@@ -74,8 +74,9 @@ siempre con el árbol limpio antes de publicar:
 git clone --branch main https://github.com/miguelleonh0331/zynervoxv2_sound_hound.git /opt/zynervoxv2-source-soundhound
 ```
 
-La copia de `soundhound` no tiene remoto configurado (su rama local es `master`) y no se
-hace *push* desde ella; no configurar un remoto en ese servidor.
+En `soundhound` se trabaja en la rama local `master`. Esta guía no configura remotos y el
+equipo de instalación no hace *push*: publicar en GitHub es una acción aparte del
+propietario.
 
 **Scripts de arranque heredados: no sirven tal cual para v2.**
 
@@ -87,7 +88,7 @@ hace *push* desde ella; no configurar un remoto en ese servidor.
 - `installer/unattended.sh`: sí fuerza el modo aislado (carga `isolated-env.sh`), pero pasa
   `--skip-packages` siempre, pide preparar credenciales con `load-db-password.sh` y su
   `--update-source` exige estar en la rama `main` con el árbol limpio y un remoto `origin`
-  (en `soundhound` fallaría: la rama es `master` y no hay remoto). `--fresh` no está
+  (en `soundhound` fallaría: la rama local es `master`). `--fresh` no está
   soportado. Su uso útil está documentado en las pruebas (`--module carriers`).
   **Sin verificar** su ejecución completa con la fuente actual.
 

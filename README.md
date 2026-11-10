@@ -5,8 +5,9 @@ detección de contestadoras, sobre Asterisk. Servidor de referencia: `soundhound
 (`SrvPredic`), Rocky Linux 9.4. Instalar un servidor nuevo: **[INSTALL.md](INSTALL.md)**.
 
 - Fuente versionada: `/opt/zynervoxv2-source-soundhound`. El repositorio está publicado en
-  `https://github.com/miguelleonh0331/zynervoxv2_sound_hound.git` (rama `main`); la copia de este
-  servidor no tiene ningún remoto configurado y nunca hace *push*.
+  `https://github.com/miguelleonh0331/zynervoxv2_sound_hound.git` (rama `main`); en este
+  servidor se trabaja en la rama local `master`; el equipo de instalación no configura
+  remotos ni hace *push*.
 - Web publicada: `/var/www/html/zynervoxv2/` (`/srv/www/htdocs/zynervoxv2` es un
   enlace a la misma carpeta). URL: `http://<servidor>/zynervoxv2/`.
 - La fuente y la web son copias independientes: se edita la fuente, se comitea y se
