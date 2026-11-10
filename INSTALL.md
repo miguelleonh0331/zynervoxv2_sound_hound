@@ -10,6 +10,80 @@ la fuente**: es la lectura ordenada de los scripts y de lo que hay en `soundhoun
 
 Los secretos se nombran por su ruta. Nunca se escriben en este repositorio.
 
+## Prerrequisitos (reunirlos antes de empezar)
+
+Lo que el instalador **supone ya hecho** o que aporta el operador. Está disperso por
+los scripts; aquí queda en un solo sitio.
+
+**1. Usuarios y grupos.**
+
+- `apache`: usuario y grupo web (httpd, php-fpm y el motor de marcación). Lo crea el
+  paquete `httpd`. El instalador exige `WEB_GROUP=apache` en Rocky.
+- `asterisk`: usuario de Asterisk. **Debe existir antes de instalar**: `list-call-worker.sh`
+  crea con él `recordings/marcador` y, si no existe, `rocky-selinux.sh` se salta sus ACL.
+- `mysql`: lo crea el paquete de MariaDB.
+- Usuario del servicio de zypad (`ZYPAD_SERVICE_USER`, por defecto **`codex-web`**): debe
+  existir **y tener un grupo con el mismo nombre**, porque `zypad-bridge.sh` crea
+  `/etc/zypad` como `root:<usuario>`. Sirve también para la regla sudoers mínima.
+- `codex-web` como publicador: el envoltorio `deploy-zynervoxv2` ejecuta `git` como
+  `codex-web`, con `HOME=/var/lib/codex-web-v4` y su `.gitconfig`; en un servidor con
+  otro usuario hay que adaptar el envoltorio y su sudoers (solo root puede hacerlo).
+
+**2. Directorios y enlaces.**
+
+- `/opt/zynervoxv2-source-soundhound`: la fuente (paso 2).
+- `/srv/www/htdocs/zynervoxv2` → `/var/www/html/zynervoxv2`: **enlace manual**; ningún
+  script lo crea y los dialplans llaman a los AGI por esa ruta.
+- `/var/backups/zynervoxv2-db`: **manual**, `root:root` 0700 (copias de BD antes de migrar).
+- `/var/backups/zynervoxv2-web`: lo crea el envoltorio (`root:root` 0700).
+- `/etc/zynervox/zynervoxv2`, `/var/lib/zynervoxv2/asterisk`, `/var/lib/zypad-bridge`: los
+  crean los scripts del paso 3 y de `zypad-bridge.sh`.
+
+**3. Ficheros de secretos** (siempre se nombran por ruta; nunca se escribe su valor):
+
+| Ruta | Dueño y modo | Quién lo genera |
+|---|---|---|
+| `/etc/zynervox/zynervoxv2/core-password` | `root:root` 0600 | el instalador (`load-db-password.sh`, si no existe) |
+| `/etc/zynervox/zynervoxv2/bot-password` | `root:root` 0600 | **el operador, antes de instalar** (o la variable `BOT_IVR_DB_PASSWORD`): sin ella `ivr-builder-bot-db.sh` se detiene con «Nueva cuenta Bot aislada: preparar BOT_IVR_DB_PASSWORD o archivo privado» |
+| `/etc/zynervox/zynervoxv2/zynervox-core-admin.env` | `root:root` 0600 | el instalador, con la contraseña que da el operador |
+| `/etc/zynervox/zynervoxv2/zynervox-core.conf`, `zynervoxv2205-bot_ivr.conf`, `zynervoxv2205-ivr-receiver.conf` | `root:apache` 0640 | el instalador |
+| `/etc/zynervox/zynervoxv2/pbx/ami.json` (en `pbx/`, `root:apache` 2770) | `root:apache` 0640 | el operador, con el mismo secreto que el AMI de Asterisk |
+| `/etc/zypad/bridge.env` | `root:<servicio zypad>` 0640 | `zypad-bridge.sh`, desde un fichero que da el operador |
+
+**4. Servicios externos y credenciales que aporta el operador.**
+
+- La contraseña del administrador (`ZYNERVOX_CORE_ADMIN_PASSWORD`) y la de la cuenta Bot
+  (`BOT_IVR_DB_PASSWORD` o el fichero `bot-password`).
+- `ZYPAD_URL` y `ZYPAD_API_KEY`: servicio externo de zypad (requiere salida de red hacia él).
+- Troncal SIP del proveedor (datos de acceso; se cargan desde la web) y certificados TLS
+  del SIP.
+- Acceso al repositorio de GitHub desde el servidor (el remoto publicado es SSH, así que
+  hace falta una clave de acceso de solo lectura): **sin verificar** cómo se provee hoy.
+- El motor de audio del IVR Builder usa gTTS: necesita salida a Internet para generar
+  audios nuevos (**sin verificar** el destino exacto).
+
+**5. Puertos y firewall.** Las reglas de `firewalld` por IP de origen son **manuales** y
+no se documentan aquí con direcciones. Revisión de Jarvis pendiente: todo lo de esta
+lista de red está **sin verificar**.
+
+| Puerto | Uso | Exposición prevista |
+|---|---|---|
+| 80/tcp | Web | Solo desde orígenes autorizados (regla `rich` por origen) |
+| 5060/udp, 5065/tcp | SIP (5065 con TLS) | Hacia el proveedor |
+| 10000-20000/udp | RTP | Hacia el proveedor |
+| 5038/tcp | AMI de Asterisk | Solo `127.0.0.1` |
+| 8765/tcp | Puente de zypad | Solo `127.0.0.1` |
+| 3306/tcp | MariaDB | Solo local (**sin verificar** el `bind-address`) |
+
+Evitar `firewall-cmd --reload` con llamadas en curso (puede afectarlas): añadir las reglas
+en caliente y en permanente por separado.
+
+**6. Pasos manuales de Asterisk y certificados.** Compilar Asterisk 20.21.0 con chan_sip,
+app_amd y AudioSocket (Telefonia lo documenta en `asterisk/soundhound/compilacion/`,
+**en preparación**; sin enlace hasta que esté comiteado), instalar la configuración de
+referencia de `asterisk/soundhound/etc-asterisk/`, colocar los certificados TLS y
+`asterisk.service`, y crear `pbx/ami.json`. Ver el paso 6.
+
 ## 0. Qué se instala
 
 - La web (`app/web/`) en `/var/www/html/zynervoxv2/`, detrás de un *gate* PHP
@@ -102,6 +176,7 @@ export WEB_ROOT=/var/www/html/zynervoxv2
 export URL_PATH=/zynervoxv2
 export WEB_GROUP=apache
 export ZYNERVOX_CORE_ADMIN_PASSWORD='<contraseña elegida>'
+export BOT_IVR_DB_PASSWORD='<contraseña de la cuenta Bot>'   # o crear antes /etc/zynervox/zynervoxv2/bot-password (root, 0600)
 bash installer/install.sh
 ```
 
